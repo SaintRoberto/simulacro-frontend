@@ -1,0 +1,60 @@
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* Auth pages */
+.auth-bg {
+  background: radial-gradient(1200px 600px at 0% 0%, #eef4ff 0%, transparent 60%),
+              radial-gradient(800px 400px at 100% 100%, #f6fafe 0%, transparent 60%),
+              #f8f9fb;
+}
+
+.auth-card {
+  border: 1px solid #eef1f5;
+  box-shadow: 0 8px 24px rgba(16, 24, 40, 0.06);
+  border-radius: 16px;
+}
+
+.auth-header {
+  text-align: center;
+}
+
+.brand-badge {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #3b82f6 0%, #22c55e 100%);
+  color: #fff;
+}
+
+.muted-link {
+  color: #64748b;
+}
+
+.muted-link:hover {
+  color: #0d6efd;
+}
+
+.form-hint {
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+
+.label-uniform {
+  display: inline;
+  min-height: 2px; /* ajusta según el alto de una línea en tu tema */
+}
