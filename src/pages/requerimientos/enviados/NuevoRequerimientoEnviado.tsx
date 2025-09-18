@@ -8,10 +8,13 @@ import { Dialog } from 'primereact/dialog';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { useAuth } from '../../../context/AuthContext';
+import { RequerimientoRequest, RequerimientoRecursoRequest } from '../../../context/AuthContext';
+import { Tag } from 'antd';
 
 interface Recurso {
   id: number;
   grupo: string;
+  grupoDescripcion?: string;
   tipo: string;
   recursosComplementarios?: string;
   caracteristicasTecnicas?: string;
@@ -19,6 +22,7 @@ interface Recurso {
   costoEstimado: string;
   especificacionesAdicionales?: string;
   destinoUbicacion?: string;
+  activo: boolean;
 }
 
 export const NuevoRequerimientoEnviado: React.FC = () => {
@@ -35,14 +39,17 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
   const [showRecursoDialog, setShowRecursoDialog] = useState(false);
   const [recursoDraft, setRecursoDraft] = useState<Partial<Recurso>>({ cantidad: 1 });
 
-  const { datosLogin, loadReceptores, receptores, receptoresStatus } = useAuth();
-  const mttOptions = (receptores || []).map(r => ({ label: `${r.mesa_nombre} ${r.siglas}`.trim(), value: `${r.coe_id}-${r.mesa_id}-${r.siglas}` }));
+  const { datosLogin, loadReceptores, receptores, receptoresStatus, recursoGrupos, recursoGruposStatus, recursoTipos, recursoTiposStatus, loadRecursoGrupos, loadRecursoTipos, createRequerimiento, createRequerimientoRecurso } = useAuth();
+  const mttOptions = (receptores || []).map(r => ({ label: `${r.siglas} - ${r.mesa_nombre}`.trim(), value: `${r.mesa_id}-${r.siglas}-${r.usuario_id}` }));
 
   useEffect(() => {
     if (datosLogin && receptoresStatus === 'idle') {
       loadReceptores();
     }
-  }, [datosLogin, receptoresStatus, loadReceptores]);
+    if (recursoGruposStatus === 'idle') {
+      loadRecursoGrupos();
+    }
+  }, [datosLogin, receptoresStatus, loadReceptores, recursoGruposStatus, loadRecursoGrupos]);
 
   // const nivelOptions = [
   //   { label: 'Parroquial', value: 'Parroquial' },
@@ -56,11 +63,98 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     setShowRecursoDialog(true);
   };
 
+  const handleGrupoChange = (grupoId: number) => {
+    setRecursoDraft(prev => ({ ...prev, grupo: grupoId.toString() }));
+    loadRecursoTipos(grupoId);
+  };
+
+  const handleTipoChange = (tipoId: number) => {
+    const tipo = recursoTipos.find(t => t.id === tipoId);
+    if (tipo) {
+      setRecursoDraft(prev => ({
+        ...prev,
+        tipo: tipo.nombre,
+        recursosComplementarios: tipo.complemento,
+        caracteristicasTecnicas: tipo.descripcion,
+        costoEstimado: tipo.costo
+      }));
+    }
+  };
+
+  const handleRegistrarRequerimiento = async () => {
+    if (!datosLogin || !mtt || recursos.length === 0) {
+      alert('Por favor complete todos los campos requeridos y agregue al menos un recurso');
+      return;
+    }
+
+    try {
+      // Parse receptor info from mtt value (format: "coe_id-mesa_id-siglas-usuario_id")
+      const [, , , usuarioReceptorId] = mtt.split('-');
+      
+      // Create requerimiento
+      const requerimientoData: RequerimientoRequest = {
+        activo: true,
+        creador: datosLogin.usuario_login,
+        emergencia_id: 1, // Default value, you may need to adjust this
+        fecha_fin: fechaFin ? fechaFin.toISOString() : new Date().toISOString(),
+        fecha_inicio: fechaInicio ? fechaInicio.toISOString() : new Date().toISOString(),
+        usuario_emisor_id: datosLogin.usuario_id,
+        usuario_receptor_id: parseInt(usuarioReceptorId),
+      };
+
+      const requerimiento = await createRequerimiento(requerimientoData);
+      if (!requerimiento) {
+        alert('Error al crear el requerimiento');
+        return;
+      }
+
+      // Create requerimiento-recursos for each resource
+      for (const recurso of recursos) {
+        const grupoId = recursoGrupos.find(g => g.nombre === recurso.grupo)?.id;
+        const tipoId = recursoTipos.find(t => t.nombre === recurso.tipo)?.id;
+        
+        if (!grupoId || !tipoId) {
+          alert(`Error: No se encontró grupo o tipo para el recurso ${recurso.tipo}`);
+          continue;
+        }
+
+        const recursoData: RequerimientoRecursoRequest = {
+          activo: true,
+          cantidad: recurso.cantidad,
+          creador: datosLogin.usuario_login,
+          destino: recurso.destinoUbicacion || '',
+          especificaciones: recurso.especificacionesAdicionales || '',
+          recurso_grupo_id: grupoId,
+          recurso_tipo_id: tipoId,
+          requerimiento_id: requerimiento.id,
+        };
+
+        const success = await createRequerimientoRecurso(recursoData);
+        if (!success) {
+          alert(`Error al agregar recurso ${recurso.tipo}`);
+        }
+      }
+
+      alert('Requerimiento registrado exitosamente');
+      // Reset form
+      setRecursos([]);
+      setMtt(null);
+      setFechaInicio(null);
+      setFechaFin(null);
+      
+    } catch (error) {
+      alert('Error al registrar el requerimiento');
+      console.error(error);
+    }
+  };
+
   const saveRecurso = () => {
     const newId = Math.max(0, ...recursos.map(r => r.id)) + 1;
+    const grupoSeleccionado = recursoGrupos.find(g => g.id === Number(recursoDraft.grupo));
     const nuevo: Recurso = {
       id: newId,
-      grupo: (recursoDraft.grupo as string) || '-',
+      grupo: grupoSeleccionado?.nombre || '-',
+      grupoDescripcion: grupoSeleccionado?.descripcion || '-',
       tipo: (recursoDraft.tipo as string) || 'Sin tipo',
       recursosComplementarios: recursoDraft.recursosComplementarios as string,
       caracteristicasTecnicas: recursoDraft.caracteristicasTecnicas as string,
@@ -68,6 +162,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       costoEstimado: (recursoDraft.costoEstimado as string) || '-',
       especificacionesAdicionales: recursoDraft.especificacionesAdicionales as string,
       destinoUbicacion: recursoDraft.destinoUbicacion as string,
+      activo: true,
     };
     setRecursos(prev => [...prev, nuevo]);
     setShowRecursoDialog(false);
@@ -133,10 +228,20 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
           </div>
 
           <DataTable value={recursos} emptyMessage="Sin recursos añadidos" responsiveLayout="scroll">
-            <Column field="tipo" header="Tipo de Recurso" sortable></Column>
+            <Column field="grupo" header="Grupo Recurso" sortable></Column>
+            <Column field="tipo" header="Tipo Recurso" sortable></Column>
+            <Column field="destinoUbicacion" header="Destino" sortable></Column>
             <Column field="cantidad" header="Cantidad" sortable></Column>
-            <Column field="grupo" header="Grupo" sortable></Column>
-            <Column field="costoEstimado" header="Costo Estimado" sortable></Column>
+            <Column 
+              field="activo" 
+              header="Activo" 
+              sortable
+              body={(row: Recurso) => (
+                <Tag color={row.activo ? 'blue' : 'red'}>
+                  {row.activo ? 'TRUE' : 'false'}
+                </Tag>
+              )}
+            ></Column>
             <Column
               header="Acciones"
               body={(row: Recurso) => (
@@ -159,7 +264,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
           <div className="row mt-4">
             <div className="col-12 text-end">
               <Button label="Guardar Borrador" icon="pi pi-save" outlined className="m-1" />
-              <Button label="Registrar Requerimiento" icon="pi pi-send" severity="success" className="m-1" />
+              <Button label="Registrar Requerimiento" icon="pi pi-send" severity="success" className="m-1" onClick={handleRegistrarRequerimiento} />
             </div>
           </div>
 
@@ -176,23 +281,38 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         <div className="grid p-fluid">
           <div className="field col-12">
             <label>Grupo Recurso</label>
-            <InputText value={recursoDraft.grupo || ''} onChange={(e) => setRecursoDraft(prev => ({ ...prev, grupo: e.target.value }))} />
+            <Dropdown 
+              value={recursoDraft.grupo ? Number(recursoDraft.grupo) : null}
+              options={recursoGrupos.map(g => ({ label: g.nombre, value: g.id }))}
+              onChange={(e) => handleGrupoChange(e.value)}
+              placeholder={recursoGruposStatus === 'loading' ? 'Cargando...' : 'Seleccionar grupo'}
+              disabled={recursoGruposStatus === 'loading'}
+              filter
+              className="w-full"
+            />
           </div>
 
           <div className="field col-12">
             <label>Tipo Recurso *</label>
-            <InputText placeholder="Buscar tipo de recurso..." className="mb-2" />
-            <InputText value={recursoDraft.tipo || ''} onChange={(e) => setRecursoDraft(prev => ({ ...prev, tipo: e.target.value }))} placeholder="Seleccionar tipo de recurso" />
+            <Dropdown 
+              value={recursoDraft.tipo ? recursoTipos.find(t => t.nombre === recursoDraft.tipo)?.id : null}
+              options={recursoTipos.map(t => ({ label: t.nombre, value: t.id }))}
+              onChange={(e) => handleTipoChange(e.value)}
+              placeholder={recursoTiposStatus === 'loading' ? 'Cargando...' : 'Seleccionar tipo'}
+              disabled={recursoTiposStatus === 'loading' || !recursoDraft.grupo}
+              filter
+              className="w-full"
+            />
           </div>
 
           <div className="field col-12">
             <label>Recursos Complementarios</label>
-            <InputText value={recursoDraft.recursosComplementarios || ''} onChange={(e) => setRecursoDraft(prev => ({ ...prev, recursosComplementarios: e.target.value }))} />
+            <InputText value={recursoDraft.recursosComplementarios || ''} onChange={(e) => setRecursoDraft(prev => ({ ...prev, recursosComplementarios: e.target.value }))} disabled/>
           </div>
 
           <div className="field col-12">
             <label>Características Técnicas</label>
-            <InputText value={recursoDraft.caracteristicasTecnicas || ''} onChange={(e) => setRecursoDraft(prev => ({ ...prev, caracteristicasTecnicas: e.target.value }))} />
+            <InputText value={recursoDraft.caracteristicasTecnicas || ''} onChange={(e) => setRecursoDraft(prev => ({ ...prev, caracteristicasTecnicas: e.target.value }))} disabled/>
           </div>
 
           <div className="field col-12 md:col-6">
@@ -201,7 +321,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
           </div>
           <div className="field col-12 md:col-6">
             <label>Costo Estimado</label>
-            <InputText value={recursoDraft.costoEstimado || ''} onChange={(e) => setRecursoDraft(prev => ({ ...prev, costoEstimado: e.target.value }))} placeholder="$400 - $1,200 por día" />
+            <InputText value={recursoDraft.costoEstimado || ''} onChange={(e) => setRecursoDraft(prev => ({ ...prev, costoEstimado: e.target.value }))} disabled />
           </div>
 
           <div className="field col-12">

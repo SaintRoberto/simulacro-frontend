@@ -167,7 +167,9 @@ export function BaseCRUD<T extends Record<string, any>>({
                   return String(va ?? '').localeCompare(String(vb ?? ''));
                 }
               : undefined,
-            render: col.body as any,
+            render: col.body
+              ? (_value: any, record: any) => (col.body as any)(record)
+              : undefined,
           })),
           {
             key: '__actions',
