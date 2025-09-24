@@ -1,5 +1,6 @@
 import React, { useMemo, useState, ReactNode } from 'react';
-import { Table, Modal, Input, Button, Space, Typography } from 'antd';
+import { Table, Modal, Input, Button, Space, Typography, Tooltip } from 'antd';
+import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 
 interface BaseCRUDProps<T> {
   title: string;
@@ -12,7 +13,7 @@ interface BaseCRUDProps<T> {
     filter?: boolean;
     filterElement?: (options: any) => ReactNode;
   }[];
-  renderForm: (item: Partial<T>, onChange: (e: any) => void) => ReactNode;
+  renderForm?: (item: Partial<T>, onChange: (e: any) => void) => ReactNode;
   onSave: (item: Partial<T>) => void;
   onDelete: (item: T) => void;
   initialItem: Partial<T>;
@@ -21,6 +22,11 @@ interface BaseCRUDProps<T> {
   leftToolbarTemplate?: () => ReactNode;
   rightToolbarTemplate?: () => ReactNode;
   emptyMessage?: string;
+  onEdit?: (item: T) => void;
+  showCreateButton?: boolean;
+  showDeleteButton?: boolean;
+  showEditAction?: boolean;
+  showDeleteAction?: boolean;
 }
 
 export function BaseCRUD<T extends Record<string, any>>({
@@ -35,7 +41,12 @@ export function BaseCRUD<T extends Record<string, any>>({
   showHeader = true,
   leftToolbarTemplate,
   rightToolbarTemplate,
-  emptyMessage = 'No se encontraron registros.'
+  emptyMessage = 'No se encontraron registros.',
+  onEdit,
+  showCreateButton = true,
+  showDeleteButton = true,
+  showEditAction = true,
+  showDeleteAction = true,
 }: BaseCRUDProps<T>) {
   const [item, setItem] = useState<Partial<T>>(initialItem);
   const [showDialog, setShowDialog] = useState(false);
@@ -93,12 +104,16 @@ export function BaseCRUD<T extends Record<string, any>>({
   const defaultLeftToolbarTemplate = () => {
     return (
       <Space wrap>
-        <Button type="primary" onClick={openNew}>
-          Nuevo
-        </Button>
-        <Button danger onClick={() => selectedItem && confirmDelete(selectedItem)} disabled={!selectedItem}>
-          Eliminar
-        </Button>
+        {showCreateButton && (
+          <Button type="primary" onClick={openNew}>
+            Nuevo
+          </Button>
+        )}
+        {showDeleteButton && (
+          <Button danger onClick={() => selectedItem && confirmDelete(selectedItem)} disabled={!selectedItem}>
+            Eliminar
+          </Button>
+        )}
       </Space>
     );
   };
@@ -117,12 +132,18 @@ export function BaseCRUD<T extends Record<string, any>>({
   const actionBodyTemplate = (rowData: T) => {
     return (
       <Space>
-        <Button onClick={() => editItem(rowData)} type="link">
-          Editar
-        </Button>
-        <Button onClick={() => confirmDelete(rowData)} type="link" danger>
-          Eliminar
-        </Button>
+        {showEditAction && (
+          <Tooltip title="Editar">
+            <Button onClick={() => (onEdit ? onEdit(rowData) : editItem(rowData))} type="link" icon={<EditOutlined style={{ fontSize: '22px' }} />}
+              aria-label="Editar" />
+          </Tooltip>
+        )}
+        {showDeleteAction && (
+          <Tooltip title="Eliminar">
+            <Button onClick={() => confirmDelete(rowData)} type="link" danger icon={<DeleteOutlined />} style={{ fontSize: '22px' }} 
+            aria-label="Eliminar" />
+          </Tooltip>
+        )}
       </Space>
     );
   };
@@ -152,7 +173,7 @@ export function BaseCRUD<T extends Record<string, any>>({
       <Table
         rowKey={idField as string}
         dataSource={filteredItems}
-        pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [5,10,25,50] as any }}
+        pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [5, 10, 25, 50] as any }}
         onRow={(record) => ({ onClick: () => setSelectedItem(record) })}
         locale={{ emptyText: emptyMessage }}
         columns={[
@@ -162,10 +183,10 @@ export function BaseCRUD<T extends Record<string, any>>({
             title: col.header,
             sorter: col.sortable
               ? (a: any, b: any) => {
-                  const va = a[col.field];
-                  const vb = b[col.field];
-                  return String(va ?? '').localeCompare(String(vb ?? ''));
-                }
+                const va = a[col.field];
+                const vb = b[col.field];
+                return String(va ?? '').localeCompare(String(vb ?? ''));
+              }
               : undefined,
             render: col.body
               ? (_value: any, record: any) => (col.body as any)(record)
@@ -188,7 +209,7 @@ export function BaseCRUD<T extends Record<string, any>>({
         okText="Guardar"
         cancelText="Cancelar"
       >
-        {renderForm(item, onInputChange)}
+        {renderForm ? renderForm(item, onInputChange) : null}
       </Modal>
 
       <Modal

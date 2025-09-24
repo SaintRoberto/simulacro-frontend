@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from 'primereact/card';
 import { BaseCRUD } from '../../../components/crud/BaseCRUD';
-import { Progress } from 'antd';
-import { RequerimientoRecibidoForm } from './RequerimientoRecibidoForm';
+import { Progress, Tag } from 'antd';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../../context/AuthContext';
+ 
 
 interface RequerimientoRecibido {
   id: number;
@@ -12,11 +14,56 @@ interface RequerimientoRecibido {
   fechaSolicitud: Date; // inicio
   fechaCumplimiento: Date | null; // fin
   porcentajeAvance: number; // 0|25|50|75|100
-  estado: 'Inicio' | 'Proceso' | 'Finalizado';
+  estado: string; // nombre proveniente del backend
+}
+
+// API response shape for requerimientos Recibidos endpoint
+interface RequerimientoRecibidoAPI {
+  activo: boolean;
+  emergencia_id: number;
+  fecha_fin: string | null;
+  fecha_inicio: string;
+  porcentaje_avance?: number;
+  requerimiento_estado_id?: number;
+  requerimiento_id: number;
+  usuario_emisor: string;
+  usuario_emisor_id: number;
+  usuario_receptor: string;
+  usuario_receptor_id: number;
 }
 
 export const RequerimientosRecibidos: React.FC = () => {
   const [requerimientos, setRequerimientos] = useState<RequerimientoRecibido[]>([]);
+  const navigate = useNavigate();
+  const { getRequerimientosRecibidos, getRequerimientoEstados } = useAuth();
+
+  const loadRequerimientos = useCallback(async () => {
+    try {
+      const [data, estadosList] = await Promise.all([
+        getRequerimientosRecibidos(),
+        getRequerimientoEstados(),
+      ]);
+      const estadosMap = new Map<number, string>((estadosList || []).map((e: any) => [e.id, e.nombre]));
+      // Transform API data to local format
+      const transformedData: RequerimientoRecibido[] = (data as unknown as RequerimientoRecibidoAPI[]).map((req) => ({
+        id: req.requerimiento_id,
+        codigo: `REQ-${req.requerimiento_id}`,
+        solicitante: req.usuario_emisor,
+        destinatario: req.usuario_receptor,
+        fechaSolicitud: new Date(req.fecha_inicio),
+        fechaCumplimiento: req.fecha_fin ? new Date(req.fecha_fin) : null,
+        porcentajeAvance: typeof req.porcentaje_avance === 'number' ? req.porcentaje_avance : 0,
+        estado: estadosMap.get(req.requerimiento_estado_id ?? -1) || 'Solicitado',
+      }));
+      setRequerimientos(transformedData);
+    } catch (error) {
+      console.error('Error loading requerimientos:', error);
+    }
+  }, [getRequerimientosRecibidos, getRequerimientoEstados]);
+
+  useEffect(() => {
+    loadRequerimientos();
+  }, [loadRequerimientos]);
 
   const handleSave = (requerimiento: Partial<RequerimientoRecibido>) => {
     if (requerimiento.id) {
@@ -25,7 +72,7 @@ export const RequerimientosRecibidos: React.FC = () => {
       const newId = Math.max(...requerimientos.map((r) => r.id), 0) + 1;
       const nuevo: RequerimientoRecibido = {
         id: newId,
-        codigo: `REQ-REC-${new Date().getFullYear()}-${String(newId).padStart(5, '0')}`,
+        codigo: `REQ-ENV-${new Date().getFullYear()}-${String(newId).padStart(5, '0')}`,
         solicitante: requerimiento.solicitante || '',
         destinatario: requerimiento.destinatario || '',
         fechaSolicitud: requerimiento.fechaSolicitud || new Date(),
@@ -43,26 +90,42 @@ export const RequerimientosRecibidos: React.FC = () => {
 
   const fechaTemplate = (rowData: RequerimientoRecibido, field: keyof RequerimientoRecibido) => {
     const date = rowData[field] as Date | null | undefined;
-    return date ? new Date(date).toLocaleDateString() : '-';
+    if (!date) return '-';
+    const d = new Date(date);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${dd}-${mm}-${yyyy} ${hh}:${min}`;
   };
 
   const porcentajeTemplate = (rowData: RequerimientoRecibido) => {
     return <Progress percent={rowData.porcentajeAvance} size="small" status={rowData.porcentajeAvance === 100 ? 'success' : undefined} />;
   };
 
+  const estadoColor = (estado: string): string => {
+    const e = (estado || '').toLowerCase();
+    if (e.includes('final')) return 'green';
+    if (e.includes('seguim')) return 'gold';
+    if (e.includes('acept')) return 'blue';
+    if (e.includes('solic')) return 'geekblue';
+    return 'default';
+  };
+
   const columns = [
-    { field: 'codigo', header: 'Código Requerimiento', sortable: true },
+    { field: 'id', header: 'Req ID', sortable: true },
     { field: 'solicitante', header: 'Emisor', sortable: true },
     { field: 'destinatario', header: 'Receptor', sortable: true },
     {
       field: 'fechaSolicitud',
-      header: 'Fecha Inicio Requerimiento',
+      header: 'Fecha Inicio',
       sortable: true,
       body: (row: RequerimientoRecibido) => fechaTemplate(row, 'fechaSolicitud'),
     },
     {
       field: 'fechaCumplimiento',
-      header: 'Fecha Fin Requerimiento',
+      header: 'Fecha Fin',
       sortable: true,
       body: (row: RequerimientoRecibido) => fechaTemplate(row, 'fechaCumplimiento'),
     },
@@ -76,18 +139,20 @@ export const RequerimientosRecibidos: React.FC = () => {
       field: 'estado',
       header: 'Estado',
       sortable: true,
+      body: (row: RequerimientoRecibido) => <Tag color={estadoColor(row.estado)}>{row.estado}</Tag>,
     },
   ];
 
   return (
     <Card title="Requerimientos Recibidos">
       <BaseCRUD<RequerimientoRecibido>
-        title="Requerimiento Recibido"
+        title=""
         items={requerimientos}
         columns={columns}
-        renderForm={(item, onChange) => (
-          <RequerimientoRecibidoForm<RequerimientoRecibido> item={item} onChange={onChange} />
-        )}
+        onEdit={(row) => navigate(`/requerimientos/Recibidos/nuevo?id=${row.id}`)}
+        showCreateButton={false}
+        showDeleteButton={false}
+        showDeleteAction={false}
         onSave={handleSave}
         onDelete={handleDelete}
         initialItem={{
@@ -98,7 +163,7 @@ export const RequerimientosRecibidos: React.FC = () => {
           fechaSolicitud: new Date(),
           fechaCumplimiento: null,
           porcentajeAvance: 0,
-          estado: 'Inicio',
+          estado: 'Solicitado',
         }}
       />
     </Card>

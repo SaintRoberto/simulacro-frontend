@@ -4,6 +4,8 @@ import { Layout as AntLayout, Menu, Button, Typography, Tag } from 'antd';
 import { MenuFoldOutlined, MenuUnfoldOutlined, UserOutlined, LogoutOutlined, HomeOutlined } from '@ant-design/icons';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchLoginData, selectLoginData } from '../../features/auth/loginSlice';
+import { NotificationWatcher } from './NotificationWatcher';
+import { NotificationsBell } from './NotificationsBell';
 
 export const Layout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
@@ -29,6 +31,8 @@ export const Layout: React.FC = () => {
 
   return (
     <AntLayout style={{ minHeight: '100vh' }}>
+      {/* Global notifications watcher */}
+      <NotificationWatcher intervalMs={5000} />
       <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed} style={{ width: '250px' }}>
         <div style={{ height: 48, margin: 16, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>SNGRE</div>
         <Menu
@@ -70,6 +74,8 @@ export const Layout: React.FC = () => {
              {loginData?.mesa_nombre && (
               <Tag color="blue">{loginData.mesa_nombre}</Tag>
             )}
+            {/* Notifications bell */}
+            <NotificationsBell />
             <Button type="text" icon={<UserOutlined />} />
             <Button
               type="text"

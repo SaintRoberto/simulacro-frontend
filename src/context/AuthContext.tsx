@@ -103,6 +103,36 @@ export interface RequerimientoEnviado {
   usuario_receptor_id: number;
 }
 
+export interface RequerimientoRecibido {
+  id: number;
+  activo: boolean;
+  creacion: string;
+  creador: string;
+  emergencia_id: number;
+  fecha_fin: string;
+  fecha_inicio: string;
+  modificacion: string;
+  modificador: string;
+  usuario_emisor_id: number;
+  usuario_receptor_id: number;
+}
+
+export interface RequerimientoRecibidoNotificacion {
+  id: number;
+  activo: boolean;
+  creacion: string;
+  creador: string;
+  emergencia_id: number;
+  porcentaje_avance: number;
+  requerimiento_estado_id: number;
+  requerimiento_id: number;
+  usuario_emisor: string;
+  usuario_emisor_id: number;
+  usuario_receptor: string;
+  usuario_receptor_id: number;
+}
+
+
 export interface RequerimientoEstado {
   id: number;
   nombre: string;
@@ -112,6 +142,37 @@ export interface RequerimientoEstado {
   modificacion?: string | null;
   modificador?: string | null;
   descripcion?: string | null;
+}
+
+// Detail response for a single requerimiento by ID
+export interface RequerimientoByIdResponse {
+  id: number;
+  activo: boolean;
+  creacion: string;
+  creador: string;
+  emergencia_id: number;
+  fecha_fin: string;
+  fecha_inicio: string;
+  modificacion: string | null;
+  modificador: string | null;
+  usuario_emisor_id: number;
+  usuario_receptor_id: number;
+}
+
+// Response for requerimiento-recursos entries
+export interface RequerimientoRecursoResponse {
+  id: number;
+  activo: boolean;
+  cantidad: number;
+  creacion: string;
+  creador: string;
+  destino: string;
+  especificaciones: string;
+  modificacion: string | null;
+  modificador: string | null;
+  recurso_grupo_id: number;
+  recurso_tipo_id: number;
+  requerimiento_id: number;
 }
 
 interface AuthContextValue {
@@ -130,7 +191,12 @@ interface AuthContextValue {
   createRequerimiento: (data: RequerimientoRequest) => Promise<RequerimientoResponse | null>;
   createRequerimientoRecurso: (data: RequerimientoRecursoRequest) => Promise<boolean>;
   getRequerimientosEnviados: () => Promise<RequerimientoEnviado[]>;
+  getRequerimientosRecibidos: () => Promise<RequerimientoRecibido[]>;
   getRequerimientoEstados: () => Promise<RequerimientoEstado[]>;
+  getRequerimientoById: (id: number) => Promise<RequerimientoByIdResponse | null>;
+  getRequerimientoRecursos: (requerimientoId: number) => Promise<RequerimientoRecursoResponse[]>;
+  getRecursoTiposByGrupo: (grupoId: number) => Promise<RecursoTipo[]>;
+  getRequerimientosRecibidosNotificaciones: () => Promise<RequerimientoRecibidoNotificacion[]>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -181,11 +247,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.removeItem('userId');
     }
     return !!data?.success;
+  }, [apiBase, datosLogin?.usuario_id]);
+
+  const getRequerimientoById = useCallback(async (id: number): Promise<RequerimientoByIdResponse | null> => {
+    try {
+      const url = `${apiBase}/requerimientos/id/${id}`;
+      const res = await fetch(url, { headers: { accept: 'application/json' } });
+      if (!res.ok) return null;
+      return (await res.json()) as RequerimientoByIdResponse;
+    } catch (e) {
+      return null;
+    }
+  }, [apiBase]);
+
+  const getRequerimientoRecursos = useCallback(async (requerimientoId: number): Promise<RequerimientoRecursoResponse[]> => {
+    try {
+      const url = `${apiBase}/requerimiento-recursos/${requerimientoId}`;
+      const res = await fetch(url, { headers: { accept: 'application/json' } });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? (data as RequerimientoRecursoResponse[]) : [data as RequerimientoRecursoResponse];
+    } catch (e) {
+      return [];
+    }
+  }, [apiBase]);
+
+  const getRecursoTiposByGrupo = useCallback(async (grupoId: number): Promise<RecursoTipo[]> => {
+    try {
+      const url = `${apiBase}/recurso-tipos/grupo/${grupoId}`;
+      const res = await fetch(url, { headers: { accept: 'application/json' } });
+      if (!res.ok) return [];
+      return (await res.json()) as RecursoTipo[];
+    } catch (e) {
+      return [];
+    }
   }, [apiBase]);
 
   const getRequerimientoEstados = useCallback(async (): Promise<RequerimientoEstado[]> => {
     try {
-      const url = `${apiBase}/requerimiento_estados`;
+      const url = `${apiBase}/respuesta-estados`;
       const res = await fetch(url, { headers: { accept: 'application/json' } });
       if (!res.ok) {
         return [];
@@ -281,15 +381,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const getRequerimientosEnviados = useCallback(async (): Promise<RequerimientoEnviado[]> => {
     try {
-      const userIdStr = localStorage.getItem('userId');
-      if (!userIdStr) {
-        return [];
-      }
-      const userId = Number(userIdStr);
+      const effectiveId = datosLogin?.usuario_id ?? Number(localStorage.getItem('userId') || 'NaN');
+      const userId = Number(effectiveId);
       if (isNaN(userId)) {
         return [];
       }
-      const url = `${apiBase}/requerimientos/${userId}`;
+      const url = `${apiBase}/requerimientos/enviados/${userId}`;
       const res = await fetch(url, { headers: { accept: 'application/json' } });
       if (!res.ok) {
         return [];
@@ -299,6 +396,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return [];
     }
   }, [apiBase]);
+
+  const getRequerimientosRecibidos = useCallback(async (): Promise<RequerimientoRecibido[]> => {
+    try {
+      const effectiveId = datosLogin?.usuario_id ?? Number(localStorage.getItem('userId') || 'NaN');
+      const userId = Number(effectiveId);
+      if (isNaN(userId)) {
+        return [];
+      }
+      const url = `${apiBase}/requerimientos/recibidos/${userId}`;
+      const res = await fetch(url, { headers: { accept: 'application/json' } });
+      if (!res.ok) {
+        return [];
+      }
+      return (await res.json()) as RequerimientoRecibido[];
+    } catch (e) {
+      return [];
+    }
+  }, [apiBase]);
+
+  const getRequerimientosRecibidosNotificaciones = useCallback(async (): Promise<RequerimientoRecibidoNotificacion[]> => {
+    try {
+      const effectiveId = datosLogin?.usuario_id ?? Number(localStorage.getItem('userId') || 'NaN');
+      const userId = Number(effectiveId);
+      if (isNaN(userId)) {
+        return [];
+      }
+      const url = `${apiBase}/requerimientos/recibidos/notificacion/${userId}`;
+      const res = await fetch(url, { headers: { accept: 'application/json' } });
+      if (!res.ok) {
+        return [];
+      }
+      return (await res.json()) as RequerimientoRecibidoNotificacion[];
+    } catch (e) {
+      return [];
+    }
+  }, [apiBase]);
+
 
   const value = useMemo<AuthContextValue>(() => ({
     loginResponse,
@@ -316,8 +450,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     createRequerimiento,
     createRequerimientoRecurso,
     getRequerimientosEnviados,
+    getRequerimientosRecibidos,
     getRequerimientoEstados,
-  }), [loginResponse, datosLogin, receptores, receptoresStatus, recursoGrupos, recursoGruposStatus, recursoTipos, recursoTiposStatus, login, loadReceptores, loadRecursoGrupos, loadRecursoTipos, createRequerimiento, createRequerimientoRecurso, getRequerimientosEnviados, getRequerimientoEstados]);
+    getRequerimientoById,
+    getRequerimientoRecursos,
+    getRecursoTiposByGrupo,
+    getRequerimientosRecibidosNotificaciones,
+  }), [loginResponse, datosLogin, receptores, receptoresStatus, recursoGrupos, recursoGruposStatus, recursoTipos, recursoTiposStatus, login, loadReceptores, loadRecursoGrupos, loadRecursoTipos, createRequerimiento, createRequerimientoRecurso, getRequerimientosEnviados, getRequerimientosRecibidos, getRequerimientoEstados, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, getRequerimientosRecibidosNotificaciones]);
 
   return (
     <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

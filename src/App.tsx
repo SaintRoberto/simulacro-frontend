@@ -16,10 +16,13 @@ import { EntregaHumanitaria } from './pages/entrega/EntregaHumanitaria';
 import { RequerimientosEnviados } from './pages/requerimientos/enviados/RequerimientosEnviados';
 import { RequerimientosRecibidos } from './pages/requerimientos/recibidos/RequerimientosRecibidos';
 import { NuevoRequerimientoEnviado } from './pages/requerimientos/enviados/NuevoRequerimientoEnviado';
+import { NuevoRequerimientoRecibido } from './pages/requerimientos/recibidos/NuevoRequerimientoRecibido'; 
+import { NotificationsProvider } from './context/NotificationsContext';
 
 const App: React.FC = () => {
   return (
-    <Routes>
+    <NotificationsProvider>
+      <Routes>
       {/* Auth routes */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
@@ -40,6 +43,7 @@ const App: React.FC = () => {
             <Route path="enviados" element={<RequerimientosEnviados />} />
             <Route path="enviados/nuevo" element={<NuevoRequerimientoEnviado />} />
             <Route path="recibidos" element={<RequerimientosRecibidos />} />
+            <Route path="recibidos/nuevo" element={<NuevoRequerimientoRecibido />} />
           </Route>
         </Route>
       </Route>
@@ -47,6 +51,7 @@ const App: React.FC = () => {
       {/* Fallback: if unknown route, go to login (initial screen) */}
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
+    </NotificationsProvider>
   );
 };
 

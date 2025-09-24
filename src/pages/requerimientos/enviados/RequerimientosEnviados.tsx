@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from 'primereact/card';
 import { BaseCRUD } from '../../../components/crud/BaseCRUD';
-import { Progress } from 'antd';
+import { Progress, Tag } from 'antd';
 import { RequerimientoEnviadoForm } from './RequerimientoEnviadoForm';
 import { Button } from 'primereact/button';
 import { useNavigate } from 'react-router-dom';
@@ -106,8 +106,17 @@ export const RequerimientosEnviados: React.FC = () => {
     return <Progress percent={rowData.porcentajeAvance} size="small" status={rowData.porcentajeAvance === 100 ? 'success' : undefined} />;
   };
 
+  const estadoColor = (estado: string): string => {
+    const e = (estado || '').toLowerCase();
+    if (e.includes('final')) return 'green';
+    if (e.includes('seguim')) return 'gold';
+    if (e.includes('acept')) return 'blue';
+    if (e.includes('solic')) return 'geekblue';
+    return 'default';
+  };
+
   const columns = [
-    { field: 'id', header: 'Requerimiento ID', sortable: true },
+    { field: 'id', header: 'Req ID', sortable: true },
     { field: 'solicitante', header: 'Emisor', sortable: true },
     { field: 'destinatario', header: 'Receptor', sortable: true },
     {
@@ -132,15 +141,17 @@ export const RequerimientosEnviados: React.FC = () => {
       field: 'estado',
       header: 'Estado',
       sortable: true,
+      body: (row: RequerimientoEnviado) => <Tag color={estadoColor(row.estado)}>{row.estado}</Tag>,
     },
   ];
 
   return (
     <Card title="Requerimientos Enviados">
       <BaseCRUD<RequerimientoEnviado>
-        title="Requerimiento Enviado"
+        title=""
         items={requerimientos}
         columns={columns}
+        onEdit={(row) => navigate(`/requerimientos/enviados/nuevo?id=${row.id}`)}
         leftToolbarTemplate={() => (
           <Button label="Nuevo" icon="pi pi-plus" severity="success" onClick={() => navigate('/requerimientos/enviados/nuevo')} />
         )}
