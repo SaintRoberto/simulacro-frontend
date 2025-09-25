@@ -102,6 +102,17 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selected, setSelected] = useState<{ parroquia?: Parroquia; variable?: AfectacionVariable } | null>(null);
+  // Infraestructura detalles (modal)
+  type InfraDetalle = {
+    afectacion_variable_registro_detalle_id: number | null;
+    afectacion_variable_registro_id: number | null;
+    infraestructura_id: number;
+    nombre: string;
+    registrada: boolean;
+  };
+  const [infraLoading, setInfraLoading] = useState(false);
+  const [infraList, setInfraList] = useState<InfraDetalle[]>([]);
+  const [infraChecked, setInfraChecked] = useState<number[]>([]);
 
   // New: selectors state
   const [provincias, setProvincias] = useState<Provincia[]>([]);
@@ -378,6 +389,71 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
     setModalOpen(true);
   };
 
+  // Load infra list when modal opens and selection is set
+  useEffect(() => {
+    const loadInfra = async () => {
+      if (!modalOpen || !selected?.parroquia || !selected?.variable) return;
+      try {
+        setInfraLoading(true);
+        const url = `${apiBase}/afectacion_variable_registro_detalles/emergencia/${emergencyId}/variable/${selected.variable.id}/parroquia/${selected.parroquia.id}`;
+        const res = await fetch(url, { headers: { accept: 'application/json' } });
+        const data: InfraDetalle[] = res.ok ? await res.json() : [];
+        setInfraList(data || []);
+        setInfraChecked((data || []).filter(d => d.registrada).map(d => d.infraestructura_id));
+      } catch {
+        setInfraList([]);
+        setInfraChecked([]);
+      } finally {
+        setInfraLoading(false);
+      }
+    };
+    loadInfra();
+  }, [modalOpen, selected?.parroquia?.id, selected?.variable?.id, apiBase]);
+
+  const saveInfraDetalles = async () => {
+    if (!selected?.parroquia || !selected?.variable) return;
+    // Need the registro id for this parroquia + variable
+    const pid = selected.parroquia.id;
+    const vid = selected.variable.id;
+    const registroId = recordIds[pid]?.[vid] ?? matrixRef.current[pid]?.[vid]?.id;
+    if (!registroId) {
+      message.warning('Primero guarde la matriz (cantidad/costo) para generar el registro base.');
+      return;
+    }
+    try {
+      setInfraLoading(true);
+      const toCreate = infraList.filter(d => !d.registrada && infraChecked.includes(d.infraestructura_id));
+      const toDelete = infraList.filter(d => d.registrada && !infraChecked.includes(d.infraestructura_id) && typeof d.afectacion_variable_registro_detalle_id === 'number');
+      const tasks = toCreate.map(d => {
+        const body = {
+          activo: true,
+          afectacion_variable_registro_id: registroId,
+          costo: 0,
+          creador: 'frontend',
+          infraestructura_id: d.infraestructura_id,
+        };
+        return fetch(`${apiBase}/afectacion_variable_registro_detalles`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      });
+      const deleteTasks = toDelete.map(d => fetch(`${apiBase}/afectacion_variable_registro_detalles/${d.afectacion_variable_registro_detalle_id}`, { method: 'DELETE', headers: { accept: 'application/json' } }));
+      await Promise.all([...tasks, ...deleteTasks]);
+      message.success('Infraestructuras guardadas');
+      // Reload to reflect registrada=true
+      const url = `${apiBase}/afectacion_variable_registro_detalles/emergencia/${emergencyId}/variable/${vid}/parroquia/${pid}`;
+      const res = await fetch(url, { headers: { accept: 'application/json' } });
+      const data: InfraDetalle[] = res.ok ? await res.json() : [];
+      setInfraList(data || []);
+      setInfraChecked((data || []).filter(d => d.registrada).map(d => d.infraestructura_id));
+    } catch {
+      message.error('Error al guardar infraestructuras');
+    } finally {
+      setInfraLoading(false);
+    }
+  };
+
   const columns: ColumnsType<Parroquia> = useMemo(() => {
     const base: ColumnsType<Parroquia> = [
       {
@@ -466,14 +542,11 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
           size="middle"
         />
       </Spin>
-
       <Modal
         open={modalOpen}
         title="Detalle de Afectación"
         onCancel={() => setModalOpen(false)}
-        onOk={() => setModalOpen(false)}
-        okText="Cerrar"
-        cancelButtonProps={{ style: { display: 'none' } }}
+        footer={null}
       >
         {selected?.parroquia && selected?.variable ? (
           <div>
@@ -485,14 +558,33 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
               <Text strong>Afectación: </Text>
               <Text>{selected.variable.nombre} (ID: {selected.variable.id})</Text>
             </p>
-            <p>
-              <Text strong>Requiere costo: </Text>
-              <Text>{selected.variable.requiere_costo ? 'Sí' : 'No'}</Text>
-            </p>
-            <p>
-              <Text strong>Requiere GIS: </Text>
-              <Text>{selected.variable.requiere_gis ? 'Sí' : 'No'}</Text>
-            </p>
+            <div style={{ margin: '12px 0' }}>
+              <Text strong>Infraestructuras</Text>
+            </div>
+            <Spin spinning={infraLoading}>
+              <div style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid #f0f0f0', padding: 8, borderRadius: 4 }}>
+                {(infraList || []).map(item => (
+                  <div key={item.infraestructura_id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                    <input
+                      type="checkbox"
+                      checked={infraChecked.includes(item.infraestructura_id)}
+                      onChange={(e) => {
+                        const checked = e.currentTarget.checked;
+                        setInfraChecked(prev => checked ? [...prev, item.infraestructura_id] : prev.filter(id => id !== item.infraestructura_id));
+                      }}
+                    />
+                    <span>{item.nombre}</span>
+                    {item.registrada && <span style={{ marginLeft: 'auto', color: '#389e0d' }}>Registrada</span>}
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <Space>
+                  <Button onClick={() => setModalOpen(false)}>Cerrar</Button>
+                  <Button type="primary" onClick={saveInfraDetalles} loading={infraLoading}>Guardar</Button>
+                </Space>
+              </div>
+            </Spin>
           </div>
         ) : (
           <Text type="secondary">Seleccione una celda para ver detalles</Text>
