@@ -210,7 +210,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
           const url = `${apiBase}/afectacion_variable_registros/parroquia/${pid}/emergencia/${emergencyId}/mesa_grupo/${mesagrupo_Id}`;
           const res = await fetch(url, { headers: { accept: 'application/json' } });
           const data = res.ok ? await res.json() : [];
-          return { pid, data } as { pid: number; data: Array<{ id?: number; afectacion_variable_id: number; cantidad: number; costo: number }>; };
+          return { pid, data } as { pid: number; data: Array<{ afectacion_variable_registro_id?: number; afectacion_variable_id: number; cantidad: number; costo: number }>; };
         }));
         if (!isMounted) return;
         // Merge into matrix
@@ -223,7 +223,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
                 ...(next[pid][r.afectacion_variable_id] || {}),
                 cantidad: typeof r.cantidad === 'number' ? r.cantidad : null,
                 costo: typeof r.costo === 'number' ? r.costo : null,
-                id: typeof r.id === 'number' ? r.id : (next[pid][r.afectacion_variable_id]?.id),
+                id: typeof (r as any).afectacion_variable_registro_id === 'number' ? (r as any).afectacion_variable_registro_id : (next[pid][r.afectacion_variable_id]?.id),
               };
             }
           }
@@ -235,8 +235,8 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
           for (const { pid, data } of allResults) {
             next[pid] = next[pid] || {};
             for (const r of data) {
-              if (typeof (r as any).id === 'number') {
-                next[pid][r.afectacion_variable_id] = (r as any).id as number;
+              if (typeof (r as any).afectacion_variable_registro_id === 'number') {
+                next[pid][r.afectacion_variable_id] = (r as any).afectacion_variable_registro_id as number;
               }
             }
           }
@@ -450,7 +450,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
       <div style={{ marginBottom: 12 }}>
         <Space>
           <Button type="primary" onClick={saveAll} loading={saving} disabled={!parroquias.length || !variables.length}>
-            {hasExisting ? 'Actualizar cambios' : 'Guardar cambios'}
+            {hasExisting ? 'Guardar cambios' : 'Guardar cambios'}
           </Button>
         </Space>
       </div>
