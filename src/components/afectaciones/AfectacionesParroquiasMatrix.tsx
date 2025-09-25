@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Table, InputNumber, Button, Modal, Spin, Typography, Space, Select, Row, Col } from 'antd';
+import { Table, InputNumber, Button, Modal, Spin, Typography, Space, Select, Row, Col, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { SettingOutlined } from '@ant-design/icons';
 
@@ -66,6 +66,7 @@ export interface Canton {
 export interface AfectacionCellPayload {
   cantidad?: number | null;
   costo?: number | null;
+  id?: number; // registro id cuando exista
 }
 
 // Component props allow providing ids, but default to the ones in the prompt
@@ -77,6 +78,7 @@ export interface AfectacionesParroquiasMatrixProps {
 }
 
 const buildApiBase = () => process.env.REACT_APP_API_URL || '/api';
+const emergencyId = 1;
 
 export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrixProps> = ({
   apiBase = buildApiBase(),
@@ -105,6 +107,9 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
   const [provinciaId, setProvinciaId] = useState<number | undefined>(undefined);
   const [cantonSelId, setCantonSelId] = useState<number | undefined>(cantonId);
   const [parroquiasSelIds, setParroquiasSelIds] = useState<number[]>([]);
+  // Track record IDs by parroquia/variable for updates
+  const [recordIds, setRecordIds] = useState<Record<number, Record<number, number>>>({});
+  const [saving, setSaving] = useState(false);
 
   // Fetch parroquias and variables
   useEffect(() => {
@@ -113,7 +118,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
       try {
         setLoading(true);
         const [provRes, vRes] = await Promise.all([
-          fetch(`${apiBase}/provincias`, { headers: { accept: 'application/json' } }),
+          fetch(`${apiBase}/provincias/emergencia/${emergencyId}`, { headers: { accept: 'application/json' } }),
           fetch(`${apiBase}/mesa_grupo/${mesaGrupoId}/afectacion_varibles/`, { headers: { accept: 'application/json' } }),
         ]);
         if (!isMounted) return;
@@ -141,7 +146,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
       if (!provinciaId) { setCantones([]); setCantonSelId(undefined); setParroquiasOptions([]); setParroquiasSelIds([]); return; }
       try {
         setLoading(true);
-        const res = await fetch(`${apiBase}/provincia/${provinciaId}/cantones/`, { headers: { accept: 'application/json' } });
+        const res = await fetch(`${apiBase}/provincia/${provinciaId}/cantones/emergencia/${emergencyId}`, { headers: { accept: 'application/json' } });
         if (!isMounted) return;
         const data: Canton[] = res.ok ? await res.json() : [];
         setCantones(data || []);
@@ -160,7 +165,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
       if (!cantonSelId) { setParroquiasOptions([]); setParroquiasSelIds([]); return; }
       try {
         setLoading(true);
-        const res = await fetch(`${apiBase}/canton/${cantonSelId}/parroquias/`, { headers: { accept: 'application/json' } });
+        const res = await fetch(`${apiBase}/canton/${cantonSelId}/parroquias/emergencia/${emergencyId}`, { headers: { accept: 'application/json' } });
         if (!isMounted) return;
         const data: Parroquia[] = res.ok ? await res.json() : [];
         setParroquiasOptions(data || []);
@@ -179,6 +184,107 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
     setParroquias(selected);
   }, [parroquiasOptions, parroquiasSelIds]);
 
+  // Load existing registros for each selected parroquia
+  useEffect(() => {
+    let isMounted = true;
+    const loadRegistros = async () => {
+      if (!parroquiasSelIds.length) return;
+      try {
+        setLoading(true);
+        const allResults = await Promise.all(parroquiasSelIds.map(async (pid) => {
+          const url = `${apiBase}/afectacion_variable_registros/parroquia/${pid}/emergencia/${emergencyId}/mesa_grupo/${mesaGrupoId}`;
+          const res = await fetch(url, { headers: { accept: 'application/json' } });
+          const data = res.ok ? await res.json() : [];
+          return { pid, data } as { pid: number; data: Array<{ afectacion_variable_id: number; cantidad: number; costo: number }>; };
+        }));
+        if (!isMounted) return;
+        // Merge into matrix
+        setMatrix(prev => {
+          const next = { ...prev } as Record<number, Record<number, AfectacionCellPayload>>;
+          for (const { pid, data } of allResults) {
+            next[pid] = next[pid] || {};
+            for (const r of data) {
+              next[pid][r.afectacion_variable_id] = {
+                ...(next[pid][r.afectacion_variable_id] || {}),
+                cantidad: typeof r.cantidad === 'number' ? r.cantidad : null,
+                costo: typeof r.costo === 'number' ? r.costo : null,
+              };
+            }
+          }
+          return next;
+        });
+        // Note: API sample doesn't include id; if it did, setRecordIds accordingly
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+    loadRegistros();
+    return () => { isMounted = false; };
+  }, [parroquiasSelIds, apiBase, mesaGrupoId]);
+
+  const saveAll = useCallback(async () => {
+    if (!provinciaId || !cantonSelId || !parroquias.length) {
+      message.warning('Seleccione provincia, cantón y al menos una parroquia');
+      return;
+    }
+    try {
+      setSaving(true);
+      const tasks: Promise<any>[] = [];
+      for (const p of parroquias) {
+        const row = matrixRef.current[p.id] || {};
+        for (const v of variables) {
+          const cell = row[v.id];
+          if (!cell || (cell.cantidad == null && cell.costo == null)) continue;
+          const hasId = !!(recordIds[p.id]?.[v.id] || cell.id);
+          if (hasId) {
+            const id = recordIds[p.id]?.[v.id] ?? cell.id!;
+            const url = `${apiBase}/afectacion_variable_registros/${id}`;
+            const body = { cantidad: cell.cantidad ?? 0, costo: cell.costo ?? 0 };
+            tasks.push(fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
+          } else {
+            const url = `${apiBase}/afectacion_variable_registros`;
+            const body = {
+              activo: true,
+              afectacion_variable_id: v.id,
+              cantidad: cell.cantidad ?? 0,
+              canton_id: cantonSelId,
+              costo: cell.costo ?? 0,
+              creador: 'frontend',
+              emergencia_id: emergencyId,
+              parroquia_id: p.id,
+              provincia_id: provinciaId,
+            };
+            tasks.push(
+              fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+                .then(async (res) => {
+                  if (!res.ok) return;
+                  const created = await res.json();
+                  const newId = created?.id as number | undefined;
+                  if (typeof newId === 'number') {
+                    setRecordIds(prev => ({
+                      ...prev,
+                      [p.id]: { ...(prev[p.id] || {}), [v.id]: newId },
+                    }));
+                    // also embed into matrix for quick reference
+                    setMatrix(prev => ({
+                      ...prev,
+                      [p.id]: { ...(prev[p.id] || {}), [v.id]: { ...(prev[p.id]?.[v.id] || {}), id: newId } },
+                    }));
+                  }
+                })
+            );
+          }
+        }
+      }
+      await Promise.all(tasks);
+      message.success('Cambios guardados');
+    } catch (e) {
+      message.error('Error al guardar');
+    } finally {
+      setSaving(false);
+    }
+  }, [apiBase, provinciaId, cantonSelId, parroquias, variables, recordIds]);
+
   const commitCell = useCallback((parroquiaId: number, variableId: number, patch: Partial<AfectacionCellPayload>) => {
     setMatrix(prev => ({
       ...prev,
@@ -192,20 +298,19 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
   type CellEditorProps = {
     parroquia: Parroquia;
     variable: AfectacionVariable;
+    cell?: AfectacionCellPayload;
   };
 
-  const CellEditor: React.FC<CellEditorProps> = React.memo(({ parroquia, variable }) => {
+  const CellEditor: React.FC<CellEditorProps> = React.memo(({ parroquia, variable, cell }) => {
     const parroquiaId = parroquia.id;
-    const current = matrixRef.current[parroquiaId]?.[variable.id] || {};
-    const [cantidad, setCantidad] = useState<number | null | undefined>(current.cantidad ?? null);
-    const [costo, setCosto] = useState<number | null | undefined>(current.costo ?? null);
+    const [cantidad, setCantidad] = useState<number | null | undefined>(cell?.cantidad ?? null);
+    const [costo, setCosto] = useState<number | null | undefined>(cell?.costo ?? null);
 
     // When external matrix updates for this cell (rare), sync local values
     useEffect(() => {
-      const fresh = matrixRef.current[parroquiaId]?.[variable.id] || {};
-      setCantidad(fresh.cantidad ?? null);
-      setCosto(fresh.costo ?? null);
-    }, [parroquiaId, variable.id, matrix]);
+      setCantidad(cell?.cantidad ?? null);
+      setCosto(cell?.costo ?? null);
+    }, [cell?.cantidad, cell?.costo, parroquiaId, variable.id]);
 
     const onCommit = useCallback(() => {
       commitCell(parroquiaId, variable.id, { cantidad: typeof cantidad === 'number' ? cantidad : null, costo: typeof costo === 'number' ? costo : null });
@@ -264,12 +369,18 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
       dataIndex: `var_${v.id}`,
       key: `var_${v.id}`,
       width: 280,
-      render: (_: any, p: Parroquia) => <CellEditor parroquia={p} variable={v} />,
+      render: (_: any, p: Parroquia) => (
+        <CellEditor
+          parroquia={p}
+          variable={v}
+          cell={matrix[p.id]?.[v.id]}
+        />
+      ),
     }));
 
     return [...base, ...variableColumns];
   // Only re-create columns when variables change (not on every keystroke)
-  }, [variables]);
+  }, [variables, matrix]);
 
   return (
     <div>
@@ -320,6 +431,11 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
           </Space>
         </Col>
       </Row>
+      <div style={{ marginBottom: 12 }}>
+        <Space>
+          <Button type="primary" onClick={saveAll} loading={saving} disabled={!parroquias.length || !variables.length}>Guardar cambios</Button>
+        </Space>
+      </div>
       <Spin spinning={loading}>
         <Table<Parroquia>
           rowKey={(r) => r.id}
