@@ -87,7 +87,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
   mesaGrupoId = 1,
   tableTitle = 'Matriz de Afectaciones por Parroquia',
 }) => {
-  const { datosLogin } = useAuth();
+  const { datosLogin, authFetch } = useAuth();  
   const mesagrupo_Id = datosLogin?.mesa_grupo_id ?? mesaGrupoId;
   const [loading, setLoading] = useState(false);
   const [parroquias, setParroquias] = useState<Parroquia[]>([]);
@@ -135,15 +135,15 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [datosLogin?.provincia_id, datosLogin?.canton_id]);
 
-  // Fetch variables and provincias
+  // authFetch variables and provincias
   useEffect(() => {
     let isMounted = true;
     const fetchData = async () => {
       try {
         setLoading(true);
         const [provRes, vRes] = await Promise.all([
-          fetch(`${apiBase}/provincias/emergencia/${emergencyId}`, { headers: { accept: 'application/json' } }),
-          fetch(`${apiBase}/mesa_grupo/${mesagrupo_Id}/afectacion_varibles/`, { headers: { accept: 'application/json' } }),
+          authFetch(`${apiBase}/provincias/emergencia/${emergencyId}`, { headers: { accept: 'application/json' } }),
+          authFetch(`${apiBase}/mesa_grupo/${mesagrupo_Id}/afectacion_varibles/`, { headers: { accept: 'application/json' } }),
         ]);
         if (!isMounted) return;
         const provinciasData: Provincia[] = provRes.ok ? await provRes.json() : [];
@@ -170,7 +170,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
       if (!provinciaId) { setCantones([]); setCantonSelId(undefined); setParroquiasOptions([]); setParroquiasSelIds([]); return; }
       try {
         setLoading(true);
-        const res = await fetch(`${apiBase}/provincia/${provinciaId}/cantones/emergencia/${emergencyId}`, { headers: { accept: 'application/json' } });
+        const res = await authFetch(`${apiBase}/provincia/${provinciaId}/cantones/emergencia/${emergencyId}`, { headers: { accept: 'application/json' } });
         if (!isMounted) return;
         const data: Canton[] = res.ok ? await res.json() : [];
         setCantones(data || []);
@@ -189,7 +189,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
       if (!cantonSelId) { setParroquiasOptions([]); setParroquiasSelIds([]); return; }
       try {
         setLoading(true);
-        const res = await fetch(`${apiBase}/canton/${cantonSelId}/parroquias/emergencia/${emergencyId}`, { headers: { accept: 'application/json' } });
+        const res = await authFetch(`${apiBase}/canton/${cantonSelId}/parroquias/emergencia/${emergencyId}`, { headers: { accept: 'application/json' } });
         if (!isMounted) return;
         const data: Parroquia[] = res.ok ? await res.json() : [];
         const list = data || [];
@@ -219,7 +219,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
         setLoading(true);
         const allResults = await Promise.all(parroquiasSelIds.map(async (pid) => {
           const url = `${apiBase}/afectacion_variable_registros/parroquia/${pid}/emergencia/${emergencyId}/mesa_grupo/${mesagrupo_Id}`;
-          const res = await fetch(url, { headers: { accept: 'application/json' } });
+          const res = await authFetch(url, { headers: { accept: 'application/json' } });
           const data = res.ok ? await res.json() : [];
           return { pid, data } as { pid: number; data: Array<{ afectacion_variable_registro_id?: number; afectacion_variable_id: number; cantidad: number; costo: number }>; };
         }));
@@ -281,7 +281,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
             const id = recordIds[p.id]?.[v.id] ?? cell.id!;
             const url = `${apiBase}/afectacion_variable_registros/${id}`;
             const body = { cantidad: cell.cantidad ?? 0, costo: cell.costo ?? 0 };
-            tasks.push(fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
+            tasks.push(authFetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
           } else {
             const url = `${apiBase}/afectacion_variable_registros`;
             const body = {
@@ -296,7 +296,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
               provincia_id: provinciaId,
             };
             tasks.push(
-              fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+              authFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
                 .then(async (res) => {
                   if (!res.ok) return;
                   const created = await res.json();
@@ -396,7 +396,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
       try {
         setInfraLoading(true);
         const url = `${apiBase}/afectacion_variable_registro_detalles/emergencia/${emergencyId}/variable/${selected.variable.id}/parroquia/${selected.parroquia.id}`;
-        const res = await fetch(url, { headers: { accept: 'application/json' } });
+        const res = await authFetch(url, { headers: { accept: 'application/json' } });
         const data: InfraDetalle[] = res.ok ? await res.json() : [];
         setInfraList(data || []);
         setInfraChecked((data || []).filter(d => d.registrada).map(d => d.infraestructura_id));
@@ -432,18 +432,18 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
           creador: 'frontend',
           infraestructura_id: d.infraestructura_id,
         };
-        return fetch(`${apiBase}/afectacion_variable_registro_detalles`, {
+        return authFetch(`${apiBase}/afectacion_variable_registro_detalles`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         });
       });
-      const deleteTasks = toDelete.map(d => fetch(`${apiBase}/afectacion_variable_registro_detalles/${d.afectacion_variable_registro_detalle_id}`, { method: 'DELETE', headers: { accept: 'application/json' } }));
+      const deleteTasks = toDelete.map(d => authFetch(`${apiBase}/afectacion_variable_registro_detalles/${d.afectacion_variable_registro_detalle_id}`, { method: 'DELETE', headers: { accept: 'application/json' } }));
       await Promise.all([...tasks, ...deleteTasks]);
       message.success('Infraestructuras guardadas');
       // Reload to reflect registrada=true
       const url = `${apiBase}/afectacion_variable_registro_detalles/emergencia/${emergencyId}/variable/${vid}/parroquia/${pid}`;
-      const res = await fetch(url, { headers: { accept: 'application/json' } });
+      const res = await authFetch(url, { headers: { accept: 'application/json' } });
       const data: InfraDetalle[] = res.ok ? await res.json() : [];
       setInfraList(data || []);
       setInfraChecked((data || []).filter(d => d.registrada).map(d => d.infraestructura_id));

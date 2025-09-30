@@ -4,6 +4,7 @@ export interface LoginResponse {
   descripcion: string;
   id: number;
   success: boolean;
+  token?: string;
   usuario: string;
 }
 
@@ -197,6 +198,8 @@ interface AuthContextValue {
   getRequerimientoRecursos: (requerimientoId: number) => Promise<RequerimientoRecursoResponse[]>;
   getRecursoTiposByGrupo: (grupoId: number) => Promise<RecursoTipo[]>;
   getRequerimientosRecibidosNotificaciones: () => Promise<RequerimientoRecibidoNotificacion[]>;
+  authFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -213,80 +216,134 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const apiBase = process.env.REACT_APP_API_URL || '/api';
 
+  // Helper to automatically attach JWT token to all requests
+  const authFetch = useCallback(
+    (input: RequestInfo | URL, init: RequestInit = {}) => {
+      const token = localStorage.getItem('token');
+      const mergedHeaders: Record<string, string> = {
+        accept: 'application/json',
+        ...(init.headers as Record<string, string> | undefined),
+      };
+      if (token) {
+        mergedHeaders['Authorization'] = `Bearer ${token}`;
+      }
+      return fetch(input, { ...init, headers: mergedHeaders });
+    },
+    []
+  );
+
   const login = useCallback(async (usuario: string, clave: string) => {
+    // Limpiar estados
     setReceptoresStatus('idle');
     setReceptores([]);
     setRecursoGruposStatus('idle');
     setRecursoGrupos([]);
     setRecursoTiposStatus('idle');
     setRecursoTipos([]);
-    const url = `${apiBase}/usuarios/login`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({ usuario, clave }),
-    });
-    if (!res.ok) {
+    
+    try {
+      // Hacer la petición de login
+      const url = `${apiBase}/usuarios/login`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({ usuario, clave }),
+      });
+      
+      if (!res.ok) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('userId');
+        setLoginResponse(null);
+        setDatosLogin(null);
+        return false;
+      }
+      
+      const data = (await res.json()) as LoginResponse;
+      setLoginResponse(data);
+      
+      if (data?.success && data?.id) {
+        // Guardar token y userId en localStorage
+        if (data.token) {
+          localStorage.setItem('token', data.token);
+        } else {
+          localStorage.removeItem('token');
+        }
+        localStorage.setItem('userId', String(data.id));
+        
+        // Obtener datos adicionales del usuario
+        try {
+          const datosUrl = `${apiBase}/usuarios/${data.id}/datos-login`;
+          const token = localStorage.getItem('token');
+          const resDatos = await fetch(datosUrl, { 
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': token ? `Bearer ${token}` : ''
+            } 
+          });
+          
+          if (resDatos.ok) {
+            const datos = (await resDatos.json()) as DatosLogin;
+            setDatosLogin(datos);
+          }
+        } catch (error) {
+          console.error('Error al cargar datos adicionales del usuario:', error);
+        }
+        return true;
+      } else {
+        localStorage.removeItem('token');
+        localStorage.removeItem('userId');
+        setLoginResponse(null);
+        setDatosLogin(null);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error en el proceso de login:', error);
       localStorage.removeItem('token');
       localStorage.removeItem('userId');
+      setLoginResponse(null);
+      setDatosLogin(null);
       return false;
     }
-    const data = (await res.json()) as LoginResponse;
-    setLoginResponse(data);
-    if (data?.success && data?.id) {
-      localStorage.setItem('token', 'true');
-      localStorage.setItem('userId', String(data.id));
-      const datosUrl = `${apiBase}/usuarios/${data.id}/datos-login`;
-      const resDatos = await fetch(datosUrl, { headers: { 'Content-Type': 'application/json' } });
-      if (resDatos.ok) {
-        const datos = (await resDatos.json()) as DatosLogin;
-        setDatosLogin(datos);
-      }
-    } else {
-      localStorage.removeItem('token');
-      localStorage.removeItem('userId');
-    }
-    return !!data?.success;
   }, [apiBase, datosLogin?.usuario_id]);
 
   const getRequerimientoById = useCallback(async (id: number): Promise<RequerimientoByIdResponse | null> => {
     try {
       const url = `${apiBase}/requerimientos/id/${id}`;
-      const res = await fetch(url, { headers: { accept: 'application/json' } });
+      const res = await authFetch(url, { headers: { accept: 'application/json' } });
       if (!res.ok) return null;
       return (await res.json()) as RequerimientoByIdResponse;
     } catch (e) {
       return null;
     }
-  }, [apiBase]);
+  }, [apiBase, authFetch]);
 
   const getRequerimientoRecursos = useCallback(async (requerimientoId: number): Promise<RequerimientoRecursoResponse[]> => {
     try {
       const url = `${apiBase}/requerimiento-recursos/${requerimientoId}`;
-      const res = await fetch(url, { headers: { accept: 'application/json' } });
+      const res = await authFetch(url, { headers: { accept: 'application/json' } });
       if (!res.ok) return [];
       const data = await res.json();
       return Array.isArray(data) ? (data as RequerimientoRecursoResponse[]) : [data as RequerimientoRecursoResponse];
     } catch (e) {
       return [];
     }
-  }, [apiBase]);
+  }, [apiBase, authFetch]);
 
   const getRecursoTiposByGrupo = useCallback(async (grupoId: number): Promise<RecursoTipo[]> => {
     try {
       const url = `${apiBase}/recurso-tipos/grupo/${grupoId}`;
-      const res = await fetch(url, { headers: { accept: 'application/json' } });
+      const res = await authFetch(url, { headers: { accept: 'application/json' } });
       if (!res.ok) return [];
       return (await res.json()) as RecursoTipo[];
     } catch (e) {
       return [];
     }
-  }, [apiBase]);
+  }, [apiBase, authFetch]);
 
   const getRequerimientoEstados = useCallback(async (): Promise<RequerimientoEstado[]> => {
     try {
       const url = `${apiBase}/respuesta-estados`;
-      const res = await fetch(url, { headers: { accept: 'application/json' } });
+      const res = await authFetch(url, { headers: { accept: 'application/json' } });
       if (!res.ok) {
         return [];
       }
@@ -294,14 +351,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       return [];
     }
-  }, [apiBase]);
+  }, [apiBase, authFetch]);
 
   const loadReceptores = useCallback(async () => {
     if (!datosLogin) return;
     setReceptoresStatus('loading');
     try {
       const url = `${apiBase}/mesas/${datosLogin.coe_id}/${datosLogin.mesa_id}/${datosLogin.mesa_grupo_id}/${datosLogin.provincia_id}/${datosLogin.canton_id}`;
-      const res = await fetch(url, { headers: { 'Content-Type': 'application/json' } });
+      const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
       if (!res.ok) {
         setReceptoresStatus('failed');
         return;
@@ -312,13 +369,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       setReceptoresStatus('failed');
     }
-  }, [apiBase, datosLogin]);
+  }, [apiBase, datosLogin, authFetch]);
 
   const loadRecursoGrupos = useCallback(async () => {
     setRecursoGruposStatus('loading');
     try {
       const url = `${apiBase}/recurso-grupos`;
-      const res = await fetch(url, { headers: { 'Content-Type': 'application/json' } });
+      const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
       if (!res.ok) {
         setRecursoGruposStatus('failed');
         return;
@@ -329,13 +386,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       setRecursoGruposStatus('failed');
     }
-  }, [apiBase]);
+  }, [apiBase, authFetch]);
 
   const loadRecursoTipos = useCallback(async (grupoId: number) => {
     setRecursoTiposStatus('loading');
     try {
       const url = `${apiBase}/recurso-tipos/grupo/${grupoId}`;
-      const res = await fetch(url, { headers: { 'Content-Type': 'application/json' } });
+      const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
       if (!res.ok) {
         setRecursoTiposStatus('failed');
         return;
@@ -346,12 +403,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       setRecursoTiposStatus('failed');
     }
-  }, [apiBase]);
+  }, [apiBase, authFetch]);
 
   const createRequerimiento = useCallback(async (data: RequerimientoRequest): Promise<RequerimientoResponse | null> => {
     try {
       const url = `${apiBase}/requerimientos`;
-      const res = await fetch(url, {
+      const res = await authFetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -363,12 +420,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       return null;
     }
-  }, [apiBase]);
+  }, [apiBase, authFetch]);
 
   const createRequerimientoRecurso = useCallback(async (data: RequerimientoRecursoRequest): Promise<boolean> => {
     try {
       const url = `${apiBase}/requerimiento-recursos`;
-      const res = await fetch(url, {
+      const res = await authFetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -377,7 +434,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       return false;
     }
-  }, [apiBase]);
+  }, [apiBase, authFetch]);
 
   const getRequerimientosEnviados = useCallback(async (): Promise<RequerimientoEnviado[]> => {
     try {
@@ -387,7 +444,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return [];
       }
       const url = `${apiBase}/requerimientos/enviados/${userId}`;
-      const res = await fetch(url, { headers: { accept: 'application/json' } });
+      const res = await authFetch(url, { headers: { accept: 'application/json' } });
       if (!res.ok) {
         return [];
       }
@@ -395,7 +452,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       return [];
     }
-  }, [apiBase]);
+  }, [apiBase, authFetch]);
 
   const getRequerimientosRecibidos = useCallback(async (): Promise<RequerimientoRecibido[]> => {
     try {
@@ -405,7 +462,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return [];
       }
       const url = `${apiBase}/requerimientos/recibidos/${userId}`;
-      const res = await fetch(url, { headers: { accept: 'application/json' } });
+      const res = await authFetch(url, { headers: { accept: 'application/json' } });
       if (!res.ok) {
         return [];
       }
@@ -413,7 +470,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       return [];
     }
-  }, [apiBase]);
+  }, [apiBase, authFetch]);
 
   const getRequerimientosRecibidosNotificaciones = useCallback(async (): Promise<RequerimientoRecibidoNotificacion[]> => {
     try {
@@ -423,7 +480,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return [];
       }
       const url = `${apiBase}/requerimientos/recibidos/notificacion/${userId}`;
-      const res = await fetch(url, { headers: { accept: 'application/json' } });
+      const res = await authFetch(url, { headers: { accept: 'application/json' } });
       if (!res.ok) {
         return [];
       }
@@ -431,7 +488,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       return [];
     }
-  }, [apiBase]);
+  }, [apiBase, authFetch]);
 
 
   const value = useMemo<AuthContextValue>(() => ({
@@ -456,7 +513,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     getRequerimientoRecursos,
     getRecursoTiposByGrupo,
     getRequerimientosRecibidosNotificaciones,
-  }), [loginResponse, datosLogin, receptores, receptoresStatus, recursoGrupos, recursoGruposStatus, recursoTipos, recursoTiposStatus, login, loadReceptores, loadRecursoGrupos, loadRecursoTipos, createRequerimiento, createRequerimientoRecurso, getRequerimientosEnviados, getRequerimientosRecibidos, getRequerimientoEstados, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, getRequerimientosRecibidosNotificaciones]);
+    authFetch
+  }), [loginResponse, datosLogin, receptores, receptoresStatus, recursoGrupos, recursoGruposStatus, recursoTipos, recursoTiposStatus, login, loadReceptores, loadRecursoGrupos, loadRecursoTipos, createRequerimiento, createRequerimientoRecurso, getRequerimientosEnviados, getRequerimientosRecibidos, getRequerimientoEstados, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, getRequerimientosRecibidosNotificaciones, authFetch]);
 
   return (
     <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

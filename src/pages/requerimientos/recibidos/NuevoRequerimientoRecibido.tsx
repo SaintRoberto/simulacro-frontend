@@ -78,7 +78,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
   const [recursoDraft, setRecursoDraft] = useState<Partial<Recurso>>({ cantidad: 1 });
   const [showDetalleDialog, setShowDetalleDialog] = useState<boolean>(false);
 
-  const { datosLogin, loadReceptores, receptores, receptoresStatus, recursoGrupos, recursoGruposStatus, recursoTipos, recursoTiposStatus, loadRecursoGrupos, loadRecursoTipos, createRequerimiento, createRequerimientoRecurso, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, getRequerimientoEstados } = useAuth();
+  const { datosLogin, authFetch, loadReceptores, receptores, receptoresStatus, recursoGrupos, recursoGruposStatus, recursoTipos, recursoTiposStatus, loadRecursoGrupos, loadRecursoTipos, createRequerimiento, createRequerimientoRecurso, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, getRequerimientoEstados } = useAuth();
   const isReadOnly = false; // En respuestas, permitimos edición
   const apiBase = 'http://localhost:5000/api';
 
@@ -122,7 +122,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
   const loadRequerimiento = useCallback(async (rid: number) => {
     try {
       // Nuevo endpoint: trae historial por requerimiento_id
-      const res = await fetch(`${apiBase}/requerimientos/recibidos/${rid}`, {
+      const res = await authFetch(`${apiBase}/requerimientos/recibidos/${rid}`, {
         headers: { accept: 'application/json' },
       });
       if (!res.ok) {
@@ -153,7 +153,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
   const loadHistorial = useCallback(async (rid: number) => {
     try {
       // Nuevo endpoint: trae historial por requerimiento_id
-      const res = await fetch(`${apiBase}/requerimiento-respuestas/${rid}`, {
+      const res = await authFetch(`${apiBase}/requerimiento-respuestas/${rid}`, {
         headers: { accept: 'application/json' },
       });
       if (!res.ok) {
@@ -296,7 +296,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
         situacion_actual: situacion,
       };
       // 1) Crear respuesta (historial)
-      const res = await fetch(`${apiBase}/requerimiento-respuestas`, {
+      const res = await authFetch(`${apiBase}/requerimiento-respuestas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -308,7 +308,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
       const created = await res.json();
 
       // 2) Actualizar estado del requerimiento
-      const resUpd = await fetch(`${apiBase}/requerimientos/${editId}`, {
+      const resUpd = await authFetch(`${apiBase}/requerimientos/${editId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ porcentaje_avance: avance, requerimiento_estado_id: estadoId }),

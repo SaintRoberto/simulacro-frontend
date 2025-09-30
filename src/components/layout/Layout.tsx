@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Layout as AntLayout, Menu, Button, Typography, Tag } from 'antd';
 import { MenuFoldOutlined, MenuUnfoldOutlined, UserOutlined, LogoutOutlined, HomeOutlined } from '@ant-design/icons';
-import { useAppDispatch, useAppSelector } from '../../store/hooks';
-import { fetchLoginData, selectLoginData } from '../../features/auth/loginSlice';
+import { useAppDispatch } from '../../store/hooks';
+import { useAuth } from '../../context/AuthContext';
 import { NotificationWatcher } from './NotificationWatcher';
 import { NotificationsBell } from './NotificationsBell';
 
@@ -14,20 +14,19 @@ export const Layout: React.FC = () => {
 
   const { Header, Sider, Content } = AntLayout;
 
+  const { datosLogin, loginResponse } = useAuth();
   const dispatch = useAppDispatch();
-  const loginData = useAppSelector(selectLoginData);
-
-  // Al montar el layout, si hay token y no hay datos de usuario, intentar cargarlos usando userId del localStorage
+  
+  // Verificar autenticación al cargar
   useEffect(() => {
-    const hasToken = !!localStorage.getItem('token');
-    const uidStr = localStorage.getItem('userId');
-    if (hasToken && !loginData && uidStr) {
-      const uid = Number(uidStr);
-      if (!Number.isNaN(uid) && uid > 0) {
-        dispatch(fetchLoginData(uid));
-      }
+    const token = localStorage.getItem('token');
+    const userId = localStorage.getItem('userId');
+    
+    // Si no hay token o userId, redirigir al login
+    if (!token || !userId) {
+      navigate('/login');
     }
-  }, [dispatch, loginData]);
+  }, [navigate]);
 
   return (
     <AntLayout style={{ minHeight: '100vh' }}>
@@ -62,17 +61,17 @@ export const Layout: React.FC = () => {
             <Typography.Title level={4} style={{ margin: 0 }}>Simulacros COE </Typography.Title>
           </div>
           <div className="d-flex align-items-center gap-1">
-            {loginData?.coe_abreviatura && (
-              <Tag color="green">{loginData.coe_abreviatura}</Tag>
+            {datosLogin?.coe_abreviatura && (
+              <Tag color="green">{datosLogin.coe_abreviatura}</Tag>
             )}
-             {loginData?.provincia_nombre && (
-              <Tag color="purple">{loginData.provincia_nombre}</Tag>
+            {datosLogin?.provincia_nombre && (
+              <Tag color="purple">{datosLogin.provincia_nombre}</Tag>
             )}           
-            {loginData?.canton_nombre && (
-              <Tag color="red">{loginData.canton_nombre}</Tag>
+            {datosLogin?.canton_nombre && (
+              <Tag color="red">{datosLogin.canton_nombre}</Tag>
             )}
-             {loginData?.mesa_nombre && (
-              <Tag color="blue">{loginData.mesa_nombre}</Tag>
+            {datosLogin?.mesa_nombre && (
+              <Tag color="blue">{datosLogin.mesa_nombre}</Tag>
             )}
             {/* Notifications bell */}
             <NotificationsBell />

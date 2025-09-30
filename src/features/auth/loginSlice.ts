@@ -1,6 +1,14 @@
 import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
 import type { RootState, AppDispatch } from '../../store/store';
 
+// Type for the extra argument that will be provided to the thunk
+type ThunkApiConfig = {
+  extra: {
+    authFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+  };
+  rejectValue: string;
+};
+
 // Tipado de la respuesta del endpoint /usuarios/:id/datos-login
 export interface LoginData {
   canton_id: number;
@@ -35,13 +43,14 @@ const initialState: LoginState = {
 };
 
 // Obtiene y guarda en el store los datos de login para el usuario dado
-export const fetchLoginData = createAsyncThunk<LoginData, number>(
+export const fetchLoginData = createAsyncThunk<LoginData, number, ThunkApiConfig>(
   'auth/fetchLoginData',
-  async (userId: number, { rejectWithValue }) => {
+  async (userId, { rejectWithValue, extra }) => {
     try {
+      const { authFetch } = extra;
       const apiBase = process.env.REACT_APP_API_URL || '/api';
       const url = `${apiBase}/usuarios/${userId}/datos-login`;
-      const res = await fetch(url, { headers: { 'Content-Type': 'application/json' } });
+      const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
       if (!res.ok) {
         const text = await res.text();
         throw new Error(`HTTP ${res.status}: ${text}`);
