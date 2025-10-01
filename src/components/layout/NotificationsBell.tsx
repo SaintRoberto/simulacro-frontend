@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Badge, Button, Dropdown, List, Typography } from 'antd';
+import { Badge, Button, List, Typography, Popover } from 'antd';
 import { BellOutlined } from '@ant-design/icons';
 import { useNotifications } from '../../context/NotificationsContext';
 import { useNavigate } from 'react-router-dom';
@@ -12,7 +12,7 @@ export const NotificationsBell: React.FC = () => {
   const items = useMemo(() => notifications, [notifications]);
 
   const content = (
-    <div style={{ width: 360, maxHeight: 420, overflowY: 'auto', background: '#fff', borderRadius: '2px', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
+    <div style={{ width: 360, maxHeight: 420, overflowY: 'auto', background: '#fff', borderRadius: '2px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px'}}>
         <Typography.Text style={{ fontSize: '18px' }} strong>Notificaciones</Typography.Text>
         {/* <Button type="link" size="small" onClick={markAllRead} disabled={unreadCount === 0}>Marcar todas como leídas</Button> */}
@@ -50,23 +50,23 @@ export const NotificationsBell: React.FC = () => {
   );
 
   return (
-    <Dropdown
+    <Popover
       open={open}
-      onOpenChange={(v) => {
-        setOpen(v);
-        if (v) {
+      onOpenChange={(visible) => {
+        setOpen(visible);
+        if (visible) {
           // Optionally mark all read on open
           // markAllRead();
         }
       }}
-      dropdownRender={() => content}
+      content={content}
       placement="bottomRight"
-      trigger={["click"]}
+      trigger="click"
     >
       <Badge count={unreadCount} overflowCount={99} size="small">
         <Button type="text" icon={<BellOutlined />} />
       </Badge>
-    </Dropdown>
+    </Popover>
   );
 };
 
