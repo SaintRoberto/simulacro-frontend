@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from 'primereact/card';
 import { BaseCRUD } from '../../../components/crud/BaseCRUD';
 import { Progress, Tag } from 'antd';
-import { RequerimientoEnviadoForm } from './RequerimientoEnviadoForm';
+//import { RequerimientoEnviadoForm } from './RequerimientoEnviadoForm';
 import { Button } from 'primereact/button';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
@@ -155,9 +155,9 @@ export const RequerimientosEnviados: React.FC = () => {
         leftToolbarTemplate={() => (
           <Button label="Nuevo" icon="pi pi-plus" severity="success" onClick={() => navigate('/requerimientos/enviados/nuevo')} />
         )}
-        renderForm={(item, onChange) => (
-          <RequerimientoEnviadoForm<RequerimientoEnviado> item={item} onChange={onChange} />
-        )}
+        // renderForm={(item, onChange) => (
+        //   <RequerimientoEnviadoForm<RequerimientoEnviado> item={item} onChange={onChange} />
+        // )}
         onSave={handleSave}
         onDelete={handleDelete}
         initialItem={{

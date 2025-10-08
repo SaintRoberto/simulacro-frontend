@@ -42,7 +42,7 @@ export const Layout: React.FC = () => {
           items={[
             { key: '/', icon: <HomeOutlined />, label: 'Dashboard' },
             { key: '/afectaciones', label: 'Afectaciones' },
-            { key: '/acciones', label: 'Acciones Ejecutadas' },
+            { key: '/acciones', label: 'Acciones Respuesta' },
             { key: '/actas', label: 'Actas COE' },
             { key: '/recursos', label: 'Recursos Movilizados' },
             { key: '/brechas', label: 'Brechas' },

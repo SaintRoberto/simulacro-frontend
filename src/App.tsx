@@ -8,6 +8,7 @@ import { Register } from './pages/auth/Register';
 import { Afectaciones } from './pages/afectaciones/Afectaciones';
 import { AccionesEjecutadas } from './pages/acciones/AccionesEjecutadas';
 import { ActasCOE } from './pages/actas/ActasCOE';
+import { NuevoActaCOE } from './pages/actas/NuevoAcataCOE';
 import { RecursosMovilizados } from './pages/recursos/RecursosMovilizados';
 import { Brechas } from './pages/brechas/Brechas';
 import { CoesActivados } from './pages/coes/CoesActivados';
@@ -18,6 +19,8 @@ import { RequerimientosRecibidos } from './pages/requerimientos/recibidos/Requer
 import { NuevoRequerimientoEnviado } from './pages/requerimientos/enviados/NuevoRequerimientoEnviado';
 import { NuevoRequerimientoRecibido } from './pages/requerimientos/recibidos/NuevoRequerimientoRecibido'; 
 import { NotificationsProvider } from './context/NotificationsContext';
+import { AccionesRespuestas } from './pages/acciones/AccionesRespuestas';
+import { NuevoAccionesRespuesta } from './pages/acciones/NuevoAccionesRespuesta';
 
 const App: React.FC = () => {
   return (
@@ -32,8 +35,10 @@ const App: React.FC = () => {
         <Route path="/" element={<Layout />}>
           <Route index element={<Dashboard />} />
           <Route path="afectaciones" element={<Afectaciones />} />
-          <Route path="acciones" element={<AccionesEjecutadas />} />
+          <Route path="acciones" element={<AccionesRespuestas />} />
+          <Route path="acciones/nueva" element={<NuevoAccionesRespuesta />} />
           <Route path="actas" element={<ActasCOE />} />
+          <Route path="actas/nueva" element={<NuevoActaCOE />} />
           <Route path="recursos" element={<RecursosMovilizados />} />
           <Route path="brechas" element={<Brechas />} />
           <Route path="coes" element={<CoesActivados />} />
