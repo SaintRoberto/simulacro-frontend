@@ -1,6 +1,5 @@
 import React, { useMemo, useState, ReactNode } from 'react';
-import { Table, Modal, Input, Button, Space, Typography, Tooltip } from 'antd';
-import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Modal, Input, Button } from 'antd';
 
 interface BaseCRUDProps<T> {
   title: string;
@@ -12,6 +11,8 @@ interface BaseCRUDProps<T> {
     sortable?: boolean;
     filter?: boolean;
     filterElement?: (options: any) => ReactNode;
+    className?: string;
+    headerClassName?: string;
   }[];
   renderForm?: (item: Partial<T>, onChange: (e: any) => void) => ReactNode;
   onSave: (item: Partial<T>) => void;
@@ -103,18 +104,22 @@ export function BaseCRUD<T extends Record<string, any>>({
 
   const defaultLeftToolbarTemplate = () => {
     return (
-      <Space wrap>
+      <div className="d-flex gap-2">
         {showCreateButton && (
           <Button type="primary" onClick={openNew}>
             Nuevo
           </Button>
         )}
         {showDeleteButton && (
-          <Button danger onClick={() => selectedItem && confirmDelete(selectedItem)} disabled={!selectedItem}>
+          <Button 
+            danger 
+            onClick={() => selectedItem && confirmDelete(selectedItem)} 
+            disabled={!selectedItem}
+          >
             Eliminar
           </Button>
         )}
-      </Space>
+      </div>
     );
   };
 
@@ -131,29 +136,41 @@ export function BaseCRUD<T extends Record<string, any>>({
 
   const actionBodyTemplate = (rowData: T) => {
     return (
-      <Space>
+      <div className="d-flex gap-2">
         {showEditAction && (
-          <Tooltip title="Editar">
-            <Button onClick={() => (onEdit ? onEdit(rowData) : editItem(rowData))} type="link" icon={<EditOutlined style={{ fontSize: '22px' }} />}
-              aria-label="Editar" />
-          </Tooltip>
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit ? onEdit(rowData) : editItem(rowData);
+            }} 
+            className="btn btn-sm btn-link p-0 text-primary"
+            title="Editar"
+          >
+            <i className="pi pi-pencil" style={{ fontSize: '1.1rem' }}></i>
+          </button>
         )}
         {showDeleteAction && (
-          <Tooltip title="Eliminar">
-            <Button onClick={() => confirmDelete(rowData)} type="link" danger icon={<DeleteOutlined />} style={{ fontSize: '22px' }} 
-            aria-label="Eliminar" />
-          </Tooltip>
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              confirmDelete(rowData);
+            }} 
+            className="btn btn-sm btn-link p-0 text-danger"
+            title="Eliminar"
+          >
+            <i className="pi pi-trash" style={{ fontSize: '1.1rem' }}></i>
+          </button>
         )}
-      </Space>
+      </div>
     );
   };
 
-  const header = showHeader ? (
+  const header = showHeader && (
     <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-      <Typography.Title level={4} style={{ margin: 0 }}>{title}</Typography.Title>
+      <h4 className="m-0">{title}</h4>
       {rightToolbarTemplate ? rightToolbarTemplate() : defaultRightToolbarTemplate()}
     </div>
-  ) : undefined;
+  );
 
   const filteredItems = useMemo(() => {
     if (!globalFilter) return items;
@@ -170,36 +187,49 @@ export function BaseCRUD<T extends Record<string, any>>({
 
       {header}
 
-      <Table
-        rowKey={idField as string}
-        dataSource={filteredItems}
-        pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [5, 10, 25, 50] as any }}
-        onRow={(record) => ({ onClick: () => setSelectedItem(record) })}
-        locale={{ emptyText: emptyMessage }}
-        columns={[
-          ...columns.map((col) => ({
-            key: col.field,
-            dataIndex: col.field,
-            title: col.header,
-            sorter: col.sortable
-              ? (a: any, b: any) => {
-                const va = a[col.field];
-                const vb = b[col.field];
-                return String(va ?? '').localeCompare(String(vb ?? ''));
-              }
-              : undefined,
-            render: col.body
-              ? (_value: any, record: any) => (col.body as any)(record)
-              : undefined,
-          })),
-          {
-            key: '__actions',
-            title: 'Acciones',
-            render: (_: any, row: T) => actionBodyTemplate(row),
-            width: 160,
-          }
-        ]}
-      />
+      <div className="table-responsive">
+        <table className="table table-hover">
+          <thead className="table-light">
+            <tr>
+              {columns.map((col) => (
+                <th key={col.field} className={col.headerClassName || ''}>
+                  {col.header}
+                </th>
+              ))}
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredItems.length > 0 ? (
+              filteredItems.map((item) => (
+                <tr key={String(item[idField as keyof T])}>
+                  {columns.map((col) => (
+                    <td 
+                      key={`${item[idField as keyof T]}-${col.field}`}
+                      className={col.className || ''}
+                      title={col.field === 'detalle' ? String(item[col.field as keyof T] || '') : undefined}
+                    >
+                      {col.body ? 
+                        col.body(item) : 
+                        String(item[col.field as keyof T] || '')
+                      }
+                    </td>
+                  ))}
+                  <td>
+                    {actionBodyTemplate(item)}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={columns.length + 1} className="text-center py-4">
+                  {emptyMessage}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
 
       <Modal
         open={showDialog}

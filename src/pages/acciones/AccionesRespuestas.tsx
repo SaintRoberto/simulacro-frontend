@@ -96,35 +96,45 @@ export const AccionesRespuestas: React.FC = () => {
     { 
       field: 'respuesta_accion_id', 
       header: 'ID', 
-      sortable: true 
+      sortable: true,
+      className: 'd-none d-md-table-cell',
+      headerClassName: 'd-none d-md-table-cell'
     },
     { 
       field: 'estado_nombre', 
       header: 'Estado', 
-      sortable: true 
+      sortable: true,
+      className: 'd-none d-sm-table-cell',
+      headerClassName: 'd-none d-sm-table-cell'
     },
     { 
       field: 'origen_nombre', 
       header: 'Origen', 
-      sortable: true 
+      sortable: true,
+      className: 'd-none d-md-table-cell',
+      headerClassName: 'd-none d-md-table-cell'
     },
     { 
       field: 'resolucion_id', 
       header: 'ID Resolución', 
-      sortable: true 
+      sortable: true,
+      className: 'd-none d-lg-table-cell',
+      headerClassName: 'd-none d-lg-table-cell'
     },
     { 
       field: 'fecha_final', 
       header: 'Fecha Final', 
       sortable: true,
-      body: (row: AccionesRespuestasItem) => formatDate(row.fecha_final)
+      body: (row: AccionesRespuestasItem) => formatDate(row.fecha_final),
+      className: 'd-none d-sm-table-cell',
+      headerClassName: 'd-none d-sm-table-cell'
     },
     { 
       field: 'detalle', 
       header: 'Detalle', 
-      sortable: true 
+      sortable: true,
+      className: 'text-truncate'
     },
-
   ];
 
   // Ensure each item has a unique key
@@ -137,7 +147,7 @@ export const AccionesRespuestas: React.FC = () => {
   );
 
   return (
-    <Card title="Acciones de respuesta">
+    <Card title="Acciones de respuesta" className="shadow-sm">
       <BaseCRUD<AccionesRespuestasItem>
         key="acciones-crud"
         title=""

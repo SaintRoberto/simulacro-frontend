@@ -32,11 +32,11 @@ export const Layout: React.FC = () => {
     <AntLayout style={{ minHeight: '100vh' }}>
       {/* Global notifications watcher */}
       <NotificationWatcher intervalMs={5000} />
-      <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed} style={{ width: '250px' }}>
-        <div style={{ height: 48, margin: 16, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>SNGRE</div>
+      <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed} style={{ width: '210px' }}>
+        <div style={{ height: 48, margin: 16, color: '#fff', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>SNGRE</div>
         <Menu
           theme="dark"
-          mode="inline"
+          mode="vertical"
           selectedKeys={[location.pathname]}
           onClick={(e) => navigate(e.key)}
           items={[
