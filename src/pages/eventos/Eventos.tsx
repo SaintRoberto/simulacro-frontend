@@ -125,15 +125,15 @@ export const Eventos: React.FC = () => {
 
   useEffect(() => {
     const cantonId = datosLogin?.canton_id;
-    if (!cantonId) return;
+    if (!cantonId || !selectedEmergenciaId) return;
     const run = async () => {
       try {
-        const res = await authFetch(`${apiBase}/parroquias/canton/${cantonId}`);
+        const res = await authFetch(`${apiBase}/canton/${cantonId}/parroquias/emergencia/${selectedEmergenciaId}`);
         setParroquias(res.ok ? await res.json() : []);
       } catch {}
     };
     run();
-  }, [apiBase, authFetch, datosLogin?.canton_id]);
+  }, [apiBase, authFetch, datosLogin?.canton_id, selectedEmergenciaId]);
 
   const fetchSubtipos = useCallback(async (tipoId?: number) => {
     try {
@@ -215,9 +215,9 @@ export const Eventos: React.FC = () => {
             if (c6 && (c6 as Response).ok) setAtencionEstados(await (c6 as Response).json());
           } catch {}
         }
-        if (needsParroquias && datosLogin?.canton_id) {
+        if (needsParroquias && datosLogin?.canton_id && selectedEmergenciaId) {
           try {
-            const res = await authFetch(`${apiBase}/parroquias/canton/${datosLogin.canton_id}`);
+            const res = await authFetch(`${apiBase}/canton/${datosLogin.canton_id}/parroquias/emergencia/${selectedEmergenciaId}`);
             if (res.ok) setParroquias(await res.json());
           } catch {}
         }

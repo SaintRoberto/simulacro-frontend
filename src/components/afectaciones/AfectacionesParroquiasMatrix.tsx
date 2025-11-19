@@ -93,7 +93,11 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
   const [parroquias, setParroquias] = useState<Parroquia[]>([]);
   const [variables, setVariables] = useState<AfectacionVariable[]>([]);
   // Store the matrix in state for React to know when to re-render
-  const [matrix, setMatrix] = useState<Record<number, Record<number, AfectacionCellPayload>>>({});
+  // Matrix keyed by composite rowKey `${parroquia_id}-${evento_id}` -> variable_id -> payload
+  const [matrix, setMatrix] = useState<Record<string, Record<number, AfectacionCellPayload>>>({});
+  // Rows with parroquia-evento pairs
+  type RowItem = { parroquia_id: number; parroquia_nombre: string; evento_id: number; evento_nombre: string };
+  const [rows, setRows] = useState<RowItem[]>([]);
   // Also keep a ref to avoid stale closures in memoized renderers
   const matrixRef = useRef(matrix);
   useEffect(() => {
@@ -101,6 +105,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
   }, [matrix]);
 
   const [modalOpen, setModalOpen] = useState(false);
+  const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
   const [selected, setSelected] = useState<{ parroquia?: Parroquia; variable?: AfectacionVariable } | null>(null);
   // Infraestructura detalles (modal)
   type InfraDetalle = {
@@ -122,7 +127,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
   const [cantonSelId, setCantonSelId] = useState<number | undefined>(undefined);
   const [parroquiasSelIds, setParroquiasSelIds] = useState<number[]>([]);
   // Track record IDs by parroquia/variable for updates
-  const [recordIds, setRecordIds] = useState<Record<number, Record<number, number>>>({});
+  const [recordIds, setRecordIds] = useState<Record<string, Record<number, number>>>({});
   const [saving, setSaving] = useState(false);
   const [hasExisting, setHasExisting] = useState(false);
 
@@ -210,75 +215,90 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
     setParroquias(selected);
   }, [parroquiasOptions, parroquiasSelIds]);
 
-  // Load existing registros for each selected parroquia
+  // Load existing registros for each selected parroquia (new endpoint aggregates by canton)
   useEffect(() => {
     let isMounted = true;
     const loadRegistros = async () => {
-      if (!parroquiasSelIds.length) return;
+      if (!parroquiasSelIds.length || !cantonSelId) return;
       try {
         setLoading(true);
-        const allResults = await Promise.all(parroquiasSelIds.map(async (pid) => {
-          const url = `${apiBase}/afectacion_variable_registros/parroquia/${pid}/emergencia/${emergencyId}/mesa_grupo/${mesagrupo_Id}`;
-          const res = await authFetch(url, { headers: { accept: 'application/json' } });
-          const data = res.ok ? await res.json() : [];
-          return { pid, data } as { pid: number; data: Array<{ afectacion_variable_registro_id?: number; afectacion_variable_id: number; cantidad: number; costo: number }>; };
-        }));
+        const url = `${apiBase}/afectaciones_registros/eventos/emergencia/${emergencyId}/canton/${cantonSelId}/mesa_grupo/${mesagrupo_Id}/`;
+        const res = await authFetch(url, { headers: { accept: 'application/json' } });
+        const all: Array<{ parroquia_id: number; parroquia_nombre?: string; evento_id?: number; evento_nombre?: string; afectacion_variable_id: number; cantidad: number; costo: number }>
+          = res.ok ? await res.json() : [];
         if (!isMounted) return;
-        // Merge into matrix
-        setMatrix(prev => {
-          const next = { ...prev } as Record<number, Record<number, AfectacionCellPayload>>;
-          for (const { pid, data } of allResults) {
-            next[pid] = next[pid] || {};
-            for (const r of data) {
-              next[pid][r.afectacion_variable_id] = {
-                ...(next[pid][r.afectacion_variable_id] || {}),
-                cantidad: typeof r.cantidad === 'number' ? r.cantidad : null,
-                costo: typeof r.costo === 'number' ? r.costo : null,
-                id: typeof (r as any).afectacion_variable_registro_id === 'number' ? (r as any).afectacion_variable_registro_id : (next[pid][r.afectacion_variable_id]?.id),
-              };
+        // Filter only selected parroquias
+        const filtered = (all || []).filter(r => parroquiasSelIds.includes(r.parroquia_id));
+        // Build row list (duplicated parroquia per evento)
+        const rowMap = new Map<string, RowItem>();
+        for (const r of filtered) {
+          const key = `${r.parroquia_id}-${r.evento_id ?? 0}`;
+          if (!rowMap.has(key)) {
+            rowMap.set(key, {
+              parroquia_id: r.parroquia_id,
+              parroquia_nombre: r.parroquia_nombre || String(r.parroquia_id),
+              evento_id: r.evento_id ?? 0,
+              evento_nombre: r.evento_nombre || '-',
+            });
+          }
+        }
+        setRows(Array.from(rowMap.values()));
+        // Build fresh matrix aggregated by rowKey+variable, preferring non-zero values when duplicates exist
+        const fresh: Record<string, Record<number, AfectacionCellPayload>> = {};
+        for (const r of filtered) {
+          const rowKey = `${r.parroquia_id}-${r.evento_id ?? 0}`;
+          const current = fresh[rowKey]?.[r.afectacion_variable_id];
+          const cand = {
+            cantidad: typeof r.cantidad === 'number' ? r.cantidad : null,
+            costo: typeof r.costo === 'number' ? r.costo : null,
+            id: current?.id, // keep any existing id if present later
+          } as AfectacionCellPayload;
+          const isNonZero = (cand.cantidad ?? 0) !== 0 || (cand.costo ?? 0) !== 0;
+          const hasExisting = !!current;
+          const existingNonZero = hasExisting && (((current!.cantidad ?? 0) !== 0) || ((current!.costo ?? 0) !== 0));
+          if (!fresh[rowKey]) fresh[rowKey] = {};
+          if (!hasExisting) {
+            fresh[rowKey][r.afectacion_variable_id] = cand;
+          } else {
+            // Prefer non-zero over zero. If both non-zero, keep the latest.
+            if (!existingNonZero && isNonZero) {
+              fresh[rowKey][r.afectacion_variable_id] = cand;
+            } else if (existingNonZero && !isNonZero) {
+              // keep existing non-zero
+            } else {
+              // both zero or both non-zero: overwrite with latest
+              fresh[rowKey][r.afectacion_variable_id] = { ...current!, ...cand };
             }
           }
-          return next;
-        });
-        // Capture ids for PUT if backend returns them
-        setRecordIds(prev => {
-          const next = { ...prev } as Record<number, Record<number, number>>;
-          for (const { pid, data } of allResults) {
-            next[pid] = next[pid] || {};
-            for (const r of data) {
-              if (typeof (r as any).afectacion_variable_registro_id === 'number') {
-                next[pid][r.afectacion_variable_id] = (r as any).afectacion_variable_registro_id as number;
-              }
-            }
-          }
-          return next;
-        });
-        // If any data returned, toggle to update label
-        setHasExisting(allResults.some(r => (r.data || []).length > 0));
+        }
+        setMatrix(fresh);
+        // If any non-empty data returned, toggle to update label
+        setHasExisting(Object.values(fresh).some(vars => Object.values(vars).length > 0));
       } finally {
         if (isMounted) setLoading(false);
       }
     };
     loadRegistros();
     return () => { isMounted = false; };
-  }, [parroquiasSelIds, apiBase, mesagrupo_Id, emergencyId]);
+  }, [parroquiasSelIds, apiBase, mesagrupo_Id, emergencyId, cantonSelId]);
 
   const saveAll = useCallback(async () => {
-    if (!provinciaId || !cantonSelId || !parroquias.length) {
+    if (!provinciaId || !cantonSelId || !rows.length) {
       message.warning('Seleccione provincia, cantón y al menos una parroquia');
       return;
     }
     try {
       setSaving(true);
       const tasks: Promise<any>[] = [];
-      for (const p of parroquias) {
-        const row = matrixRef.current[p.id] || {};
+      for (const r of rows) {
+        const rk = `${r.parroquia_id}-${r.evento_id}`;
+        const rowCells = matrixRef.current[rk] || {};
         for (const v of variables) {
-          const cell = row[v.id];
+          const cell = rowCells[v.id];
           if (!cell || (cell.cantidad == null && cell.costo == null)) continue;
-          const hasId = !!(recordIds[p.id]?.[v.id] || cell.id);
+          const hasId = !!(recordIds[rk]?.[v.id] || cell.id);
           if (hasId) {
-            const id = recordIds[p.id]?.[v.id] ?? cell.id!;
+            const id = recordIds[rk]?.[v.id] ?? cell.id!;
             const url = `${apiBase}/afectacion_variable_registros/${id}`;
             const body = { cantidad: cell.cantidad ?? 0, costo: cell.costo ?? 0 };
             tasks.push(authFetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
@@ -292,8 +312,9 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
               costo: cell.costo ?? 0,
               creador: 'frontend',
               emergencia_id: emergencyId,
-              parroquia_id: p.id,
+              parroquia_id: r.parroquia_id,
               provincia_id: provinciaId,
+              evento_id: r.evento_id,
             };
             tasks.push(
               authFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -304,12 +325,12 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
                   if (typeof newId === 'number') {
                     setRecordIds(prev => ({
                       ...prev,
-                      [p.id]: { ...(prev[p.id] || {}), [v.id]: newId },
+                      [rk]: { ...(prev[rk] || {}), [v.id]: newId },
                     }));
                     // also embed into matrix for quick reference
                     setMatrix(prev => ({
                       ...prev,
-                      [p.id]: { ...(prev[p.id] || {}), [v.id]: { ...(prev[p.id]?.[v.id] || {}), id: newId } },
+                      [rk]: { ...(prev[rk] || {}), [v.id]: { ...(prev[rk]?.[v.id] || {}), id: newId } },
                     }));
                   }
                 })
@@ -324,26 +345,26 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
     } finally {
       setSaving(false);
     }
-  }, [apiBase, provinciaId, cantonSelId, parroquias, variables, recordIds, hasExisting]);
+  }, [apiBase, provinciaId, cantonSelId, rows, variables, recordIds, hasExisting]);
 
-  const commitCell = useCallback((parroquiaId: number, variableId: number, patch: Partial<AfectacionCellPayload>) => {
+  const commitCell = useCallback((rowKey: string, variableId: number, patch: Partial<AfectacionCellPayload>) => {
     setMatrix(prev => ({
       ...prev,
-      [parroquiaId]: {
-        ...(prev[parroquiaId] || {}),
-        [variableId]: { ...(prev[parroquiaId]?.[variableId] || {}), ...patch },
+      [rowKey]: {
+        ...(prev[rowKey] || {}),
+        [variableId]: { ...(prev[rowKey]?.[variableId] || {}), ...patch },
       },
     }));
   }, []);
 
   type CellEditorProps = {
-    parroquia: Parroquia;
+    rowKey: string;
     variable: AfectacionVariable;
     cell?: AfectacionCellPayload;
+    parroquia: { id: number; nombre: string };
   };
 
-  const CellEditor: React.FC<CellEditorProps> = React.memo(({ parroquia, variable, cell }) => {
-    const parroquiaId = parroquia.id;
+  const CellEditor: React.FC<CellEditorProps> = React.memo(({ rowKey, variable, cell, parroquia }) => {
     const [cantidad, setCantidad] = useState<number | null | undefined>(cell?.cantidad ?? null);
     const [costo, setCosto] = useState<number | null | undefined>(cell?.costo ?? null);
 
@@ -351,11 +372,11 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
     useEffect(() => {
       setCantidad(cell?.cantidad ?? null);
       setCosto(cell?.costo ?? null);
-    }, [cell?.cantidad, cell?.costo, parroquiaId, variable.id]);
+    }, [cell?.cantidad, cell?.costo, rowKey, variable.id]);
 
     const onCommit = useCallback(() => {
-      commitCell(parroquiaId, variable.id, { cantidad: typeof cantidad === 'number' ? cantidad : null, costo: typeof costo === 'number' ? costo : null });
-    }, [cantidad, costo, parroquiaId, variable.id]);
+      commitCell(rowKey, variable.id, { cantidad: typeof cantidad === 'number' ? cantidad : null, costo: typeof costo === 'number' ? costo : null });
+    }, [cantidad, costo, rowKey, variable.id]);
 
     return (
       <Space size="small" wrap>
@@ -378,14 +399,15 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
           style={{ width: 80 }}
           disabled={!variable.requiere_costo}
         />
-        <Button icon={<SettingOutlined />} onClick={() => openDetails(parroquia, variable)} />
+        <Button icon={<SettingOutlined />} onClick={() => openDetails(parroquia as Parroquia, variable, rowKey)} />
       </Space>
     );
   });
   CellEditor.displayName = 'CellEditor';
 
-  const openDetails = (parroquia: Parroquia, variable: AfectacionVariable) => {
+  const openDetails = (parroquia: Parroquia, variable: AfectacionVariable, rowKey?: string) => {
     setSelected({ parroquia, variable });
+    if (rowKey) setSelectedRowKey(rowKey); else setSelectedRowKey(null);
     setModalOpen(true);
   };
 
@@ -412,13 +434,66 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
 
   const saveInfraDetalles = async () => {
     if (!selected?.parroquia || !selected?.variable) return;
-    // Need the registro id for this parroquia + variable
     const pid = selected.parroquia.id;
     const vid = selected.variable.id;
-    const registroId = recordIds[pid]?.[vid] ?? matrixRef.current[pid]?.[vid]?.id;
-    if (!registroId) {
-      message.warning('Primero guarde la matriz (cantidad/costo) para generar el registro base.');
+    // Use the selected row key (parroquia_id-evento_id) to resolve registro id
+    const rk = selectedRowKey || '';
+    // Validate that the base cell has meaningful values (not both zero/null)
+    const baseCell = rk ? matrixRef.current[rk]?.[vid] : undefined;
+    const qtyVal = typeof baseCell?.cantidad === 'number' ? baseCell!.cantidad! : 0;
+    const costVal = typeof baseCell?.costo === 'number' ? baseCell!.costo! : 0;
+    if ((qtyVal ?? 0) === 0 && (costVal ?? 0) === 0) {
+      message.warning('Debe ingresar cantidad o costo (distinto de 0) antes de registrar infraestructuras.');
       return;
+    }
+    let registroId = (rk ? (recordIds[rk]?.[vid] ?? matrixRef.current[rk]?.[vid]?.id) : undefined);
+    // If no registro id exists yet, create a base one on the fly for this parroquia/evento/variable
+    if (!registroId && rk) {
+      const parts = rk.split('-');
+      const eventoId = parts.length > 1 ? Number(parts[1]) : undefined;
+      if (!eventoId) {
+        message.warning('No se pudo identificar el evento de la fila. Intente guardar la matriz primero.');
+        return;
+      }
+      try {
+        const url = `${apiBase}/afectacion_variable_registros`;
+        const body = {
+          activo: true,
+          afectacion_variable_id: vid,
+          cantidad: 0,
+          canton_id: cantonSelId,
+          costo: 0,
+          creador: 'frontend',
+          emergencia_id: emergencyId,
+          parroquia_id: pid,
+          provincia_id: provinciaId,
+          evento_id: eventoId,
+        };
+        const res = await authFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!res.ok) {
+          message.warning('No se pudo generar el registro base. Guarde cantidad/costo y vuelva a intentar.');
+          return;
+        }
+        const created = await res.json();
+        const newId = created?.id as number | undefined;
+        if (!newId) {
+          message.warning('No se pudo generar el registro base.');
+          return;
+        }
+        registroId = newId;
+        // Persist id en memoria local
+        setRecordIds(prev => ({
+          ...prev,
+          [rk]: { ...(prev[rk] || {}), [vid]: newId },
+        }));
+        setMatrix(prev => ({
+          ...prev,
+          [rk]: { ...(prev[rk] || {}), [vid]: { ...(prev[rk]?.[vid] || {}), id: newId, cantidad: (prev[rk]?.[vid]?.cantidad ?? 0), costo: (prev[rk]?.[vid]?.costo ?? 0) } },
+        }));
+      } catch {
+        message.warning('No se pudo generar el registro base.');
+        return;
+      }
     }
     try {
       setInfraLoading(true);
@@ -454,19 +529,27 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
     }
   };
 
-  const columns: ColumnsType<Parroquia> = useMemo(() => {
-    const base: ColumnsType<Parroquia> = [
+  const columns: ColumnsType<RowItem> = useMemo(() => {
+    const base: any[] = [
       {
         title: 'Parroquia',
-        dataIndex: 'nombre',
+        dataIndex: 'parroquia_nombre',
         key: 'parroquia',
         fixed: 'left',
         width: 200,
         render: (value: string) => <Text strong>{value}</Text>,
       },
+      {
+        title: 'Evento',
+        dataIndex: 'evento_nombre',
+        key: 'evento_nombre',
+        fixed: 'left',
+        width: 260,
+        render: (value: string) => <Text>{value || '-'}</Text>,
+      },
     ];
 
-    const variableColumns: ColumnsType<Parroquia> = variables.map((v) => ({
+    const variableColumns: any[] = variables.map((v) => ({
       title: (
         <div>
           <div>{v.nombre}</div>
@@ -475,13 +558,17 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
       dataIndex: `var_${v.id}`,
       key: `var_${v.id}`,
       width: 280,
-      render: (_: any, p: Parroquia) => (
-        <CellEditor
-          parroquia={p}
-          variable={v}
-          cell={matrix[p.id]?.[v.id]}
-        />
-      ),
+      render: (_: any, r: RowItem) => {
+        const rk = `${r.parroquia_id}-${r.evento_id}`;
+        return (
+          <CellEditor
+            rowKey={rk}
+            variable={v}
+            cell={matrix[rk]?.[v.id]}
+            parroquia={{ id: r.parroquia_id, nombre: r.parroquia_nombre }}
+          />
+        );
+      },
     }));
 
     return [...base, ...variableColumns];
@@ -531,9 +618,9 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
         </Space>
       </div>
       <Spin spinning={loading}>
-        <Table<Parroquia>
-          rowKey={(r) => r.id}
-          dataSource={parroquias}
+        <Table<RowItem>
+          rowKey={(r) => `${r.parroquia_id}-${r.evento_id}`}
+          dataSource={rows}
           columns={columns}
           pagination={false}
           scroll={{ x: 600 }}

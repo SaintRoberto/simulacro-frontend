@@ -2,6 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import '../styles/icons.css';
+import earthquakeIcon from '../assets/earthquake.svg';
+import rainsIcon from '../assets/rains.svg';
+import volcanoIcon from '../assets/volcano.svg';
 
 interface EmergencyItem {
   ambito: string;
@@ -18,6 +21,14 @@ const iconFor = (identificador: string) => {
   if (key.includes('erup') || key.includes('volcan')) return 'icon icon-volcan';
   if (key.includes('lluv') || key.includes('invern') || key.includes('inun')) return 'icon icon-lluvia';
   return 'icon icon-circle';
+};
+
+const iconSrcFor = (identificador: string): string | null => {
+  const key = String(identificador || '').toLowerCase();
+  if (key.includes('sismo') || key.includes('terrem')) return earthquakeIcon;
+  if (key.includes('erup') || key.includes('volcan')) return volcanoIcon;
+  if (key.includes('lluv') || key.includes('invern') || key.includes('inun')) return rainsIcon;
+  return null;
 };
 
 const iconForbk = (identificador: string) => {
@@ -108,7 +119,7 @@ const EmergencySelection: React.FC = () => {
                   borderRadius: '50%',
                   borderColor: '#0b0b0b',
                   borderWidth: 2,
-                  background: (iconForbk(it.identificador)),
+                  background: (iconForbk(it.identificador || it.emergencia || it.descripcion)),
                   boxShadow: '0 0 0 3px #fff',
                   transition: 'transform 0.2s ease, box-shadow 0.2s ease'
                 }}
@@ -121,7 +132,11 @@ const EmergencySelection: React.FC = () => {
                   (e.currentTarget as HTMLDivElement).style.boxShadow = '0 0 0 3px transparent';
                 }}
               >
-              <i  className={iconFor(it.identificador)} aria-hidden="true" style={{ width: 70, height: 70 }} />
+              {(() => {
+                const src = iconSrcFor(it.identificador || it.emergencia || it.descripcion);
+                if (!src) return null;
+                return <img src={src} alt="icono" style={{ width: 70, height: 70 }} />;
+              })()}
               </div>
               <div className="mt-3 text-muted" 
                    style={{ fontSize: 18, maxWidth: 'min-content' }} >{it.emergencia}</div>
