@@ -31,7 +31,7 @@ export const Login: React.FC = () => {
     try {
       const ok = await login(formData.user, formData.password);
       if (ok) {
-        navigate('/');
+        navigate('/emergencias');
       } else {
         setError('Credenciales inválidas. Por favor, intente nuevamente.');
       }

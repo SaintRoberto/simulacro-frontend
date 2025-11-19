@@ -199,6 +199,8 @@ interface AuthContextValue {
   getRecursoTiposByGrupo: (grupoId: number) => Promise<RecursoTipo[]>;
   getRequerimientosRecibidosNotificaciones: () => Promise<RequerimientoRecibidoNotificacion[]>;
   authFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+  selectedEmergenciaId: number | null;
+  setSelectedEmergenciaId: (id: number | null) => void;
 
 }
 
@@ -213,6 +215,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [recursoGruposStatus, setRecursoGruposStatus] = useState<'idle' | 'loading' | 'succeeded' | 'failed'>('idle');
   const [recursoTipos, setRecursoTipos] = useState<RecursoTipo[]>([]);
   const [recursoTiposStatus, setRecursoTiposStatus] = useState<'idle' | 'loading' | 'succeeded' | 'failed'>('idle');
+  const [selectedEmergenciaId, _setSelectedEmergenciaId] = useState<number | null>(() => {
+    const v = localStorage.getItem('selectedEmergenciaId');
+    return v ? Number(v) : null;
+  });
 
   const apiBase = process.env.REACT_APP_API_URL || '/api';
 
@@ -240,6 +246,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setRecursoGrupos([]);
     setRecursoTiposStatus('idle');
     setRecursoTipos([]);
+    _setSelectedEmergenciaId(null);
+    localStorage.removeItem('selectedEmergenciaId');
     
     try {
       // Hacer la petición de login
@@ -513,8 +521,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     getRequerimientoRecursos,
     getRecursoTiposByGrupo,
     getRequerimientosRecibidosNotificaciones,
-    authFetch
-  }), [loginResponse, datosLogin, receptores, receptoresStatus, recursoGrupos, recursoGruposStatus, recursoTipos, recursoTiposStatus, login, loadReceptores, loadRecursoGrupos, loadRecursoTipos, createRequerimiento, createRequerimientoRecurso, getRequerimientosEnviados, getRequerimientosRecibidos, getRequerimientoEstados, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, getRequerimientosRecibidosNotificaciones, authFetch]);
+    authFetch,
+    selectedEmergenciaId,
+    setSelectedEmergenciaId: (id: number | null) => {
+      _setSelectedEmergenciaId(id);
+      if (id == null) localStorage.removeItem('selectedEmergenciaId');
+      else localStorage.setItem('selectedEmergenciaId', String(id));
+    }
+  }), [loginResponse, datosLogin, receptores, receptoresStatus, recursoGrupos, recursoGruposStatus, recursoTipos, recursoTiposStatus, login, loadReceptores, loadRecursoGrupos, loadRecursoTipos, createRequerimiento, createRequerimientoRecurso, getRequerimientosEnviados, getRequerimientosRecibidos, getRequerimientoEstados, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, getRequerimientosRecibidosNotificaciones, authFetch, selectedEmergenciaId]);
 
   return (
     <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

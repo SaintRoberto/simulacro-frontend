@@ -28,6 +28,7 @@ interface BaseCRUDProps<T> {
   showDeleteButton?: boolean;
   showEditAction?: boolean;
   showDeleteAction?: boolean;
+  resolveItemForEdit?: (item: T) => Promise<Partial<T>>;
 }
 
 export function BaseCRUD<T extends Record<string, any>>({
@@ -48,6 +49,7 @@ export function BaseCRUD<T extends Record<string, any>>({
   showDeleteButton = true,
   showEditAction = true,
   showDeleteAction = true,
+  resolveItemForEdit,
 }: BaseCRUDProps<T>) {
   const [item, setItem] = useState<Partial<T>>(initialItem);
   const [showDialog, setShowDialog] = useState(false);
@@ -77,6 +79,22 @@ export function BaseCRUD<T extends Record<string, any>>({
   const editItem = (itemToEdit: T) => {
     setItem({ ...itemToEdit });
     setShowDialog(true);
+  };
+
+  const handleEdit = async (rowData: T) => {
+    if (resolveItemForEdit) {
+      try {
+        const resolved = await resolveItemForEdit(rowData);
+        setItem({ ...resolved });
+        setShowDialog(true);
+        return;
+      } catch {}
+    }
+    if (onEdit) {
+      onEdit(rowData);
+    } else {
+      editItem(rowData);
+    }
   };
 
   const confirmDelete = (itemToDelete: T) => {
@@ -141,7 +159,7 @@ export function BaseCRUD<T extends Record<string, any>>({
           <button 
             onClick={(e) => {
               e.stopPropagation();
-              onEdit ? onEdit(rowData) : editItem(rowData);
+              handleEdit(rowData);
             }} 
             className="btn btn-sm btn-link p-0 text-primary"
             title="Editar"

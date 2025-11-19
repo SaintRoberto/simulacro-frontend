@@ -1,0 +1,13 @@
+/* Iconos simples por background-image */
+.icon {
+  display: inline-block;
+  width: 1.25rem; /* 20px por defecto */
+  height: 1.25rem;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+.icon-terremoto { background-image: url('../assets/earthquake.svg'); }
+.icon-lluvia    { background-image: url('../assets/rains.svg'); }
+.icon-volcan    { background-image: url('../assets/volcano.svg'); }

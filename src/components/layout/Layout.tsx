@@ -14,8 +14,11 @@ export const Layout: React.FC = () => {
 
   const { Header, Sider, Content } = AntLayout;
 
-  const { datosLogin, loginResponse } = useAuth();
+  const { datosLogin, loginResponse, selectedEmergenciaId } = useAuth();
   const dispatch = useAppDispatch();
+  const [selectedEmergenciaName, setSelectedEmergenciaName] = useState<string | null>(() => {
+    try { return localStorage.getItem('selectedEmergenciaName'); } catch { return null; }
+  });
   
   // Verificar autenticación al cargar
   useEffect(() => {
@@ -27,6 +30,13 @@ export const Layout: React.FC = () => {
       navigate('/login');
     }
   }, [navigate]);
+
+  // Actualizar el nombre de la emergencia cuando cambie la selección o la ruta
+  useEffect(() => {
+    try {
+      setSelectedEmergenciaName(localStorage.getItem('selectedEmergenciaName'));
+    } catch {}
+  }, [selectedEmergenciaId, location.pathname]);
 
   return (
     <AntLayout style={{ minHeight: '100vh' }}>
@@ -42,6 +52,7 @@ export const Layout: React.FC = () => {
           items={[
             { key: '/', icon: <HomeOutlined />, label: 'Dashboard' },
             { key: '/afectaciones', label: 'Afectaciones' },
+            { key: '/eventos', label: 'Eventos' },
             { key: '/acciones', label: 'Acciones Respuesta' },
             { key: '/actas', label: 'Actas COE' },
             { key: '/recursos', label: 'Recursos Movilizados' },
@@ -58,7 +69,9 @@ export const Layout: React.FC = () => {
         <Header style={{ background: '#fff', padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div className="d-flex align-items-center gap-2">
             <Button type="text" onClick={() => setCollapsed(!collapsed)} icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} />
-            <Typography.Title level={4} style={{ margin: 0 }}>Simulacros COE </Typography.Title>
+            <Typography.Title level={4} style={{ margin: 0 }}>
+              {`Simulacros COE${selectedEmergenciaName ? ' - ' + selectedEmergenciaName : ''}`}
+            </Typography.Title>
           </div>
           <div className="d-flex align-items-center gap-1">
             {datosLogin?.coe_abreviatura && (

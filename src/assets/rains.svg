@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" id="rains">
+  <path fill="#6e92a3" d="M45.83 14.94a12 12 0 0 0-3.28.46 13 13 0 0 0-24.12 4.95 9.5 9.5 0 1 0-2.76 18.59h30.16a12 12 0 1 0 0-24Z"></path>
+  <path fill="#5e818e" d="M55.44 34.1a12 12 0 0 0-12.89-18.7A13 13 0 0 0 24 11.21c5.66-.52 10.59.14 14.24 6.43 0 0 18.17.29 17.2 16.46Z"></path>
+  <path fill="none" stroke="#5e818e" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m16.97 43.56-4 11.5M23.71 43.56l-4 11.5M30.46 43.56l-4 11.5M37.2 43.56l-4 11.5M43.94 43.56l-4 11.5M50.68 43.56l-4 11.5"></path>
+  <path fill="none" d="M0 0h64v64H0z"></path>
+</svg>
