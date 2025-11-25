@@ -6,6 +6,7 @@ import { useAppDispatch } from '../../store/hooks';
 import { useAuth } from '../../context/AuthContext';
 import { NotificationWatcher } from './NotificationWatcher';
 import { NotificationsBell } from './NotificationsBell';
+import logo from '../../assets/logo.png';
 
 export const Layout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
@@ -14,7 +15,10 @@ export const Layout: React.FC = () => {
 
   const { Header, Sider, Content } = AntLayout;
 
-  const { datosLogin, loginResponse, selectedEmergenciaId } = useAuth();
+  const { datosLogin, loginResponse, selectedEmergenciaId, authFetch } = useAuth();
+  const apiBase = process.env.REACT_APP_API_URL || '/api';
+  type MenuItemAPI = { id: number; nombre: string; ruta: string; icono?: string; orden?: number; padre_id?: number };
+  const [menuItems, setMenuItems] = useState<MenuItemAPI[] | null>(null);
   const dispatch = useAppDispatch();
   const [selectedEmergenciaName, setSelectedEmergenciaName] = useState<string | null>(() => {
     try { return localStorage.getItem('selectedEmergenciaName'); } catch { return null; }
@@ -38,31 +42,77 @@ export const Layout: React.FC = () => {
     } catch {}
   }, [selectedEmergenciaId, location.pathname]);
 
+  // Cargar menú dinámico según perfil/coe/mesa
+  useEffect(() => {
+    const loadMenu = async () => {
+      const perfilId = datosLogin?.perfil_id;
+      const coeId = datosLogin?.coe_id;
+      const mesaId = datosLogin?.mesa_id;
+      if (!perfilId || !coeId || !mesaId) { setMenuItems(null); return; }
+      try {
+        const url = `${apiBase}/menus/perfil/${perfilId}/coe/${coeId}/mesa/${mesaId}`;
+        const res = await authFetch(url, { headers: { accept: 'application/json' } });
+        const data = res.ok ? await res.json() : [];
+        setMenuItems(Array.isArray(data) ? data : []);
+      } catch {
+        setMenuItems(null);
+      }
+    };
+    loadMenu();
+  }, [datosLogin?.perfil_id, datosLogin?.coe_id, datosLogin?.mesa_id, apiBase, authFetch]);
+
   return (
     <AntLayout style={{ minHeight: '100vh' }}>
       {/* Global notifications watcher */}
       <NotificationWatcher intervalMs={5000} />
-      <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed} style={{ width: '210px' }}>
-        <div style={{ height: 48, margin: 16, color: '#fff', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>SNGRE</div>
+      <Sider width={216} collapsedWidth={60} collapsible collapsed={collapsed} onCollapse={setCollapsed} style={{ width: '260px' }}>
+        <div style={{ height: 48, margin: 16, color: '#fff', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>
+          <img src={logo} alt="Logo" style={{ width: 100, height: 45 }} />
+        </div>
         <Menu
           theme="dark"
           mode="vertical"
           selectedKeys={[location.pathname]}
-          onClick={(e) => navigate(e.key)}
-          items={[
-            { key: '/', icon: <HomeOutlined />, label: 'Dashboard' },
-            { key: '/afectaciones', label: 'Afectaciones' },
-            { key: '/eventos', label: 'Eventos' },
-            { key: '/acciones', label: 'Acciones Respuesta' },
-            { key: '/actas', label: 'Actas COE' },
-            { key: '/recursos', label: 'Recursos Movilizados' },
-            { key: '/brechas', label: 'Brechas' },
-            { key: '/coes', label: 'COEs Activados' },
-            { key: '/entrada-salida', label: 'Entrada / Salida AT' },
-            { key: '/entrega', label: 'Entrega Humanitaria' },
-            { key: '/requerimientos/enviados', label: 'Requerimientos Enviados' },
-            { key: '/requerimientos/recibidos', label: 'Requerimientos Recibidos' },
-          ]}
+          onClick={(e) => {
+            const key = String(e.key);
+            if (key && key !== '#') navigate(key);
+          }}
+          items={(() => {
+            if (menuItems && menuItems.length > 0) {
+              const parents = menuItems
+                .filter(mi => (mi.orden === 0) && (!mi.ruta || mi.ruta === ''))
+                .sort((a,b) => (a.orden ?? 0) - (b.orden ?? 0));
+              const childrenByParent = new Map<number, MenuItemAPI[]>();
+              for (const mi of menuItems) {
+                if (mi.ruta && mi.ruta !== '' && typeof mi.padre_id === 'number') {
+                  const arr = childrenByParent.get(mi.padre_id) || [];
+                  arr.push(mi);
+                  childrenByParent.set(mi.padre_id, arr);
+                }
+              }
+              const flat: any[] = [];
+              for (const p of parents) {
+                flat.push({ key: `hdr-${p.id}`, label: <span style={{ fontWeight: 600 }}>{p.nombre}</span>, disabled: true });
+                const childs = (childrenByParent.get(p.id) || []).sort((a,b) => (a.orden ?? 0) - (b.orden ?? 0));
+                for (const ch of childs) {
+                  flat.push({ key: ch.ruta!, label: <span style={{ paddingLeft: 16, display: 'inline-block' }}>{ch.nombre}</span> });
+                }
+              }
+              // Items con ruta sin padre válido
+              const orphans = menuItems
+                .filter(mi => mi.ruta && mi.ruta !== '' && (!mi.padre_id || !parents.some(p => p.id === mi.padre_id)))
+                .sort((a,b) => (a.orden ?? 0) - (b.orden ?? 0));
+              for (const mi of orphans) {
+                flat.push({ key: mi.ruta!, label: mi.nombre });
+              }
+              return flat;
+            }
+            return [
+              { key: '/', icon: <HomeOutlined />, label: 'Dashboard' },
+              { key: '/afectaciones', label: 'Afectaciones' },
+              { key: '/eventos', label: 'Eventos' },
+            ];
+          })()}
         />
       </Sider>
       <AntLayout>
