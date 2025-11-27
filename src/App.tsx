@@ -12,7 +12,8 @@ import { NuevoActaCOE } from './pages/actas/NuevoAcataCOE';
 import { RecursosMovilizados } from './pages/recursos/RecursosMovilizados';
 import { Brechas } from './pages/brechas/Brechas';
 import { CoesActivados } from './pages/coes/CoesActivados';
-import { EntradaSalidaAT } from './pages/entrada-salida/EntradaSalidaAT';
+import { EntradaSalidaAT } from './pages/alojamientos/EntradaSalidaAT';
+import { AlojamientosActivados } from './pages/alojamientos/AlojamientosActivados';
 import { EntregaHumanitaria } from './pages/entrega/EntregaHumanitaria';
 import { RequerimientosEnviados } from './pages/requerimientos/enviados/RequerimientosEnviados';
 import { RequerimientosRecibidos } from './pages/requerimientos/recibidos/RequerimientosRecibidos';
@@ -46,7 +47,7 @@ const App: React.FC = () => {
           <Route path="recursos" element={<RecursosMovilizados />} />
           <Route path="brechas" element={<Brechas />} />
           <Route path="coes" element={<CoesActivados />} />
-          <Route path="entrada-salida" element={<EntradaSalidaAT />} />
+          <Route path="entrada-salida" element={<AlojamientosActivados />} />
           <Route path="entrega" element={<EntregaHumanitaria />} />
           <Route path="requerimientos">
             <Route path="enviados" element={<RequerimientosEnviados />} />
@@ -65,3 +66,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+
