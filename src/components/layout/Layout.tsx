@@ -92,10 +92,10 @@ export const Layout: React.FC = () => {
               }
               const flat: any[] = [];
               for (const p of parents) {
-                flat.push({ key: `hdr-${p.id}`, label: <span style={{ fontWeight: 600 }}>{p.nombre}</span>, disabled: true });
+                flat.push({ key: `hdr-${p.id}`, label: <span style={{ fontWeight: 700, color: '#fff' }}>{p.nombre}</span>, disabled: true });
                 const childs = (childrenByParent.get(p.id) || []).sort((a,b) => (a.orden ?? 0) - (b.orden ?? 0));
                 for (const ch of childs) {
-                  flat.push({ key: ch.ruta!, label: <span style={{ paddingLeft: 16, display: 'inline-block' }}>{ch.nombre}</span> });
+                  flat.push({ key: ch.ruta!, label: <span style={{ paddingLeft: 16, display: 'inline-block', color: '#ffffffe7' }}>{ch.nombre}</span> });
                 }
               }
               // Items con ruta sin padre válido
