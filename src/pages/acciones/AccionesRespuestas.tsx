@@ -45,7 +45,7 @@ export const AccionesRespuestas: React.FC = () => {
       const storedUserId = Number(localStorage.getItem('userId') || '0');
       const usuarioId = datosLogin?.usuario_id || storedUserId || 75; // Usar 75 como valor por defecto
       
-      const url = `${apiBase}/respuesta_acciones/usuario/${usuarioId}`;
+      const url = `${apiBase}/acciones_respuesta/usuario/${usuarioId}`;
       const response = await authFetch(url, { 
         headers: { 
           'accept': 'application/json',

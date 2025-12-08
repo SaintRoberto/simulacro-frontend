@@ -64,7 +64,7 @@ export const Layout: React.FC = () => {
   return (
     <AntLayout style={{ minHeight: '100vh' }}>
       {/* Global notifications watcher */}
-      <NotificationWatcher intervalMs={5000} />
+      <NotificationWatcher intervalMs={500000} />
       <Sider width={216} collapsedWidth={60} collapsible collapsed={collapsed} onCollapse={setCollapsed} style={{ width: '260px' }}>
         <div style={{ height: 48, margin: 16, color: '#fff', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>
           <img src={logo} alt="Logo" style={{ width: 100, height: 45 }} />

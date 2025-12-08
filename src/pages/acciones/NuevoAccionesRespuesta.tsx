@@ -94,7 +94,7 @@ export const NuevoAccionesRespuesta: React.FC = () => {
       setIsLoading(true);
 
       // Cargar datos de la acción de respuesta
-      const response = await authFetch(`http://localhost:5000/api/respuesta_acciones/${id}`);
+      const response = await authFetch(`http://localhost:5000/api/acciones_respuesta/${id}`);
 
       if (!response.ok) throw new Error('Error al cargar la acción de respuesta');
 
@@ -132,8 +132,8 @@ export const NuevoAccionesRespuesta: React.FC = () => {
         // Cargar mesas, estados de resolución y estados de respuesta en paralelo
         const [mesasResponse, estadosResponse, respuestaEstadosResponse] = await Promise.all([
           authFetch('http://localhost:5000/api/mesas/coe/3'),
-          authFetch('http://localhost:5000/api/resolucion_estados'),
-          authFetch('http://localhost:5000/api/respuesta_acciones')
+          authFetch('http://localhost:5000/api/acta_coe_resolucion_estados'),
+          authFetch('http://localhost:5000/api/acciones_respuesta')
         ]);
 
         if (mesasResponse.ok) {
@@ -319,7 +319,7 @@ export const NuevoAccionesRespuesta: React.FC = () => {
 
       if (editId) {
         // Actualizar acción existente
-        response = await authFetch(`http://localhost:5000/api/respuesta_acciones/${editId}`, {
+        response = await authFetch(`http://localhost:5000/api/acciones_respuesta/${editId}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -328,7 +328,7 @@ export const NuevoAccionesRespuesta: React.FC = () => {
         });
       } else {
         // Crear nueva acción
-        response = await authFetch('http://localhost:5000/api/respuesta_acciones', {
+        response = await authFetch('http://localhost:5000/api/acciones_respuesta', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

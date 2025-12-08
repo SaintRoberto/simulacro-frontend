@@ -11,6 +11,7 @@ import { InputTextarea } from 'primereact/inputtextarea';
 import { useAuth } from '../../context/AuthContext';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { Tag , Breadcrumb} from 'antd';
+import { MultiSelect } from 'primereact/multiselect';
 
 interface Mesa {
   id: number;
@@ -71,7 +72,8 @@ export const NuevoActaCOE: React.FC = () => {
   // Estados para el diálogo de resolución
   const [showResolucionDialog, setShowResolucionDialog] = useState(false);
   const [resolucionDraft, setResolucionDraft] = useState<Partial<Resolucion>>({
-    mesaAsignadaId: 0,
+    // Para creación múltiple usaremos un arreglo de IDs (solo para el borrador del diálogo)
+    // Al guardar, se crearán múltiples resoluciones, una por cada mesa seleccionada
     detalle: '',
     fechaCumplimiento: new Date(),
     responsable: '',
@@ -92,8 +94,8 @@ export const NuevoActaCOE: React.FC = () => {
       
       // Cargar datos del acta
       const [actaResponse, resolucionesResponse] = await Promise.all([
-        authFetch(`http://localhost:5000/api/coe_actas/${id}`),
-        authFetch(`http://localhost:5000/api/coe_acta_resoluciones/coe_acta/${id}`)
+        authFetch(`http://localhost:5000/api/actas_coe/${id}`),
+        authFetch(`http://localhost:5000/api/acta_coe_resoluciones/acta_coe/${id}`)
       ]);
       
       if (!actaResponse.ok) throw new Error('Error al cargar el acta');
@@ -144,7 +146,7 @@ export const NuevoActaCOE: React.FC = () => {
         // Cargar mesas y estados en paralelo
         const [mesasResponse, estadosResponse] = await Promise.all([
           authFetch('http://localhost:5000/api/mesas/coe/3'),
-          authFetch('http://localhost:5000/api/resolucion_estados')
+          authFetch('http://localhost:5000/api/acta_coe_resolucion_estados')
         ]);
         
         if (mesasResponse.ok) {
@@ -188,7 +190,8 @@ export const NuevoActaCOE: React.FC = () => {
       // Modo edición
       setResolucionDraft({
         id: resolucion.id,
-        mesaAsignadaId: resolucion.mesaAsignadaId,
+        // En edición mantenemos selección única como primer valor del arreglo
+        // Usaremos 'mesaAsignadaIds' solo a nivel lógico del borrador
         detalle: resolucion.detalle,
         fechaCumplimiento: resolucion.fechaCumplimiento || new Date(),
         responsable: resolucion.responsable,
@@ -198,7 +201,6 @@ export const NuevoActaCOE: React.FC = () => {
     } else {
       // Modo nueva resolución
       setResolucionDraft({
-        mesaAsignadaId: 0,
         detalle: '',
         fechaCumplimiento: new Date(),
         responsable: '',
@@ -210,41 +212,59 @@ export const NuevoActaCOE: React.FC = () => {
   };
 
   const guardarResolucion = async () => {
-    if (!resolucionDraft.mesaAsignadaId || !resolucionDraft.detalle || !resolucionDraft.estadoId) {
+    // Obtenemos el arreglo de mesas seleccionadas desde una propiedad temporal del draft
+    const draftAny = resolucionDraft as any;
+    const ids: number[] | undefined = Array.isArray(draftAny.mesaAsignadaIds) ? draftAny.mesaAsignadaIds : undefined;
+    const singleId: number | undefined = typeof draftAny.mesaAsignadaId === 'number' ? draftAny.mesaAsignadaId : undefined;
+    const mesasSeleccionadas: number[] = (ids && ids.length > 0) ? ids : (singleId ? [singleId] : []);
+
+    if (!mesasSeleccionadas.length || !resolucionDraft.detalle || !resolucionDraft.estadoId) {
       alert('Por favor complete todos los campos requeridos');
       return;
     }
 
     try {
       setIsLoading(true);
-      const mesaSeleccionada = mesas.find(m => m.id === resolucionDraft.mesaAsignadaId);
       const estadoSeleccionado = estadosResolucion.find(e => e.id === resolucionDraft.estadoId);
 
-      const nuevaResolucion: Resolucion = {
-        id: resolucionDraft.id || Math.max(0, ...acta.resoluciones.map(r => r.id || 0)) + 1,
-        mesaAsignadaId: resolucionDraft.mesaAsignadaId!,
-        mesaAsignadaNombre: mesaSeleccionada?.nombre || '',
-        detalle: resolucionDraft.detalle || '',
-        fechaCumplimiento: resolucionDraft.fechaCumplimiento || null,
-        responsable: resolucionDraft.responsable || '',
-        estadoId: resolucionDraft.estadoId!,
-        estadoNombre: estadoSeleccionado?.nombre || '',
-        activo: true
-      };
-
-      // Si estamos editando una resolución existente
       if (resolucionDraft.id) {
+        // Edición: tomar el primer elemento
+        const mesaId = mesasSeleccionadas[0];
+        const mesaSeleccionada = mesas.find(m => m.id === mesaId);
+        const nuevaResolucion: Resolucion = {
+          id: resolucionDraft.id || Math.max(0, ...acta.resoluciones.map(r => r.id || 0)) + 1,
+          mesaAsignadaId: mesaId,
+          mesaAsignadaNombre: mesaSeleccionada?.nombre || '',
+          detalle: resolucionDraft.detalle || '',
+          fechaCumplimiento: resolucionDraft.fechaCumplimiento || null,
+          responsable: resolucionDraft.responsable || '',
+          estadoId: resolucionDraft.estadoId!,
+          estadoNombre: estadoSeleccionado?.nombre || '',
+          activo: true
+        };
         setActa(prev => ({
           ...prev,
-          resoluciones: prev.resoluciones.map(r => 
-            r.id === resolucionDraft.id ? nuevaResolucion : r
-          )
+          resoluciones: prev.resoluciones.map(r => r.id === resolucionDraft.id ? nuevaResolucion : r)
         }));
       } else {
-        // Si es una nueva resolución
+        // Creación: agregar una resolución por cada mesa seleccionada
+        const nuevasResoluciones: Resolucion[] = mesasSeleccionadas.map(mesaId => {
+          const mesaSeleccionada = mesas.find(m => m.id === mesaId);
+          return {
+            id: Math.max(0, ...acta.resoluciones.map(r => r.id || 0)) + 1 + Math.floor(Math.random() * 100000),
+            mesaAsignadaId: mesaId,
+            mesaAsignadaNombre: mesaSeleccionada?.nombre || '',
+            detalle: resolucionDraft.detalle || '',
+            fechaCumplimiento: resolucionDraft.fechaCumplimiento || null,
+            responsable: resolucionDraft.responsable || '',
+            estadoId: resolucionDraft.estadoId!,
+            estadoNombre: estadoSeleccionado?.nombre || '',
+            activo: true
+          };
+        });
         setActa(prev => ({
           ...prev,
-          resoluciones: [...prev.resoluciones, nuevaResolucion]
+          resoluciones: [...prev.resoluciones, ...nuevasResoluciones]
         }));
       }
 
@@ -289,7 +309,7 @@ export const NuevoActaCOE: React.FC = () => {
       // 1. Guardar o actualizar el acta
       if (editId) {
         // Modo edición - Actualizar acta existente
-        const actaResponse = await authFetch(`http://localhost:5000/api/coe_actas/${editId}`, {
+        const actaResponse = await authFetch(`http://localhost:5000/api/actas_coe/${editId}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -311,7 +331,7 @@ export const NuevoActaCOE: React.FC = () => {
         actaData = await actaResponse.json();
       } else {
         // Modo creación - Crear nuevo acta
-        const actaResponse = await authFetch('http://localhost:5000/api/coe_actas', {
+        const actaResponse = await authFetch('http://localhost:5000/api/actas_coe', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -337,7 +357,7 @@ export const NuevoActaCOE: React.FC = () => {
       // 2. Para simplificar, primero eliminamos todas las resoluciones existentes
       // y luego creamos las nuevas. Esto evita tener que manejar actualizaciones individuales
       if (editId) {
-        const deleteResponse = await authFetch(`http://localhost:5000/api/coe_acta_resoluciones/coe_acta/${actaId}`, {
+        const deleteResponse = await authFetch(`http://localhost:5000/api/acta_coe_resoluciones/acta_coe/${actaId}`, {
           method: 'DELETE'
         });
         
@@ -347,28 +367,84 @@ export const NuevoActaCOE: React.FC = () => {
         }
       }
 
-      // 3. Crear las nuevas resoluciones
-      for (const resolucion of acta.resoluciones) {
-        const resolucionResponse = await authFetch('http://localhost:5000/api/coe_acta_resoluciones', {
+      // 3. Crear resoluciones agrupando por contenido y luego crear mesas y acciones 1:1
+      const grupos = new Map<string, Resolucion[]>();
+      for (const r of acta.resoluciones) {
+        const key = JSON.stringify({
+          detalle: r.detalle,
+          fechaCumplimiento: r.fechaCumplimiento ? new Date(r.fechaCumplimiento).toISOString() : null,
+          responsable: r.responsable || '',
+          estadoId: r.estadoId
+        });
+        const arr = grupos.get(key) || [];
+        arr.push(r);
+        grupos.set(key, arr);
+      }
+
+      const gruposValores = Array.from(grupos.values());
+      for (let gi = 0; gi < gruposValores.length; gi++) {
+        const resolucionesGrupo = gruposValores[gi];
+        const base = resolucionesGrupo[0];
+        // Crear una sola acta_coe_resolucion por grupo
+        const resolucionResponse = await authFetch('http://localhost:5000/api/acta_coe_resoluciones', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             activo: true,
-            coe_acta_id: actaId,
+            acta_coe_id: actaId,
             creador: acta.creador,
-            detalle: resolucion.detalle,
-            fecha_cumplimiento: resolucion.fechaCumplimiento?.toISOString(),
-            mesa_asignada_id: resolucion.mesaAsignadaId,
-            resolucion_estado_id: resolucion.estadoId,
-            responsable: resolucion.responsable,
+            detalle: base.detalle,
+            fecha_cumplimiento: base.fechaCumplimiento ? new Date(base.fechaCumplimiento).toISOString() : null,
+            acta_coe_resolucion_estado_id: base.estadoId,
+            responsable: base.responsable || ''
           })
         });
-
         if (!resolucionResponse.ok) {
           console.error('Error al guardar resolución:', await resolucionResponse.text());
-          throw new Error(`Error al guardar la resolución para ${resolucion.mesaAsignadaNombre}`);
+          throw new Error('Error al guardar la resolución');
+        }
+        const resolucionCreada = await resolucionResponse.json();
+
+        // Por cada fila (mesa) del grupo, crear acta_coe_resolucion_mesas y su acción 1:1
+        for (const resolucion of resolucionesGrupo) {
+          const resolucionMesaResponse = await authFetch('http://localhost:5000/api/acta_coe_resolucion_mesas', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              acta_coe_resolucion_id: resolucionCreada.id,
+              acta_coe_resolucion_mesa_estado_id: 0,
+              activo: true,
+              creador: acta.creador,
+              fecha_cumplimiento: (resolucion.fechaCumplimiento || new Date()).toISOString(),
+              mesa_id: resolucion.mesaAsignadaId,
+              responsable: resolucion.responsable || ''
+            })
+          });
+          if (!resolucionMesaResponse.ok) {
+            console.error('Error al crear acta_coe_resolucion_mesas:', await resolucionMesaResponse.text());
+            throw new Error('Error al crear la mesa asociada a la resolución');
+          }
+
+          const resolucionMesa = await resolucionMesaResponse.json();
+
+          const accionResponse = await authFetch('http://localhost:5000/api/acciones_respuesta', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              accion_respuesta_estado_id: 0,
+              accion_respuesta_origen_id: 0,
+              activo: true,
+              coe_acta_resolucion_mesa_id: resolucionMesa.id,
+              creador: acta.creador,
+              detalle: base.detalle,
+              fecha_final: (resolucion.fechaCumplimiento || new Date()).toISOString(),
+              usuario_id: acta.usuario_id
+            })
+          });
+          if (!accionResponse.ok) {
+            console.error('Error al crear acción de respuesta:', await accionResponse.text());
+            throw new Error('Error al crear acción de respuesta');
+          }
         }
       }
 
@@ -453,7 +529,19 @@ export const NuevoActaCOE: React.FC = () => {
             responsiveLayout="scroll"
             loading={isLoading}
           >
-            <Column field="mesaAsignadaNombre" header="Mesa Asignada" sortable></Column>
+          
+            <Column 
+              field="mesaAsignadaId" 
+              header="Mesa ID" 
+              sortable
+              body={(row: Resolucion) => row.mesaAsignadaId}
+            ></Column>
+            <Column 
+              field="mesaAsignadaNombre" 
+              header="Mesa Asignada" 
+              sortable
+              body={(row: Resolucion) => `${row.mesaAsignadaNombre} `}
+            ></Column>
             <Column field="detalle" header="Detalle" sortable></Column>
             <Column 
               field="fechaCumplimiento" 
@@ -521,13 +609,21 @@ export const NuevoActaCOE: React.FC = () => {
         <div className="grid p-fluid">
           <div className="field col-12">
             <label>Mesa Asignada *</label>
-            <Dropdown 
-              value={resolucionDraft.mesaAsignadaId || null}
+            <MultiSelect
+              value={(resolucionDraft as any).mesaAsignadaIds || ((resolucionDraft as any).mesaAsignadaId ? [Number((resolucionDraft as any).mesaAsignadaId)] : [])}
               options={mesas.map(m => ({ label: m.nombre, value: m.id }))}
-              onChange={(e) => setResolucionDraft({...resolucionDraft, mesaAsignadaId: e.value})}
-              placeholder="Seleccionar mesa"
+              onChange={(e) => {
+                const ids = Array.isArray(e.value) ? e.value.map((v: any) => Number((v as any))) : [];
+                setResolucionDraft({
+                  ...resolucionDraft,
+                  ...(ids.length > 0 ? ({ mesaAsignadaId: undefined } as any) : {}),
+                  ...( { mesaAsignadaIds: ids } as any )
+                });
+              }}
+              placeholder="Seleccionar mesas"
               className="w-full m-1"
               disabled={isLoading}
+              display="chip"
               filter
             />
           </div>

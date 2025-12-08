@@ -5,7 +5,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useNotifications } from '../../context/NotificationsContext';
 
 // Polls for new requerimientos recibidos for the logged-in user and shows a notification when new ones arrive
-export const NotificationWatcher: React.FC<{ intervalMs?: number }>= ({ intervalMs = 300000 }) => {
+export const NotificationWatcher: React.FC<{ intervalMs?: number }>= ({ intervalMs = 30000000 }) => {
   const { getRequerimientosRecibidosNotificaciones, datosLogin } = useAuth();
   const seenIdsRef = useRef<Set<number>>(new Set());
   const navigate = useNavigate();
