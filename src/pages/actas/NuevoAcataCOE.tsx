@@ -10,13 +10,17 @@ import { Column } from 'primereact/column';
 import { InputTextarea } from 'primereact/inputtextarea';
 import { useAuth } from '../../context/AuthContext';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
-import { Tag , Breadcrumb} from 'antd';
+import { Tag, Breadcrumb } from 'antd';
 import { MultiSelect } from 'primereact/multiselect';
 
 interface Mesa {
   id: number;
   nombre: string;
   siglas: string;
+  grupo_mesa_abreviatura?: string;
+  grupo_mesa_nombre?: string;
+  mesa_nombre?: string;
+  mesa_siglas?: string;
 }
 
 interface EstadoResolucion {
@@ -29,6 +33,7 @@ interface EstadoResolucion {
 interface Resolucion {
   id?: number;
   mesaAsignadaId: number;
+  mesaAsignadaIds?: number[];  // Para soportar múltiples selecciones
   mesaAsignadaNombre: string;
   detalle: string;
   fechaCumplimiento: Date | null;
@@ -36,23 +41,41 @@ interface Resolucion {
   estadoId: number;
   estadoNombre: string;
   activo: boolean;
+  mesas?: Array<{
+    id: number;
+    nombre: string;
+    siglas: string;
+    mesa_abreviatura?: string;
+  }>;
+}
+
+interface EstadoActa {
+  id: number;
+  nombre: string;
+  descripcion: string;
+  activo: boolean;
+  creacion: string;
+  creador: string;
+  modificacion: string;
+  modificador: string;
 }
 
 interface ActaCOE {
   id?: number;
-  descripcion: string;
+  detalle: string;
   fechaHoraSesion: Date | null;
   resoluciones: Resolucion[];
   emergencia_id: number;
   usuario_id: number;
   creador: string;
+  acta_coe_estado_id?: number;
 }
 
 export const NuevoActaCOE: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { authFetch, datosLogin } = useAuth();
-  
+
   const editId = useMemo(() => {
     const idStr = searchParams.get('id');
     const n = idStr ? Number(idStr) : NaN;
@@ -60,17 +83,20 @@ export const NuevoActaCOE: React.FC = () => {
   }, [searchParams]);
 
   // Datos del acta
+  const [estadosActa, setEstadosActa] = useState<EstadoActa[]>([]);
   const [acta, setActa] = useState<ActaCOE>({
-    descripcion: '',
+    detalle: '',
     fechaHoraSesion: new Date(),
     resoluciones: [],
     emergencia_id: 1, // Valor por defecto, ajustar según sea necesario
     usuario_id: datosLogin?.usuario_id || 0,
-    creador: datosLogin?.usuario_login || ''
+    creador: datosLogin?.usuario_login || '',
+    acta_coe_estado_id: undefined
   });
 
   // Estados para el diálogo de resolución
   const [showResolucionDialog, setShowResolucionDialog] = useState(false);
+  const [estadoSeleccionado, setEstadoSeleccionado] = useState<EstadoResolucion | null>(null);
   const [resolucionDraft, setResolucionDraft] = useState<Partial<Resolucion>>({
     // Para creación múltiple usaremos un arreglo de IDs (solo para el borrador del diálogo)
     // Al guardar, se crearán múltiples resoluciones, una por cada mesa seleccionada
@@ -78,6 +104,7 @@ export const NuevoActaCOE: React.FC = () => {
     fechaCumplimiento: new Date(),
     responsable: '',
     estadoId: 0,
+    estadoNombre: '',
     activo: true
   });
   const [mesas, setMesas] = useState<Mesa[]>([]);
@@ -85,80 +112,139 @@ export const NuevoActaCOE: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const isReadOnly = !!editId;
 
+  // Agrupar resoluciones por detalle
+  const resolucionesAgrupadas = useMemo(() => {
+    const grupos = new Map<string, Resolucion[]>();
+
+    // Agrupar por detalle
+    acta.resoluciones.forEach((resolucion) => {
+      const key = resolucion.detalle;
+      if (!grupos.has(key)) {
+        grupos.set(key, []);
+      }
+      grupos.get(key)?.push(resolucion);
+    });
+
+    // Crear un array con una entrada por grupo de resoluciones
+    return Array.from(grupos.entries()).map(([detalle, resoluciones]) => {
+      // Tomar la primera resolución como base
+      const base = resoluciones[0];
+      return {
+        id: base.id, // Usar el ID real de la resolución
+        detalle: detalle,
+        fechaCumplimiento: base.fechaCumplimiento,
+        responsable: base.responsable,
+        estadoId: base.estadoId,
+        estadoNombre: base.estadoNombre,
+        activo: base.activo,
+        // Mantener las mesas como un array para mostrarlas como tags
+        mesas: base.mesas || [],
+        // Mantener referencia a todas las resoluciones originales para acciones
+        resoluciones: resoluciones
+      };
+    });
+  }, [acta.resoluciones]);
+
   // Cargar datos del acta cuando está en modo edición
   const cargarActa = useCallback(async (id: number) => {
     try {
-      if (!id || !mesas.length || !estadosResolucion.length) return;
-      
+      if (!id) return;
       setIsLoading(true);
-      
-      // Cargar datos del acta
-      const [actaResponse, resolucionesResponse] = await Promise.all([
-        authFetch(`http://localhost:5000/api/actas_coe/${id}`),
-        authFetch(`http://localhost:5000/api/acta_coe_resoluciones/acta_coe/${id}`)
-      ]);
-      
+
+      // Get acta data
+      const actaResponse = await authFetch(`http://localhost:5000/api/actas_coe/${id}`);
       if (!actaResponse.ok) throw new Error('Error al cargar el acta');
-      if (!resolucionesResponse.ok) throw new Error('Error al cargar las resoluciones');
-      
       const actaData = await actaResponse.json();
+
+      // Get all resolutions for this acta
+      const resolucionesResponse = await authFetch(`http://localhost:5000/api/acta_coe_resoluciones/acta_coe/${id}`);
+      if (!resolucionesResponse.ok) throw new Error('Error al cargar las resoluciones');
       const resolucionesData = await resolucionesResponse.json();
 
-      // Mapear las resoluciones al formato esperado
-      const resolucionesMapeadas: Resolucion[] = resolucionesData.map((r: any) => ({
-        id: r.id,
-        mesaAsignadaId: r.mesa_asignada_id,
-        mesaAsignadaNombre: mesas.find(m => m.id === r.mesa_asignada_id)?.nombre || '',
-        detalle: r.detalle,
-        fechaCumplimiento: r.fecha_cumplimiento ? new Date(r.fecha_cumplimiento) : null,
-        responsable: r.responsable || '',
-        estadoId: r.resolucion_estado_id,
-        estadoNombre: estadosResolucion.find(e => e.id === r.resolucion_estado_id)?.nombre || '',
-        activo: r.activo
+      // Get mesas for each resolution in parallel
+      const resolucionesConMesas = await Promise.all(resolucionesData.map(async (resolucion: any) => {
+        // Get mesas for this specific resolution
+        const mesasResponse = await authFetch(
+          `http://localhost:5000/api/acta_coe_resolucion_mesas/acta_coe_resolucion/${resolucion.id}`
+        );
+        
+        const mesasData = mesasResponse.ok ? await mesasResponse.json() : [];
+        const mesaIds = mesasData.map((m: any) => m.mesa_id);
+        
+        const mesasCompletas = mesasData.map((m: any) => {
+          const mesa = mesas.find(me => me.id === m.mesa_id);
+          return mesa ? { 
+            id: mesa.id, 
+            nombre: mesa.nombre, 
+            siglas: mesa.siglas,
+            mesa_abreviatura: m.mesa_abreviatura
+          } : null;
+        }).filter(Boolean);
+
+        return {
+          ...resolucion,
+          id: resolucion.id,
+          mesaAsignadaId: mesaIds[0], // For backward compatibility
+          mesaAsignadaIds: mesaIds,
+          mesas: mesasCompletas,
+          fechaCumplimiento: resolucion.fecha_cumplimiento ? new Date(resolucion.fecha_cumplimiento) : null,
+          estadoId: resolucion.acta_coe_resolucion_estado_id,
+          estadoNombre: resolucion.acta_coe_resolucion_estado_nombre || 'Desconocido',
+          responsable: resolucion.responsable || ''
+        };
       }));
 
-      // Actualizar el estado con los datos del acta
+      // Update state with the acta and its resolutions
       setActa({
-        id: actaData.id,
-        descripcion: actaData.descripcion,
-        fechaHoraSesion: new Date(actaData.fecha_sesion),
-        resoluciones: resolucionesMapeadas,
-        emergencia_id: actaData.emergencia_id,
-        usuario_id: actaData.usuario_id,
-        creador: actaData.creador
+        ...actaData,
+        fechaHoraSesion: actaData.fecha_sesion ? new Date(actaData.fecha_sesion) : null,
+        resoluciones: resolucionesConMesas
       });
 
     } catch (error) {
       console.error('Error al cargar el acta:', error);
-      alert('Error al cargar el acta');
-      navigate('/actas');
+      alert(error instanceof Error ? error.message : 'Error al cargar el acta');
     } finally {
       setIsLoading(false);
     }
-  }, [authFetch, navigate, mesas, estadosResolucion]);
+  }, [authFetch, mesas, estadosResolucion]);
 
-  // Cargar mesas y estados una sola vez al montar el componente
+  // Cargar mesas, estados y estados de acta una sola vez al montar el componente
   useEffect(() => {
     const cargarDatosIniciales = async () => {
       try {
         setIsLoading(true);
-        
-        // Cargar mesas y estados en paralelo
-        const [mesasResponse, estadosResponse] = await Promise.all([
+
+        // Cargar mesas, estados de resolución y estados de acta en paralelo
+        const [mesasResponse, estadosResponse, estadosActaResponse] = await Promise.all([
           authFetch('http://localhost:5000/api/mesas/coe/3'),
-          authFetch('http://localhost:5000/api/acta_coe_resolucion_estados')
+          authFetch('http://localhost:5000/api/acta_coe_resolucion_estados'),
+          authFetch('http://localhost:5000/api/acta_coe_estados')
         ]);
-        
+
         if (mesasResponse.ok) {
           const mesasData = await mesasResponse.json();
           setMesas(mesasData);
         }
-        
+
         if (estadosResponse.ok) {
           const estadosData = await estadosResponse.json();
           setEstadosResolucion(estadosData);
         }
-        
+
+        if (estadosActaResponse.ok) {
+          const estadosActaData = await estadosActaResponse.json();
+          setEstadosActa(estadosActaData);
+
+          // Si es un acta nueva, establecer el primer estado como valor por defecto
+          if (estadosActaData.length > 0 && !acta.acta_coe_estado_id) {
+            setActa(prev => ({
+              ...prev,
+              acta_coe_estado_id: estadosActaData[0].id
+            }));
+          }
+        }
+
         // Si es un acta nueva, establecer el usuario actual
         if (datosLogin?.usuario_id && !editId) {
           setActa(prev => ({
@@ -174,16 +260,16 @@ export const NuevoActaCOE: React.FC = () => {
         setIsLoading(false);
       }
     };
-    
+
     cargarDatosIniciales();
   }, [authFetch, datosLogin]);
-  
+
   // Cargar datos del acta cuando el ID de edición cambia y las mesas/estados están cargados
   useEffect(() => {
-    if (editId && mesas.length > 0 && estadosResolucion.length > 0) {
+    if (editId && mesas.length > 0 && estadosResolucion.length > 0 && estadosActa.length > 0) {
       cargarActa(editId);
     }
-  }, [editId, mesas, estadosResolucion]);
+  }, [editId, mesas, estadosResolucion, estadosActa]);
 
   const abrirDialogoResolucion = (resolucion?: Resolucion) => {
     if (resolucion) {
@@ -228,38 +314,57 @@ export const NuevoActaCOE: React.FC = () => {
       const estadoSeleccionado = estadosResolucion.find(e => e.id === resolucionDraft.estadoId);
 
       if (resolucionDraft.id) {
-        // Edición: tomar el primer elemento
+      // Edición: tomar el primer elemento
         const mesaId = mesasSeleccionadas[0];
-        const mesaSeleccionada = mesas.find(m => m.id === mesaId);
+      const mesaSeleccionada = mesas.find(m => m.id === mesaId);
         const nuevaResolucion: Resolucion = {
           id: resolucionDraft.id || Math.max(0, ...acta.resoluciones.map(r => r.id || 0)) + 1,
-          mesaAsignadaId: mesaId,
-          mesaAsignadaNombre: mesaSeleccionada?.nombre || '',
+        mesaAsignadaId: mesaId,
+        mesaAsignadaNombre: mesaSeleccionada?.nombre || '',
           detalle: resolucionDraft.detalle || '',
           fechaCumplimiento: resolucionDraft.fechaCumplimiento || null,
           responsable: resolucionDraft.responsable || '',
           estadoId: resolucionDraft.estadoId!,
           estadoNombre: estadoSeleccionado?.nombre || '',
-          activo: true
-        };
-        setActa(prev => ({
-          ...prev,
+          activo: true,
+          mesas: mesaSeleccionada ? [{
+            id: mesaSeleccionada.id,
+            nombre: mesaSeleccionada.nombre,
+            siglas: mesaSeleccionada.siglas,
+            mesa_abreviatura: mesaSeleccionada.siglas // Usar siglas como abreviatura
+          }] : []
+      };
+      setActa(prev => ({
+        ...prev,
           resoluciones: prev.resoluciones.map(r => r.id === resolucionDraft.id ? nuevaResolucion : r)
-        }));
-      } else {
-        // Creación: agregar una resolución por cada mesa seleccionada
+      }));
+    } else {
+      // Creación: agregar una resolución por cada mesa seleccionada
         const nuevasResoluciones: Resolucion[] = mesasSeleccionadas.map(mesaId => {
           const mesaSeleccionada = mesas.find(m => m.id === mesaId);
           return {
-            id: Math.max(0, ...acta.resoluciones.map(r => r.id || 0)) + 1 + Math.floor(Math.random() * 100000),
+            id: undefined, // El ID será asignado por la base de datos
             mesaAsignadaId: mesaId,
-            mesaAsignadaNombre: mesaSeleccionada?.nombre || '',
+            mesaAsignadaIds: mesasSeleccionadas, // Asegurar que los IDs se guarden
+            mesaAsignadaNombre: mesaSeleccionada?.mesa_nombre || mesaSeleccionada?.nombre || '',
             detalle: resolucionDraft.detalle || '',
             fechaCumplimiento: resolucionDraft.fechaCumplimiento || null,
             responsable: resolucionDraft.responsable || '',
             estadoId: resolucionDraft.estadoId!,
             estadoNombre: estadoSeleccionado?.nombre || '',
-            activo: true
+            activo: true,
+            mesas: mesasSeleccionadas.map(id => {
+              const m = mesas.find(x => x.id === id);
+              return {
+                id: m?.id || 0,
+                nombre: m?.mesa_nombre || m?.nombre || '',
+                siglas: m?.mesa_siglas || m?.siglas || '',
+                grupo_mesa_abreviatura: m?.grupo_mesa_abreviatura || '',
+                grupo_mesa_nombre: m?.grupo_mesa_nombre || m?.nombre || '',
+                mesa_nombre: m?.mesa_nombre || m?.nombre || '',
+                mesa_siglas: m?.mesa_siglas || m?.siglas || ''
+              };
+            })
           };
         });
         setActa(prev => ({
@@ -283,17 +388,17 @@ export const NuevoActaCOE: React.FC = () => {
         ...prev,
         resoluciones: prev.resoluciones.filter(r => r.id !== id)
       }));
-      
+
       // Aquí iría la llamada a la API para eliminar si es necesario
     }
   };
 
-  const guardarActa = async () => {
+ const guardarActa = async () => {
     try {
       setIsLoading(true);
-      
+
       // Validaciones básicas
-      if (!acta.descripcion) {
+      if (!acta.detalle) {
         alert('La descripción es requerida');
         return;
       }
@@ -317,10 +422,11 @@ export const NuevoActaCOE: React.FC = () => {
           body: JSON.stringify({
             activo: true,
             creador: acta.creador,
-            descripcion: acta.descripcion,
+            detalle: acta.detalle,
             emergencia_id: acta.emergencia_id,
             fecha_sesion: acta.fechaHoraSesion?.toISOString(),
             usuario_id: acta.usuario_id,
+            acta_coe_estado_id: acta.acta_coe_estado_id
           })
         });
 
@@ -339,10 +445,11 @@ export const NuevoActaCOE: React.FC = () => {
           body: JSON.stringify({
             activo: true,
             creador: acta.creador,
-            descripcion: acta.descripcion,
+            detalle: acta.detalle,
             emergencia_id: acta.emergencia_id,
             fecha_sesion: acta.fechaHoraSesion?.toISOString(),
             usuario_id: acta.usuario_id,
+            acta_coe_estado_id: acta.acta_coe_estado_id
           })
         });
 
@@ -356,23 +463,25 @@ export const NuevoActaCOE: React.FC = () => {
 
       // 2. Para simplificar, primero eliminamos todas las resoluciones existentes
       // y luego creamos las nuevas. Esto evita tener que manejar actualizaciones individuales
-      if (editId) {
+      if (editId && actaId) {
         const deleteResponse = await authFetch(`http://localhost:5000/api/acta_coe_resoluciones/acta_coe/${actaId}`, {
           method: 'DELETE'
         });
-        
+
         if (!deleteResponse.ok) {
           console.error('Error al limpiar resoluciones anteriores:', await deleteResponse.text());
           // Continuamos de todos modos, ya que podrían no existir resoluciones
         }
       }
 
-      // 3. Crear resoluciones agrupando por contenido y luego crear mesas y acciones 1:1
+      // 3. Crear resoluciones agrupando por contenido y luego crear mesas 1:N
       const grupos = new Map<string, Resolucion[]>();
       for (const r of acta.resoluciones) {
         const key = JSON.stringify({
           detalle: r.detalle,
-          fechaCumplimiento: r.fechaCumplimiento ? new Date(r.fechaCumplimiento).toISOString() : null,
+          fechaCumplimiento: r.fechaCumplimiento
+            ? new Date(r.fechaCumplimiento).toISOString()
+            : null,
           responsable: r.responsable || '',
           estadoId: r.estadoId
         });
@@ -382,9 +491,12 @@ export const NuevoActaCOE: React.FC = () => {
       }
 
       const gruposValores = Array.from(grupos.values());
+
+      // Procesar cada grupo de resoluciones
       for (let gi = 0; gi < gruposValores.length; gi++) {
         const resolucionesGrupo = gruposValores[gi];
         const base = resolucionesGrupo[0];
+        
         // Crear una sola acta_coe_resolucion por grupo
         const resolucionResponse = await authFetch('http://localhost:5000/api/acta_coe_resoluciones', {
           method: 'POST',
@@ -399,6 +511,7 @@ export const NuevoActaCOE: React.FC = () => {
             responsable: base.responsable || ''
           })
         });
+        
         if (!resolucionResponse.ok) {
           console.error('Error al guardar resolución:', await resolucionResponse.text());
           throw new Error('Error al guardar la resolución');
@@ -420,6 +533,7 @@ export const NuevoActaCOE: React.FC = () => {
               responsable: resolucion.responsable || ''
             })
           });
+          
           if (!resolucionMesaResponse.ok) {
             console.error('Error al crear acta_coe_resolucion_mesas:', await resolucionMesaResponse.text());
             throw new Error('Error al crear la mesa asociada a la resolución');
@@ -427,6 +541,7 @@ export const NuevoActaCOE: React.FC = () => {
 
           const resolucionMesa = await resolucionMesaResponse.json();
 
+          // Crear acción de respuesta para cada mesa
           const accionResponse = await authFetch('http://localhost:5000/api/acciones_respuesta', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -441,6 +556,7 @@ export const NuevoActaCOE: React.FC = () => {
               usuario_id: acta.usuario_id
             })
           });
+          
           if (!accionResponse.ok) {
             console.error('Error al crear acción de respuesta:', await accionResponse.text());
             throw new Error('Error al crear acción de respuesta');
@@ -448,15 +564,31 @@ export const NuevoActaCOE: React.FC = () => {
         }
       }
 
-      alert(`Acta ${editId ? 'actualizada' : 'guardada'} exitosamente`);
+      // Si todo salió bien, volvemos al listado
       navigate('/actas');
-      
     } catch (error) {
       console.error('Error al guardar el acta:', error);
       alert(error instanceof Error ? error.message : `Error al ${editId ? 'actualizar' : 'guardar'} el acta`);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | { name?: string; value: any }>) => {
+    const { name, value } = e.target || {};
+    if (!name) return;
+
+    setActa(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleDropdownChange = (e: { value: any }, field: string) => {
+    setActa(prev => ({
+      ...prev,
+      [field]: e.value
+    }));
   };
 
   return (
@@ -470,36 +602,60 @@ export const NuevoActaCOE: React.FC = () => {
           ]}
         />
       </div>
-      
+
       <div className="col-12">
         <Card>
           <div className="mb-3">
             <h3>Datos del Acta COE</h3>
           </div>
-          
+
           <div className="container-fluid">
             <div className="row col-12 pb-2">
               <div className="col-6">
-                <label className="label-uniform">Descripción *</label>
-                <InputTextarea 
-                  value={acta.descripcion} 
-                  onChange={(e) => setActa({...acta, descripcion: e.target.value})} 
-                  className="w-full m-1" 
-                  rows={3}
-                  disabled={isReadOnly} 
-                />
-              </div>
-              
-              <div className="col-6">
                 <label className="label-uniform">Fecha y Hora de Sesión *</label>
-                <Calendar 
-                  value={acta.fechaHoraSesion} 
-                  onChange={(e) => setActa({...acta, fechaHoraSesion: e.value as Date})} 
-                  showIcon 
+                <Calendar
+                  value={acta.fechaHoraSesion}
+                  onChange={(e) => setActa({ ...acta, fechaHoraSesion: e.value as Date })}
+                  showIcon
                   showTime
                   hourFormat="24"
-                  dateFormat="dd/mm/yy" 
-                  className="w-full m-1" 
+                  dateFormat="dd/mm/yy"
+                  className="w-full m-1"
+                  disabled={isReadOnly}
+                />
+              </div>
+
+              <div className="col-6">
+                <label className="label-uniform">Estado de Acta *</label>
+
+                <Dropdown
+                  id="acta_coe_estado_id"
+                  name="acta_coe_estado_id"
+                  value={acta.acta_coe_estado_id}
+                  options={estadosActa.map(estado => ({
+                    label: estado.nombre,
+                    value: estado.id
+                  }))}
+                  onChange={(e) => {
+                    setActa(prev => ({
+                      ...prev,
+                      acta_coe_estado_id: e.value
+                    }));
+                  }}
+                  placeholder="Seleccione un estado"
+                  disabled={isReadOnly}
+                  className="w-full"
+                />
+              </div>
+            </div>
+            <div className="row">
+              <div className="col-12">
+                <label className="label-uniform">Descripción *</label>
+                <InputTextarea
+                  value={acta.detalle}
+                  onChange={(e) => setActa({ ...acta, detalle: e.target.value })}
+                  className="w-full m-1"
+                  rows={3}
                   disabled={isReadOnly}
                 />
               </div>
@@ -513,63 +669,99 @@ export const NuevoActaCOE: React.FC = () => {
           <div className="flex align-items-center justify-content-between mb-3">
             <h3 className="m-0">Resoluciones</h3>
             {!isReadOnly && (
-              <Button 
-                label="Añadir Resolución" 
-                icon="pi pi-plus" 
-                onClick={() => abrirDialogoResolucion()} 
-                className="m-2" 
+              <Button
+                label="Añadir Resolución"
+                icon="pi pi-plus"
+                onClick={() => abrirDialogoResolucion()}
+                className="m-2"
                 disabled={isLoading}
               />
             )}
           </div>
 
-          <DataTable 
-            value={acta.resoluciones} 
-            emptyMessage="No hay resoluciones registradas" 
+          <DataTable
+            value={resolucionesAgrupadas}
+            emptyMessage="No hay resoluciones registradas"
             responsiveLayout="scroll"
             loading={isLoading}
+            dataKey="id"
+            sortMode="single"
           >
-          
-            <Column 
-              field="mesaAsignadaId" 
-              header="Mesa ID" 
+            <Column
+              field="id"
+              header="ID Resolución"
               sortable
-              body={(row: Resolucion) => row.mesaAsignadaId}
+              body={(row: any) => row.id ? `${row.id}` : '-'}
+              style={{ width: '100px' }}
             ></Column>
-            <Column 
-              field="mesaAsignadaNombre" 
-              header="Mesa Asignada" 
+            <Column
+              field="detalle"
+              header="Detalle"
               sortable
-              body={(row: Resolucion) => `${row.mesaAsignadaNombre} `}
+              style={{ minWidth: '250px' }}
             ></Column>
-            <Column field="detalle" header="Detalle" sortable></Column>
-            <Column 
-              field="fechaCumplimiento" 
-              header="Fecha Cumplimiento" 
+            <Column
+              field="fechaCumplimiento"
+              header="Fecha Cumplimiento"
               sortable
-              body={(row: Resolucion) => row.fechaCumplimiento?.toLocaleDateString() || '-'}
+              body={(row: any) => {
+                const date = row.fechaCumplimiento || row.fecha_cumplimiento;
+                if (!date) return '-';
+                // Handle both Date objects and date strings
+                const dateObj = date instanceof Date ? date : new Date(date);
+                return dateObj instanceof Date && !isNaN(dateObj.getTime())
+                  ? dateObj.toLocaleDateString('es-ES', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })
+                  : '-';
+              }}
+              style={{ width: '180px' }}
             ></Column>
-            <Column field="responsable" header="Responsable" sortable></Column>
-            <Column 
-              field="estadoNombre" 
-              header="Estado" 
+            <Column
+              field="mesas"
+              header="Mesas"
+              body={(row: any) => (
+                <div className="flex flex-wrap gap-1">
+                  {row.mesas?.map((mesa: any) => (
+                    <Tag key={mesa.id} color="blue" className="mb-1">
+                      {mesa.grupo_mesa_abreviatura || mesa.grupo_mesa_nombre || mesa.mesa_abreviatura}
+                    </Tag>
+                  ))}
+                </div>
+              )}
+              style={{ minWidth: '250px' }}
+            ></Column>
+            <Column
+              field="responsable"
+              header="Responsable"
               sortable
-              body={(row: Resolucion) => (
+              style={{ width: '150px' }}
+            ></Column>
+            <Column
+              field="estadoNombre"
+              header="Estado"
+              sortable
+              body={(row: any) => (
                 <Tag color={row.activo ? 'blue' : 'red'}>
                   {row.estadoNombre}
                 </Tag>
               )}
+              style={{ width: '120px' }}
             ></Column>
             <Column
               header="Acciones"
-              body={(row: Resolucion) => (
+              body={(row: any) => (
                 <div className="flex gap-2">
                   {!isReadOnly && row.id && (
-                    <Button 
-                      icon="pi pi-trash" 
-                      severity="danger" 
-                      text 
-                      onClick={() => eliminarResolucion(row.id!)} 
+                    <Button
+                      icon="pi pi-trash"
+                      severity="danger"
+                      text
+                      onClick={() => eliminarResolucion(row.id!)}
                       disabled={isLoading}
                     />
                   )}
@@ -580,16 +772,16 @@ export const NuevoActaCOE: React.FC = () => {
           </DataTable>
 
           <div className="flex justify-content-end mt-4">
-            <Button 
-              label="Cancelar" 
-              icon="pi pi-times" 
-              className="p-button-text mr-2" 
+            <Button
+              label="Cancelar"
+              icon="pi pi-times"
+              className="p-button-text mr-2"
               onClick={() => navigate('/actas')}
               disabled={isLoading}
             />
-            <Button 
-              label="Guardar Acta" 
-              icon="pi pi-save" 
+            <Button
+              label="Guardar Acta"
+              icon="pi pi-save"
               onClick={guardarActa}
               loading={isLoading}
               disabled={isLoading}
@@ -610,14 +802,19 @@ export const NuevoActaCOE: React.FC = () => {
           <div className="field col-12">
             <label>Mesa Asignada *</label>
             <MultiSelect
-              value={(resolucionDraft as any).mesaAsignadaIds || ((resolucionDraft as any).mesaAsignadaId ? [Number((resolucionDraft as any).mesaAsignadaId)] : [])}
-              options={mesas.map(m => ({ label: m.nombre, value: m.id }))}
+              value={(resolucionDraft as any).mesaAsignadaIds || []}
+              options={mesas.map(mesa => ({
+                ...mesa,
+                displayName: `${mesa.mesa_nombre} - ${mesa.grupo_mesa_abreviatura}`
+              }))}
+              optionLabel="displayName"
+              optionValue="id"
               onChange={(e) => {
-                const ids = Array.isArray(e.value) ? e.value.map((v: any) => Number((v as any))) : [];
+                const ids = Array.isArray(e.value) ? e.value : [];
                 setResolucionDraft({
                   ...resolucionDraft,
-                  ...(ids.length > 0 ? ({ mesaAsignadaId: undefined } as any) : {}),
-                  ...( { mesaAsignadaIds: ids } as any )
+                  mesaAsignadaId: ids[0], // Mantener compatibilidad con código existente
+                  mesaAsignadaIds: ids    // Actualizar el array de IDs
                 });
               }}
               placeholder="Seleccionar mesas"
@@ -630,9 +827,9 @@ export const NuevoActaCOE: React.FC = () => {
 
           <div className="field col-12">
             <label>Detalle *</label>
-            <InputTextarea 
-              value={resolucionDraft.detalle || ''} 
-              onChange={(e) => setResolucionDraft({...resolucionDraft, detalle: e.target.value})} 
+            <InputTextarea
+              value={resolucionDraft.detalle || ''}
+              onChange={(e) => setResolucionDraft({ ...resolucionDraft, detalle: e.target.value })}
               rows={3}
               className="w-full m-1"
               disabled={isLoading}
@@ -641,11 +838,11 @@ export const NuevoActaCOE: React.FC = () => {
 
           <div className="field col-12 md:col-6">
             <label>Fecha de Cumplimiento</label>
-            <Calendar 
-              value={resolucionDraft.fechaCumplimiento || null} 
-              onChange={(e) => setResolucionDraft({...resolucionDraft, fechaCumplimiento: e.value as Date})} 
-              showIcon 
-              dateFormat="dd/mm/yy" 
+            <Calendar
+              value={resolucionDraft.fechaCumplimiento || null}
+              onChange={(e) => setResolucionDraft({ ...resolucionDraft, fechaCumplimiento: e.value as Date })}
+              showIcon
+              dateFormat="dd/mm/yy"
               className="w-full m-1"
               disabled={isLoading}
             />
@@ -653,9 +850,9 @@ export const NuevoActaCOE: React.FC = () => {
 
           <div className="field col-12 md:6">
             <label>Responsable</label>
-            <InputText 
-              value={resolucionDraft.responsable || ''} 
-              onChange={(e) => setResolucionDraft({...resolucionDraft, responsable: e.target.value})} 
+            <InputText
+              value={resolucionDraft.responsable || ''}
+              onChange={(e) => setResolucionDraft({ ...resolucionDraft, responsable: e.target.value })}
               className="w-full m-1"
               disabled={isLoading}
             />
@@ -663,10 +860,18 @@ export const NuevoActaCOE: React.FC = () => {
 
           <div className="field col-12">
             <label>Estado *</label>
-            <Dropdown 
-              value={resolucionDraft.estadoId || null}
-              options={estadosResolucion.map(e => ({ label: e.nombre, value: e.id }))}
-              onChange={(e) => setResolucionDraft({...resolucionDraft, estadoId: e.value})}
+            <Dropdown
+              value={estadoSeleccionado}
+              options={estadosResolucion}
+              onChange={(e) => {
+                setEstadoSeleccionado(e.value);
+                setResolucionDraft({
+                  ...resolucionDraft,
+                  estadoId: e.value?.id || 0,
+                  estadoNombre: e.value?.nombre || ''
+                });
+              }}
+              optionLabel="nombre"
               placeholder="Seleccionar estado"
               className="w-full m-1"
               disabled={isLoading}
@@ -674,16 +879,16 @@ export const NuevoActaCOE: React.FC = () => {
           </div>
 
           <div className="flex justify-content-end gap-2 mt-4 col-12">
-            <Button 
-              label="Cancelar" 
-              text 
-              onClick={() => setShowResolucionDialog(false)} 
+            <Button
+              label="Cancelar"
+              text
+              onClick={() => setShowResolucionDialog(false)}
               disabled={isLoading}
             />
-            <Button 
-              label="Guardar" 
-              icon="pi pi-check" 
-              onClick={guardarResolucion} 
+            <Button
+              label="Guardar"
+              icon="pi pi-check"
+              onClick={guardarResolucion}
               loading={isLoading}
               disabled={isLoading}
             />
