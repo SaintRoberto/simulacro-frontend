@@ -111,6 +111,7 @@ export const NuevoActaCOE: React.FC = () => {
   const [estadosResolucion, setEstadosResolucion] = useState<EstadoResolucion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const isReadOnly = !!editId;
+  const apiBase = process.env.REACT_APP_API_URL;
 
   // Agrupar resoluciones por detalle
   const resolucionesAgrupadas = useMemo(() => {
@@ -152,12 +153,12 @@ export const NuevoActaCOE: React.FC = () => {
       setIsLoading(true);
 
       // Get acta data
-      const actaResponse = await authFetch(`http://localhost:5000/api/actas_coe/${id}`);
+      const actaResponse = await authFetch(apiBase + `/actas_coe/${id}`);
       if (!actaResponse.ok) throw new Error('Error al cargar el acta');
       const actaData = await actaResponse.json();
 
       // Get all resolutions for this acta
-      const resolucionesResponse = await authFetch(`http://localhost:5000/api/acta_coe_resoluciones/acta_coe/${id}`);
+      const resolucionesResponse = await authFetch(apiBase + `/acta_coe_resoluciones/acta_coe/${id}`);
       if (!resolucionesResponse.ok) throw new Error('Error al cargar las resoluciones');
       const resolucionesData = await resolucionesResponse.json();
 
@@ -165,7 +166,7 @@ export const NuevoActaCOE: React.FC = () => {
       const resolucionesConMesas = await Promise.all(resolucionesData.map(async (resolucion: any) => {
         // Get mesas for this specific resolution
         const mesasResponse = await authFetch(
-          `http://localhost:5000/api/acta_coe_resolucion_mesas/acta_coe_resolucion/${resolucion.id}`
+          apiBase + `/acta_coe_resolucion_mesas/acta_coe_resolucion/${resolucion.id}`
         );
         
         const mesasData = mesasResponse.ok ? await mesasResponse.json() : [];
@@ -217,9 +218,9 @@ export const NuevoActaCOE: React.FC = () => {
 
         // Cargar mesas, estados de resolución y estados de acta en paralelo
         const [mesasResponse, estadosResponse, estadosActaResponse] = await Promise.all([
-          authFetch('http://localhost:5000/api/mesas/coe/3'),
-          authFetch('http://localhost:5000/api/acta_coe_resolucion_estados'),
-          authFetch('http://localhost:5000/api/acta_coe_estados')
+          authFetch(apiBase + '/mesas/coe/3'),
+          authFetch(apiBase + '/acta_coe_resolucion_estados'),
+          authFetch(apiBase + '/acta_coe_estados')
         ]);
 
         if (mesasResponse.ok) {
@@ -414,7 +415,7 @@ export const NuevoActaCOE: React.FC = () => {
       // 1. Guardar o actualizar el acta
       if (editId) {
         // Modo edición - Actualizar acta existente
-        const actaResponse = await authFetch(`http://localhost:5000/api/actas_coe/${editId}`, {
+        const actaResponse = await authFetch(apiBase + `/actas_coe/${editId}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -437,7 +438,7 @@ export const NuevoActaCOE: React.FC = () => {
         actaData = await actaResponse.json();
       } else {
         // Modo creación - Crear nuevo acta
-        const actaResponse = await authFetch('http://localhost:5000/api/actas_coe', {
+        const actaResponse = await authFetch(apiBase + `/actas_coe`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -464,7 +465,7 @@ export const NuevoActaCOE: React.FC = () => {
       // 2. Para simplificar, primero eliminamos todas las resoluciones existentes
       // y luego creamos las nuevas. Esto evita tener que manejar actualizaciones individuales
       if (editId && actaId) {
-        const deleteResponse = await authFetch(`http://localhost:5000/api/acta_coe_resoluciones/acta_coe/${actaId}`, {
+        const deleteResponse = await authFetch(apiBase + `/acta_coe_resoluciones/acta_coe/${actaId}`, {
           method: 'DELETE'
         });
 
@@ -498,7 +499,7 @@ export const NuevoActaCOE: React.FC = () => {
         const base = resolucionesGrupo[0];
         
         // Crear una sola acta_coe_resolucion por grupo
-        const resolucionResponse = await authFetch('http://localhost:5000/api/acta_coe_resoluciones', {
+        const resolucionResponse = await authFetch(apiBase + '/acta_coe_resoluciones', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -520,7 +521,7 @@ export const NuevoActaCOE: React.FC = () => {
 
         // Por cada fila (mesa) del grupo, crear acta_coe_resolucion_mesas y su acción 1:1
         for (const resolucion of resolucionesGrupo) {
-          const resolucionMesaResponse = await authFetch('http://localhost:5000/api/acta_coe_resolucion_mesas', {
+          const resolucionMesaResponse = await authFetch(apiBase + '/acta_coe_resolucion_mesas', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -541,19 +542,38 @@ export const NuevoActaCOE: React.FC = () => {
 
           const resolucionMesa = await resolucionMesaResponse.json();
 
-          // Crear acción de respuesta para cada mesa
-          const accionResponse = await authFetch('http://localhost:5000/api/acciones_respuesta', {
+          // Obtener el ID del usuario desde el nuevo endpoint usando los datos del usuario logueado
+          if (!datosLogin) {
+            console.error('No se encontraron los datos del usuario logueado');
+            throw new Error('Error al obtener los datos del usuario');
+          }
+
+          // Obtener el ID del usuario desde el nuevo endpoint
+          const usuarioResponse = await authFetch(
+            `${apiBase}/acta_coe_resolucion_mesas/coe/${datosLogin.coe_id}/provincia/${datosLogin.provincia_id}/canton/${datosLogin.canton_id}/mesa/${resolucion.mesaAsignadaId}`
+          );
+
+          if (!usuarioResponse.ok) {
+            console.error('Error al obtener el usuario de la mesa:', await usuarioResponse.text());
+            throw new Error('Error al obtener el usuario responsable de la mesa');
+          }
+
+          const usuarioData = await usuarioResponse.json();
+          const usuarioId = usuarioData.usuario_id;
+
+          // Crear acción de respuesta para cada mesa con el usuario obtenido
+          const accionResponse = await authFetch(apiBase + '/acciones_respuesta', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              accion_respuesta_estado_id: 0,
-              accion_respuesta_origen_id: 0,
+              accion_respuesta_estado_id: 1,
+              accion_respuesta_origen_id: 1,
               activo: true,
               coe_acta_resolucion_mesa_id: resolucionMesa.id,
               creador: acta.creador,
               detalle: base.detalle,
               fecha_final: (resolucion.fechaCumplimiento || new Date()).toISOString(),
-              usuario_id: acta.usuario_id
+              usuario_id: usuarioId  // Usar el ID de usuario obtenido
             })
           });
           
@@ -633,7 +653,7 @@ export const NuevoActaCOE: React.FC = () => {
                   name="acta_coe_estado_id"
                   value={acta.acta_coe_estado_id}
                   options={estadosActa.map(estado => ({
-                    label: estado.nombre,
+                    label: estado.nombre.toUpperCase(),
                     value: estado.id
                   }))}
                   onChange={(e) => {

@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 
 interface AccionesRespuestasItem {
   respuesta_accion_id: number;
+  coe_acta_resolucion_mesa_id: number;
   detalle: string;
   estado_id: number;
   estado_nombre: string;
@@ -62,6 +63,7 @@ export const AccionesRespuestas: React.FC = () => {
       const data = await response.json();
       const mapped = Array.isArray(data) ? data.map(item => ({
         respuesta_accion_id: item.respuesta_accion_id || 0,
+        coe_acta_resolucion_mesa_id: item.coe_acta_resolucion_mesa_id || 0,
         detalle: item.detalle || '',
         estado_id: item.estado_id || 0,
         estado_nombre: item.estado_nombre || 'Sin estado',
@@ -115,7 +117,7 @@ export const AccionesRespuestas: React.FC = () => {
       headerClassName: 'd-none d-md-table-cell'
     },
     { 
-      field: 'resolucion_id', 
+      field: 'coe_acta_resolucion_mesa_id', 
       header: 'ID Resolución', 
       sortable: true,
       className: 'd-none d-lg-table-cell',
