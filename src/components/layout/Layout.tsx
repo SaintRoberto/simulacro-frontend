@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Layout as AntLayout, Menu, Button, Typography, Tag } from 'antd';
 import { MenuFoldOutlined, MenuUnfoldOutlined, UserOutlined, LogoutOutlined, HomeOutlined } from '@ant-design/icons';
-import { useAppDispatch } from '../../store/hooks';
 import { useAuth } from '../../context/AuthContext';
+import { useMenu, MenuItem } from '../../context/MenuContext';
 import { NotificationWatcher } from './NotificationWatcher';
 import { NotificationsBell } from './NotificationsBell';
 import logo from '../../assets/logo.png';
@@ -15,11 +15,11 @@ export const Layout: React.FC = () => {
 
   const { Header, Sider, Content } = AntLayout;
 
-  const { datosLogin, loginResponse, selectedEmergenciaId, authFetch } = useAuth();
+  const { datosLogin, selectedEmergenciaId, authFetch } = useAuth();
+  const { setMenuItems } = useMenu();
   const apiBase = process.env.REACT_APP_API_URL || '/api';
   type MenuItemAPI = { id: number; nombre: string; ruta: string; icono?: string; orden?: number; padre_id?: number };
-  const [menuItems, setMenuItems] = useState<MenuItemAPI[] | null>(null);
-  const dispatch = useAppDispatch();
+  const [localMenuItems, setLocalMenuItems] = useState<MenuItemAPI[] | null>(null);
   const [selectedEmergenciaName, setSelectedEmergenciaName] = useState<string | null>(() => {
     try { return localStorage.getItem('selectedEmergenciaName'); } catch { return null; }
   });
@@ -53,13 +53,15 @@ export const Layout: React.FC = () => {
         const url = `${apiBase}/menus/perfil/${perfilId}/coe/${coeId}/mesa/${mesaId}`;
         const res = await authFetch(url, { headers: { accept: 'application/json' } });
         const data = res.ok ? await res.json() : [];
-        setMenuItems(Array.isArray(data) ? data : []);
+        const menuItemsArray = Array.isArray(data) ? data : [];
+        setLocalMenuItems(menuItemsArray);
+        setMenuItems(menuItemsArray as MenuItem[]);
       } catch {
         setMenuItems(null);
       }
     };
     loadMenu();
-  }, [datosLogin?.perfil_id, datosLogin?.coe_id, datosLogin?.mesa_id, apiBase, authFetch]);
+  }, [datosLogin?.perfil_id, datosLogin?.coe_id, datosLogin?.mesa_id, apiBase, authFetch, setMenuItems]);
 
   return (
     <AntLayout style={{ minHeight: '100vh' }}>
@@ -78,12 +80,12 @@ export const Layout: React.FC = () => {
             if (key && key !== '#') navigate(key);
           }}
           items={(() => {
-            if (menuItems && menuItems.length > 0) {
-              const parents = menuItems
+            if (localMenuItems && localMenuItems.length > 0) {
+              const parents = localMenuItems
                 .filter(mi => (mi.orden === 0) && (!mi.ruta || mi.ruta === ''))
                 .sort((a,b) => (a.orden ?? 0) - (b.orden ?? 0));
               const childrenByParent = new Map<number, MenuItemAPI[]>();
-              for (const mi of menuItems) {
+              for (const mi of localMenuItems) {
                 if (mi.ruta && mi.ruta !== '' && typeof mi.padre_id === 'number') {
                   const arr = childrenByParent.get(mi.padre_id) || [];
                   arr.push(mi);
@@ -99,7 +101,7 @@ export const Layout: React.FC = () => {
                 }
               }
               // Items con ruta sin padre válido
-              const orphans = menuItems
+              const orphans = localMenuItems
                 .filter(mi => mi.ruta && mi.ruta !== '' && (!mi.padre_id || !parents.some(p => p.id === mi.padre_id)))
                 .sort((a,b) => (a.orden ?? 0) - (b.orden ?? 0));
               for (const mi of orphans) {

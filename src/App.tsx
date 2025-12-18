@@ -6,13 +6,11 @@ import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/auth/Login';
 import { Register } from './pages/auth/Register';
 import { Afectaciones } from './pages/afectaciones/Afectaciones';
-import { AccionesEjecutadas } from './pages/acciones/AccionesEjecutadas';
 import { ActasCOE } from './pages/actas/ActasCOE';
 import { NuevoActaCOE } from './pages/actas/NuevoAcataCOE';
 import { RecursosMovilizados } from './pages/recursos/RecursosMovilizados';
 import { Brechas } from './pages/brechas/Brechas';
 import { CoesActivados } from './pages/coes/CoesActivados';
-import { EntradaSalidaAT } from './pages/alojamientos/EntradaSalidaAT';
 import { AlojamientosActivados } from './pages/alojamientos/AlojamientosActivados';
 import { EntregaHumanitaria } from './pages/entrega/EntregaHumanitaria';
 import { RequerimientosEnviados } from './pages/requerimientos/enviados/RequerimientosEnviados';
@@ -20,6 +18,7 @@ import { RequerimientosRecibidos } from './pages/requerimientos/recibidos/Requer
 import { NuevoRequerimientoEnviado } from './pages/requerimientos/enviados/NuevoRequerimientoEnviado';
 import { NuevoRequerimientoRecibido } from './pages/requerimientos/recibidos/NuevoRequerimientoRecibido'; 
 import { NotificationsProvider } from './context/NotificationsContext';
+import { MenuProvider } from './context/MenuContext';
 import { AccionesRespuestas } from './pages/acciones/AccionesRespuestas';
 import { NuevoAccionesRespuesta } from './pages/acciones/NuevoAccionesRespuesta';
 import EmergencySelection from './pages/EmergencySelection';
@@ -28,7 +27,8 @@ import { Eventos } from './pages/eventos/Eventos';
 const App: React.FC = () => {
   return (
     <NotificationsProvider>
-      <Routes>
+      <MenuProvider>
+        <Routes>
       {/* Auth routes */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
@@ -60,7 +60,8 @@ const App: React.FC = () => {
 
       {/* Fallback: if unknown route, go to login (initial screen) */}
       <Route path="*" element={<Navigate to="/login" replace />} />
-    </Routes>
+        </Routes>
+      </MenuProvider>
     </NotificationsProvider>
   );
 };

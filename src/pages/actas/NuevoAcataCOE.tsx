@@ -507,7 +507,7 @@ export const NuevoActaCOE: React.FC = () => {
             acta_coe_id: actaId,
             creador: acta.creador,
             detalle: base.detalle,
-            fecha_cumplimiento: base.fechaCumplimiento ? new Date(base.fechaCumplimiento).toISOString() : null,
+            fecha_cumplimiento: base.fechaCumplimiento ? new Date(base.fechaCumplimiento).toISOString().replace('Z', '+00:00') : null,
             acta_coe_resolucion_estado_id: base.estadoId,
             responsable: base.responsable || ''
           })
@@ -529,7 +529,7 @@ export const NuevoActaCOE: React.FC = () => {
               acta_coe_resolucion_mesa_estado_id: 0,
               activo: true,
               creador: acta.creador,
-              fecha_cumplimiento: (resolucion.fechaCumplimiento || new Date()).toISOString(),
+              fecha_cumplimiento: (resolucion.fechaCumplimiento || new Date()).toISOString().replace('Z', '+00:00'),
               mesa_id: resolucion.mesaAsignadaId,
               responsable: resolucion.responsable || ''
             })
