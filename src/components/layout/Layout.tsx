@@ -48,7 +48,11 @@ export const Layout: React.FC = () => {
       const perfilId = datosLogin?.perfil_id;
       const coeId = datosLogin?.coe_id;
       const mesaId = datosLogin?.mesa_id;
-      if (!perfilId || !coeId || !mesaId) { setMenuItems(null); return; }
+      // Verificar que existan (permitir 0 como valor válido)
+      if (perfilId == null || coeId == null || mesaId == null) { 
+        setMenuItems(null); 
+        return; 
+      }
       try {
         const url = `${apiBase}/menus/perfil/${perfilId}/coe/${coeId}/mesa/${mesaId}`;
         const res = await authFetch(url, { headers: { accept: 'application/json' } });

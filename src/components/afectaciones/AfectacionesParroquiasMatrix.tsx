@@ -134,8 +134,12 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
   // Initialize selectors from login
   useEffect(() => {
     if (datosLogin) {
-      if (provinciaId === undefined) setProvinciaId(datosLogin.provincia_id);
-      if (cantonSelId === undefined) setCantonSelId(datosLogin.canton_id);
+      // Si hay provincia_id, preseleccionarla
+      if (datosLogin.provincia_id && provinciaId === undefined) {
+        setProvinciaId(datosLogin.provincia_id);
+      }
+      // El cantón se establecerá automáticamente después de que se carguen los cantones
+      // (ver el useEffect que observa 'cantones')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [datosLogin?.provincia_id, datosLogin?.canton_id]);
@@ -186,6 +190,18 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
     loadCantones();
     return () => { isMounted = false; };
   }, [provinciaId, apiBase]);
+
+  // Auto-select canton from datosLogin once cantones are loaded
+  useEffect(() => {
+    if (datosLogin?.canton_id && provinciaId === datosLogin.provincia_id && cantonSelId === undefined && cantones.length > 0) {
+      // Verify that the canton_id exists in the loaded cantones
+      const cantonExists = cantones.some(c => c.id === datosLogin.canton_id);
+      if (cantonExists) {
+        setCantonSelId(datosLogin.canton_id);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cantones, datosLogin?.canton_id, datosLogin?.provincia_id, provinciaId]);
 
   // When canton changes, load parroquias options
   useEffect(() => {
@@ -378,31 +394,88 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
       commitCell(rowKey, variable.id, { cantidad: typeof cantidad === 'number' ? cantidad : null, costo: typeof costo === 'number' ? costo : null });
     }, [cantidad, costo, rowKey, variable.id]);
 
-    return (
-      <Space size="small" wrap>
-        <InputNumber
-          placeholder="Cant"
-          min={0}
-          value={cantidad ?? null}
-          onChange={(val) => setCantidad(typeof val === 'number' ? val : null)}
-          onBlur={onCommit}
-          onPressEnter={onCommit}
-          style={{ width: 80 }}
+      return (
+        <Space size="small" wrap style={{ display: 'flex', alignItems: 'flex-end' }}>
+          <div style={{ display: 'flex', flexDirection: 'row', gap: 8 }}>
+            {/* Columna CANTIDAD */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <span style={{ fontSize: 12, fontWeight: 500, marginBottom: 2 }}>Cantidad</span>
+              <div style={{ display: 'inline-flex', width: 80, alignItems: 'stretch' }}>
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0 8px',
+                    color: 'rgba(0,0,0,.85)',
+                    fontSize: '14px',
+                    fontWeight: 400,
+                    backgroundColor: '#fafafa',
+                    border: '1px solid #d9d9d9',
+                    borderRadius: '6px 0px 0px 6px',
+                    borderRight: 'none',
+                    height: '32px',
+                    flexShrink: 0,
+                  }}
+                >
+                  #
+                </span>
+                <InputNumber
+                  placeholder="Cant"
+                  min={0}
+                  value={cantidad ?? null}
+                  onChange={(val) => setCantidad(typeof val === 'number' ? val : null)}
+                  onBlur={onCommit}
+                  onPressEnter={onCommit}
+                  style={{ flex: 1, borderTopLeftRadius: 0, borderBottomLeftRadius: 0, minWidth: 0 }}
+                />
+              </div>
+            </div>
+            {/* Columna COSTO */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <span style={{ fontSize: 12, fontWeight: 500, marginBottom: 2 }}>Costo</span>
+              <div style={{ display: 'inline-flex', width: 110, alignItems: 'stretch' }}>
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0 8px',
+                    color: 'rgba(0,0,0,.85)',
+                    fontSize: '14px',
+                    fontWeight: 400,
+                    backgroundColor: '#fafafa',
+                    border: '1px solid #d9d9d9',
+                    borderRadius: '6px 0px 0px 6px',
+                    borderRight: 'none',
+                    height: '32px',
+                    flexShrink: 0,
+                  }}
+                >
+                  $
+                </span>
+                <InputNumber
+                  placeholder="Costo"
+                  min={0}
+                  value={costo ?? null}
+                  onChange={(val) => setCosto(typeof val === 'number' ? val : null)}
+                  onBlur={onCommit}
+                  onPressEnter={onCommit}
+                  style={{ flex: 1, borderTopLeftRadius: 0, borderBottomLeftRadius: 0, minWidth: 0 }}
+                  disabled={!variable.requiere_costo}
+                  
+                />
+              </div>
+            </div>
+          </div>
+        <Button icon={<SettingOutlined />}
+         onClick={() => openDetails(parroquia as Parroquia, variable, rowKey)}
+         hidden={!variable.requiere_gis}
         />
-        <InputNumber
-          placeholder="Costo"
-          min={0}
-          value={costo ?? null}
-          onChange={(val) => setCosto(typeof val === 'number' ? val : null)}
-          onBlur={onCommit}
-          onPressEnter={onCommit}
-          style={{ width: 80 }}
-          disabled={!variable.requiere_costo}
-        />
-        <Button icon={<SettingOutlined />} onClick={() => openDetails(parroquia as Parroquia, variable, rowKey)} />
       </Space>
     );
   });
+
   CellEditor.displayName = 'CellEditor';
 
   const openDetails = (parroquia: Parroquia, variable: AfectacionVariable, rowKey?: string) => {
@@ -557,7 +630,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
       ),
       dataIndex: `var_${v.id}`,
       key: `var_${v.id}`,
-      width: 280,
+      width: 260,
       render: (_: any, r: RowItem) => {
         const rk = `${r.parroquia_id}-${r.evento_id}`;
         return (
@@ -590,6 +663,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
               value={provinciaId}
               onChange={(val) => setProvinciaId(val)}
               allowClear
+              disabled={Boolean(datosLogin && datosLogin.provincia_id)}
               style={{ width: '100%' }}
             />
           </Space>
@@ -603,7 +677,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
               value={cantonSelId}
               onChange={(val) => setCantonSelId(val)}
               allowClear
-              disabled={!provinciaId}
+              disabled={!provinciaId || Boolean(datosLogin && datosLogin.canton_id)}
               style={{ width: '100%' }}
             />
           </Space>

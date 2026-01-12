@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from 'primereact/card';
 import { BaseCRUD } from '../../../components/crud/BaseCRUD';
-import { Progress, Tag } from 'antd';
+import { Progress, Tag, Modal, Button as AntButton } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
  
@@ -32,10 +32,54 @@ interface RequerimientoRecibidoAPI {
   usuario_receptor_id: number;
 }
 
+interface RequerimientoDetalle {
+  activo: boolean;
+  creacion: string;
+  creador: string;
+  emergencia_id: number;
+  fecha_fin: string;
+  fecha_inicio: string;
+  id: number;
+  modificacion: string;
+  modificador: string;
+  porcentaje_avance: number;
+  requerimiento_estado_id: number;
+  usuario_emisor_id: number;
+  usuario_receptor_id: number;
+}
+
+interface RecursoSolicitado {
+  activo: boolean;
+  cantidad: number;
+  creacion: string;
+  creador: string;
+  destino: string;
+  especificaciones: string;
+  id: number;
+  modificacion: string;
+  modificador: string | null;
+  recurso_grupo_id: number;
+  recurso_tipo_id: number;
+  requerimiento_id: number;
+  grupo_nombre?: string;
+  tipo_nombre?: string;
+}
+
 export const RequerimientosRecibidos: React.FC = () => {
   const [requerimientos, setRequerimientos] = useState<RequerimientoRecibido[]>([]);
+  const [showConsultaModal, setShowConsultaModal] = useState(false);
+  const [requerimientoDetalle, setRequerimientoDetalle] = useState<RequerimientoDetalle | null>(null);
+  const [recursosSolicitados, setRecursosSolicitados] = useState<RecursoSolicitado[]>([]);
+  const [loadingDetalle, setLoadingDetalle] = useState(false);
   const navigate = useNavigate();
-  const { getRequerimientosRecibidos, getRequerimientoEstados } = useAuth();
+  const { 
+    getRequerimientosRecibidos, 
+    getRequerimientoEstados, 
+    getRequerimientoById, 
+    getRequerimientoRecursos,
+    getRecursoTiposByGrupo,
+    recursoGrupos
+  } = useAuth();
 
   const loadRequerimientos = useCallback(async () => {
     try {
@@ -87,6 +131,50 @@ export const RequerimientosRecibidos: React.FC = () => {
   const handleDelete = (requerimiento: RequerimientoRecibido) => {
     setRequerimientos((prev) => prev.filter((r) => r.id !== requerimiento.id));
   };
+
+  const handleRead = useCallback(async (item: RequerimientoRecibido) => {
+    try {
+      setLoadingDetalle(true);
+      setShowConsultaModal(true);
+      setRequerimientoDetalle(null);
+      setRecursosSolicitados([]);
+
+      // Cargar detalle del requerimiento
+      const detalle = await getRequerimientoById(item.id);
+      if (detalle) {
+        setRequerimientoDetalle(detalle as any);
+      }
+
+      // Cargar recursos solicitados
+      const recursosApi = await getRequerimientoRecursos(item.id);
+      
+      // Resolver nombres de grupo y tipo para cada recurso
+      const recursosConNombres: RecursoSolicitado[] = [];
+      for (const recurso of recursosApi) {
+        // Obtener nombre del grupo
+        const grupo = recursoGrupos.find(g => g.id === recurso.recurso_grupo_id);
+        let grupoNombre = grupo?.nombre || `Grupo ${recurso.recurso_grupo_id}`;
+        
+        // Obtener nombre del tipo
+        let tipoNombre = '';
+        const tipos = await getRecursoTiposByGrupo(recurso.recurso_grupo_id);
+        const tipo = tipos.find(t => t.id === recurso.recurso_tipo_id);
+        tipoNombre = tipo?.nombre || `Tipo ${recurso.recurso_tipo_id}`;
+
+        recursosConNombres.push({
+          ...recurso,
+          grupo_nombre: grupoNombre,
+          tipo_nombre: tipoNombre
+        });
+      }
+
+      setRecursosSolicitados(recursosConNombres);
+    } catch (error) {
+      console.error('Error cargando detalle del requerimiento:', error);
+    } finally {
+      setLoadingDetalle(false);
+    }
+  }, [getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, recursoGrupos]);
 
   const fechaTemplate = (rowData: RequerimientoRecibido, field: keyof RequerimientoRecibido) => {
     const date = rowData[field] as Date | null | undefined;
@@ -143,30 +231,126 @@ export const RequerimientosRecibidos: React.FC = () => {
     },
   ];
 
+  const formatDateTime = (dateString: string | null): string => {
+    if (!dateString) return '-';
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleString('es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      });
+    } catch {
+      return dateString;
+    }
+  };
+
   return (
-    <Card title="Requerimientos Recibidos">
-      <BaseCRUD<RequerimientoRecibido>
-        title=""
-        items={requerimientos}
-        columns={columns}
-        onEdit={(row) => navigate(`/requerimientos/Recibidos/nuevo?id=${row.id}`)}
-        showCreateButton={false}
-        showDeleteButton={false}
-        showDeleteAction={false}
-        onSave={handleSave}
-        onDelete={handleDelete}
-        initialItem={{
-          id: 0,
-          codigo: '',
-          solicitante: '',
-          destinatario: '',
-          fechaSolicitud: new Date(),
-          fechaCumplimiento: null,
-          porcentajeAvance: 0,
-          estado: 'Solicitado',
+    <>
+      <Card title="Requerimientos Recibidos">
+        <BaseCRUD<RequerimientoRecibido>
+          title=""
+          items={requerimientos}
+          columns={columns}
+          onEdit={(row) => navigate(`/requerimientos/Recibidos/nuevo?id=${row.id}`)}
+          onRead={handleRead}
+          showCreateButton={false}
+          showDeleteButton={false}
+          showDeleteAction={false}
+          onSave={handleSave}
+          onDelete={handleDelete}
+          initialItem={{
+            id: 0,
+            codigo: '',
+            solicitante: '',
+            destinatario: '',
+            fechaSolicitud: new Date(),
+            fechaCumplimiento: null,
+            porcentajeAvance: 0,
+            estado: 'Solicitado',
+          }}
+        />
+      </Card>
+
+      <Modal
+        open={showConsultaModal}
+        title="Detalle del Requerimiento"
+        onCancel={() => {
+          setShowConsultaModal(false);
+          setRequerimientoDetalle(null);
+          setRecursosSolicitados([]);
         }}
-      />
-    </Card>
+        footer={[
+          <AntButton key="close" type="primary" onClick={() => {
+            setShowConsultaModal(false);
+            setRequerimientoDetalle(null);
+            setRecursosSolicitados([]);
+          }}>
+            Cerrar
+          </AntButton>
+        ]}
+        width={900}
+      >
+        {loadingDetalle ? (
+          <div className="text-center py-4">Cargando información...</div>
+        ) : requerimientoDetalle ? (
+          <div>
+            {/* Información del Requerimiento */}
+            <div className="mb-4">
+              <div className="row mb-2">
+                <div className="col-md-3"><strong>Número:</strong></div>
+                <div className="col-md-9">REQ-{requerimientoDetalle.id}</div>
+              </div>
+              <div className="row mb-2">
+                <div className="col-md-3"><strong>Fecha Solicitud:</strong></div>
+                <div className="col-md-9">{formatDateTime(requerimientoDetalle.fecha_inicio)}</div>
+              </div>
+              <div className="row mb-2">
+                <div className="col-md-3"><strong>Fecha Fin:</strong></div>
+                <div className="col-md-9">{formatDateTime(requerimientoDetalle.fecha_fin)}</div>
+              </div>
+            </div>
+
+            {/* Grilla de Recursos Solicitados */}
+            <div className="mt-4">
+              <h5 className="mb-3">Recursos solicitados</h5>
+              {recursosSolicitados.length > 0 ? (
+                <div className="table-responsive">
+                  <table className="table table-bordered table-hover">
+                    <thead className="table-light">
+                      <tr>
+                        <th>Grupo</th>
+                        <th>Tipo</th>
+                        <th>Cantidad</th>
+                        <th>Destino</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recursosSolicitados.map((recurso) => (
+                        <tr key={recurso.id}>
+                          <td>{recurso.grupo_nombre || '-'}</td>
+                          <td>{recurso.tipo_nombre || '-'}</td>
+                          <td>{recurso.cantidad}</td>
+                          <td>{recurso.destino || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-muted">No hay recursos solicitados para este requerimiento.</p>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-4 text-muted">No se pudo cargar la información del requerimiento.</div>
+        )}
+      </Modal>
+    </>
   );
 };
 

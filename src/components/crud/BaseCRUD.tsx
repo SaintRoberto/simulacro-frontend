@@ -93,7 +93,11 @@ export function BaseCRUD<T extends Record<string, any>>({
   // Cargar opciones del menú cada vez que cambia la ruta o el menuId
   useEffect(() => {
     const loadOpciones = async () => {
-      if (!effectiveMenuId || !datosLogin?.perfil_id || !datosLogin?.coe_id || !datosLogin?.mesa_id) {
+      // Verificar que existan (permitir 0 como valor válido para mesa_id)
+      if (!effectiveMenuId || 
+          datosLogin?.perfil_id == null || 
+          datosLogin?.coe_id == null || 
+          datosLogin?.mesa_id == null) {
         setOpciones([]);
         return;
       }
@@ -343,8 +347,8 @@ export function BaseCRUD<T extends Record<string, any>>({
         {canCreate && (
           <Button type="primary" onClick={openNew}>
             Nuevo
-          </Button>
-        )}
+        </Button>
+      )}
       </div>
     );
   };
@@ -457,9 +461,9 @@ export function BaseCRUD<T extends Record<string, any>>({
                     </td>
                   ))}
                   {tieneAcciones && (
-                    <td>
-                      {actionBodyTemplate(item)}
-                    </td>
+                  <td>
+                    {actionBodyTemplate(item)}
+                  </td>
                   )}
                 </tr>
               ))

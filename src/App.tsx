@@ -28,7 +28,7 @@ const App: React.FC = () => {
   return (
     <NotificationsProvider>
       <MenuProvider>
-        <Routes>
+      <Routes>
       {/* Auth routes */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
@@ -60,7 +60,7 @@ const App: React.FC = () => {
 
       {/* Fallback: if unknown route, go to login (initial screen) */}
       <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
+    </Routes>
       </MenuProvider>
     </NotificationsProvider>
   );

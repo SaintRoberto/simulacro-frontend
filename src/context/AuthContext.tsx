@@ -382,7 +382,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadRecursoGrupos = useCallback(async () => {
     setRecursoGruposStatus('loading');
     try {
-      const url = `${apiBase}/recurso-grupos`;
+      const url = `${apiBase}/recurso_grupos`;
       const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
       if (!res.ok) {
         setRecursoGruposStatus('failed');
@@ -447,11 +447,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const getRequerimientosEnviados = useCallback(async (): Promise<RequerimientoEnviado[]> => {
     try {
       const effectiveId = datosLogin?.usuario_id ?? Number(localStorage.getItem('userId') || 'NaN');
+      const perfilId = 3;
+      const coeId = datosLogin?.coe_id ?? 0;
+      const provinciaId = datosLogin?.provincia_id ?? 0;
+      const cantonId = datosLogin?.canton_id ?? 0;
       const userId = Number(effectiveId);
       if (isNaN(userId)) {
         return [];
       }
-      const url = `${apiBase}/requerimientos/enviados/${userId}`;
+      
+      const url = `${apiBase}/requerimientos/enviados/usuario/${userId}/perfil/${perfilId}/coe/${coeId}/provincia/${provinciaId}/canton/${cantonId}`;
       const res = await authFetch(url, { headers: { accept: 'application/json' } });
       if (!res.ok) {
         return [];
@@ -460,16 +465,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       return [];
     }
-  }, [apiBase, authFetch]);
+  }, [apiBase, authFetch, datosLogin?.usuario_id, datosLogin?.perfil_id, datosLogin?.coe_id, datosLogin?.provincia_id, datosLogin?.canton_id]);
 
   const getRequerimientosRecibidos = useCallback(async (): Promise<RequerimientoRecibido[]> => {
     try {
       const effectiveId = datosLogin?.usuario_id ?? Number(localStorage.getItem('userId') || 'NaN');
+      const perfilId = 3;
+      const coeId = datosLogin?.coe_id ?? 0;
+      const provinciaId = datosLogin?.provincia_id ?? 0;
+      const cantonId = datosLogin?.canton_id ?? 0;
       const userId = Number(effectiveId);
       if (isNaN(userId)) {
         return [];
       }
-      const url = `${apiBase}/requerimientos/recibidos/${userId}`;
+      const url = `${apiBase}/requerimientos/recibidos/usuario/${userId}/perfil/${perfilId}/coe/${coeId}/provincia/${provinciaId}/canton/${cantonId}`;
       const res = await authFetch(url, { headers: { accept: 'application/json' } });
       if (!res.ok) {
         return [];
@@ -478,7 +487,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       return [];
     }
-  }, [apiBase, authFetch]);
+  }, [apiBase, authFetch, datosLogin?.usuario_id, datosLogin?.perfil_id, datosLogin?.coe_id, datosLogin?.provincia_id, datosLogin?.canton_id]);
 
   const getRequerimientosRecibidosNotificaciones = useCallback(async (): Promise<RequerimientoRecibidoNotificacion[]> => {
     try {
