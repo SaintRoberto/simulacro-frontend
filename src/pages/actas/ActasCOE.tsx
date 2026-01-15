@@ -10,7 +10,7 @@ interface ActaCOEApi {
   activo: boolean;
   creacion: string;
   creador: string;
-  descripcion: string;
+  detalle: string;
   emergencia_id: number;
   fecha_sesion: string;
   hora_sesion: string;
@@ -22,7 +22,7 @@ interface ActaCOEApi {
 
 interface ActaCOEItem {
   id: number;
-  descripcion: string;
+  detalle: string;
   fechaSesion: string;
   creador: string;
 }
@@ -111,7 +111,7 @@ export const ActasCOE: React.FC = () => {
       const data = (await response.json()) as ActaCOEApi[];
       const mapped = (Array.isArray(data) ? data : []).map<ActaCOEItem>((item) => ({
         id: item.id,
-        descripcion: item.descripcion,
+        detalle: item.detalle,
         fechaSesion: item.fecha_sesion ? formatDate(item.fecha_sesion) : null,
         creador: (item.creador).toUpperCase() || '',
       }));
@@ -194,7 +194,7 @@ export const ActasCOE: React.FC = () => {
 
   const columns = [
     { field: 'id', header: 'ID', sortable: true },
-    { field: 'descripcion', header: 'Descripcion', sortable: true },
+    { field: 'detalle', header: 'Detalle', sortable: true },
     {
       field: 'fechaSesion',
       header: 'Fecha de Sesion',
@@ -245,7 +245,7 @@ export const ActasCOE: React.FC = () => {
           onDelete={handleDelete}
           initialItem={{
             id: 0,
-            descripcion: '',
+            detalle: '',
             fechaSesion: null,
           }}
           emptyMessage={isLoading ? 'Cargando actas...' : 'No existen actas registradas.'}
@@ -305,10 +305,7 @@ export const ActasCOE: React.FC = () => {
                 <div className="col-md-3"><strong>Creador:</strong></div>
                 <div className="col-md-9">{actaDetalle.creador || '-'}</div>
               </div>          
-              <div className="row mb-2">
-                <div className="col-md-3"><strong>Activo:</strong></div>
-                <div className="col-md-9">{actaDetalle.activo ? 'Sí' : 'No'}</div>
-              </div>
+              
             </div>
 
             {/* Grilla de Resoluciones */}
