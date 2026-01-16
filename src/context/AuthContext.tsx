@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 export interface LoginResponse {
   descripcion: string;
@@ -185,6 +185,7 @@ interface AuthContextValue {
   recursoGruposStatus: 'idle' | 'loading' | 'succeeded' | 'failed';
   recursoTipos: RecursoTipo[];
   recursoTiposStatus: 'idle' | 'loading' | 'succeeded' | 'failed';
+  isRestoringSession: boolean;
   login: (usuario: string, clave: string) => Promise<boolean>;
   loadReceptores: () => Promise<void>;
   loadRecursoGrupos: () => Promise<void>;
@@ -215,12 +216,70 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [recursoGruposStatus, setRecursoGruposStatus] = useState<'idle' | 'loading' | 'succeeded' | 'failed'>('idle');
   const [recursoTipos, setRecursoTipos] = useState<RecursoTipo[]>([]);
   const [recursoTiposStatus, setRecursoTiposStatus] = useState<'idle' | 'loading' | 'succeeded' | 'failed'>('idle');
+  const [isRestoringSession, setIsRestoringSession] = useState<boolean>(true);
   const [selectedEmergenciaId, _setSelectedEmergenciaId] = useState<number | null>(() => {
     const v = localStorage.getItem('selectedEmergenciaId');
     return v ? Number(v) : null;
   });
 
   const apiBase = process.env.REACT_APP_API_URL || '/api';
+
+  // Función para restaurar la sesión desde localStorage
+  const restoreSession = useCallback(async () => {
+    setIsRestoringSession(true);
+    const token = localStorage.getItem('token');
+    const userId = localStorage.getItem('userId');
+
+    if (!token || !userId) {
+      setIsRestoringSession(false);
+      return;
+    }
+
+    try {
+      // Obtener datos adicionales del usuario
+      const datosUrl = `${apiBase}/usuarios/${userId}/datos-login`;
+      const resDatos = await fetch(datosUrl, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        }
+      });
+
+      if (resDatos.ok) {
+        const datos = (await resDatos.json()) as DatosLogin;
+        setDatosLogin(datos);
+
+        // Crear un loginResponse básico con la información disponible
+        setLoginResponse({
+          descripcion: datos.usuario_descripcion,
+          id: Number(userId),
+          success: true,
+          token: token,
+          usuario: datos.usuario_login
+        });
+      } else {
+        // Limpiar datos inválidos si la respuesta no es ok
+        localStorage.removeItem('token');
+        localStorage.removeItem('userId');
+        setLoginResponse(null);
+        setDatosLogin(null);
+      }
+    } catch (error) {
+      console.error('Error al restaurar la sesión:', error);
+      // Limpiar datos inválidos
+      localStorage.removeItem('token');
+      localStorage.removeItem('userId');
+      setLoginResponse(null);
+      setDatosLogin(null);
+    } finally {
+      setIsRestoringSession(false);
+    }
+  }, [apiBase]);
+
+  // Restaurar sesión cuando se monta el componente
+  useEffect(() => {
+    restoreSession();
+  }, [restoreSession]);
 
   // Helper to automatically attach JWT token to all requests
   const authFetch = useCallback(
@@ -517,6 +576,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     recursoGruposStatus,
     recursoTipos,
     recursoTiposStatus,
+    isRestoringSession,
     login,
     loadReceptores,
     loadRecursoGrupos,
@@ -537,7 +597,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (id == null) localStorage.removeItem('selectedEmergenciaId');
       else localStorage.setItem('selectedEmergenciaId', String(id));
     }
-  }), [loginResponse, datosLogin, receptores, receptoresStatus, recursoGrupos, recursoGruposStatus, recursoTipos, recursoTiposStatus, login, loadReceptores, loadRecursoGrupos, loadRecursoTipos, createRequerimiento, createRequerimientoRecurso, getRequerimientosEnviados, getRequerimientosRecibidos, getRequerimientoEstados, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, getRequerimientosRecibidosNotificaciones, authFetch, selectedEmergenciaId]);
+  }), [loginResponse, datosLogin, receptores, receptoresStatus, recursoGrupos, recursoGruposStatus, recursoTipos, recursoTiposStatus, isRestoringSession, login, loadReceptores, loadRecursoGrupos, loadRecursoTipos, createRequerimiento, createRequerimientoRecurso, getRequerimientosEnviados, getRequerimientosRecibidos, getRequerimientoEstados, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, getRequerimientosRecibidosNotificaciones, authFetch, selectedEmergenciaId]);
 
   return (
     <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

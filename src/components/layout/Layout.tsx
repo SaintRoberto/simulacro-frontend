@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout as AntLayout, Menu, Button, Typography, Tag } from 'antd';
-import { MenuFoldOutlined, MenuUnfoldOutlined, UserOutlined, LogoutOutlined, HomeOutlined } from '@ant-design/icons';
+import { Layout as AntLayout, Menu, Button, Typography, Tag, Spin } from 'antd';
+import { MenuFoldOutlined, MenuUnfoldOutlined, UserOutlined, LogoutOutlined, HomeOutlined, LoadingOutlined } from '@ant-design/icons';
 import { useAuth } from '../../context/AuthContext';
 import { useMenu, MenuItem } from '../../context/MenuContext';
 import { NotificationWatcher } from './NotificationWatcher';
@@ -15,7 +15,7 @@ export const Layout: React.FC = () => {
 
   const { Header, Sider, Content } = AntLayout;
 
-  const { datosLogin, selectedEmergenciaId, authFetch } = useAuth();
+  const { datosLogin, selectedEmergenciaId, authFetch, isRestoringSession } = useAuth();
   const { setMenuItems } = useMenu();
   const apiBase = process.env.REACT_APP_API_URL || '/api';
   type MenuItemAPI = { id: number; nombre: string; ruta: string; icono?: string; orden?: number; padre_id?: number };
@@ -66,6 +66,26 @@ export const Layout: React.FC = () => {
     };
     loadMenu();
   }, [datosLogin?.perfil_id, datosLogin?.coe_id, datosLogin?.mesa_id, apiBase, authFetch, setMenuItems]);
+
+  // Mostrar loading mientras se restaura la sesión
+  if (isRestoringSession) {
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '100vh',
+        flexDirection: 'column',
+        gap: '16px'
+      }}>
+        <Spin
+          indicator={<LoadingOutlined style={{ fontSize: 24 }} spin />}
+          size="large"
+        />
+        <Typography.Text>Cargando información del usuario...</Typography.Text>
+      </div>
+    );
+  }
 
   return (
     <AntLayout style={{ minHeight: "100vh" }}>
@@ -219,6 +239,7 @@ export const Layout: React.FC = () => {
             <Button
               type="text"
               icon={<LogoutOutlined />}
+              title="Salir"
               onClick={() => {
                 localStorage.removeItem("token");
                 localStorage.removeItem("userId");
