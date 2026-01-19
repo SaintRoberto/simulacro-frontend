@@ -7,6 +7,7 @@ import { InputNumber } from "primereact/inputnumber";
 import { InputSwitch } from "primereact/inputswitch";
 import { BaseCRUD } from "../../components/crud/BaseCRUD";
 import { useAuth } from "../../context/AuthContext";
+import MapSelector from "../../components/map/MapSelector"
 
 interface RecursoMovilizadoListItem {
   recurso_id: number;
@@ -513,6 +514,20 @@ export const RecursosMovilizados: React.FC = () => {
             placeholder="Seleccionar institución"
             filter
             className="w-full"
+          />
+        </div>
+
+        <div>
+          <label>Ubicación en el mapa</label>
+          <MapSelector
+            latitud={item.latitud}
+            longitud={item.longitud}
+            onLocationChange={(lat, lng) => {
+              onChange({ target: { name: "latitud", value: lat } });
+              onChange({ target: { name: "longitud", value: lng } });
+            }}
+            height="200px"
+            placeholder="Buscar dirección, calle, ciudad..."
           />
         </div>
 

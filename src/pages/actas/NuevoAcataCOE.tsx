@@ -132,6 +132,7 @@ export const NuevoActaCOE: React.FC = () => {
       const base = resoluciones[0];
       return {
         id: base.id, // Usar el ID real de la resolución
+        key: base.id || detalle, // Key única para React basada en ID o detalle
         detalle: detalle,
         fechaCumplimiento: base.fechaCumplimiento,
         responsable: base.responsable,
@@ -176,7 +177,7 @@ export const NuevoActaCOE: React.FC = () => {
           const mesa = mesas.find(me => me.id === m.mesa_id);
           return mesa ? { 
             id: mesa.id, 
-            nombre: mesa.nombre, 
+            nombre: mesa.mesa_nombre, 
             siglas: mesa.siglas,
             mesa_abreviatura: m.mesa_abreviatura
           } : null;
@@ -383,11 +384,11 @@ export const NuevoActaCOE: React.FC = () => {
     }
   };
 
-  const eliminarResolucion = (id: number) => {
+  const eliminarResolucion = (detalle: string) => {
     if (window.confirm('¿Está seguro de eliminar esta resolución?')) {
       setActa(prev => ({
         ...prev,
-        resoluciones: prev.resoluciones.filter(r => r.id !== id)
+        resoluciones: prev.resoluciones.filter(r => r.detalle !== detalle)
       }));
 
       // Aquí iría la llamada a la API para eliminar si es necesario
@@ -632,7 +633,7 @@ export const NuevoActaCOE: React.FC = () => {
           <div className="container-fluid">
             <div className="row col-12 pb-2">
               <div className="col-6">
-                <label className="label-uniform">Fecha y Hora de Sesión *</label>
+                <label className="label-uniform">Fecha y Hora de inicio de Sesión *</label>
                 <Calendar
                   value={acta.fechaHoraSesion}
                   onChange={(e) => setActa({ ...acta, fechaHoraSesion: e.value as Date })}
@@ -704,7 +705,6 @@ export const NuevoActaCOE: React.FC = () => {
             emptyMessage="No hay resoluciones registradas"
             responsiveLayout="scroll"
             loading={isLoading}
-            dataKey="id"
             sortMode="single"
           >
             <Column
@@ -748,7 +748,7 @@ export const NuevoActaCOE: React.FC = () => {
                 <div className="flex flex-wrap gap-1">
                   {row.mesas?.map((mesa: any) => (
                     <Tag key={mesa.id} color="blue" className="mb-1">
-                      {mesa.grupo_mesa_abreviatura || mesa.grupo_mesa_nombre || mesa.mesa_abreviatura}
+                      {mesa.nombre || mesa.grupo_mesa_nombre || mesa.siglas}
                     </Tag>
                   ))}
                 </div>
@@ -776,12 +776,12 @@ export const NuevoActaCOE: React.FC = () => {
               header="Acciones"
               body={(row: any) => (
                 <div className="flex gap-2">
-                  {!isReadOnly && row.id && (
+                  {!isReadOnly && (
                     <Button
                       icon="pi pi-trash"
                       severity="danger"
                       text
-                      onClick={() => eliminarResolucion(row.id!)}
+                      onClick={() => eliminarResolucion(row.detalle)}
                       disabled={isLoading}
                     />
                   )}

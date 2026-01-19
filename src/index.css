@@ -23,6 +23,10 @@ code {
   width: 100%;
 }
 
+.h-middle{
+  height: 50%;
+}
+
 .auth-card {
   border: 1px solid #eef1f5;
   box-shadow: 0 8px 24px rgba(16, 24, 40, 0.06);

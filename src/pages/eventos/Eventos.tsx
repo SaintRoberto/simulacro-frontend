@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card } from 'primereact/card';
+import { Dropdown } from 'primereact/dropdown';
 import { BaseCRUD } from '../../components/crud/BaseCRUD';
 import { useAuth } from '../../context/AuthContext';
 import { Select, Checkbox } from 'antd';
+import MapSelector from '../../components/map/MapSelector';
 
 interface EventoItem {
   id?: number;
@@ -309,22 +311,27 @@ export const Eventos: React.FC = () => {
 
   const renderForm = (item: Partial<EventoItem>, onChange: (e: any) => void) => (
     <div className="d-flex flex-column gap-3">
+      {/* Primera fila: Tipo y Subtipo */}
       <div className="row g-3">
         <div className="col-12 col-md-6">
           <label className="form-label">Tipo</label>
-          <Select
-            className="w-100"
-            value={typeof item.evento_tipo_id === 'number' ? Number(item.evento_tipo_id) : undefined}
-            onChange={async (v) => { 
-              await fetchSubtipos(Number(v));
-              onChange({ target: { name: 'evento_tipo_id', value: v } });
+          <Dropdown
+            value={typeof item.evento_tipo_id === 'number' ? Number(item.evento_tipo_id) : null}
+            options={tipos.map(t => ({ value: Number(t.id), label: t.nombre }))}
+            onChange={async (e) => {
+              const value = e.value;
+              await fetchSubtipos(Number(value));
+              onChange({ target: { name: 'evento_tipo_id', value: value } });
               onChange({ target: { name: 'evento_subtipo_id', value: '' } });
             }}
-            options={tipos.map(t => ({ value: Number(t.id), label: t.nombre }))}
             placeholder="Seleccione tipo"
+            filter
+            className="w-full"
+            style={{ height: "50%" }}
+            showClear
           />
         </div>
-          <div className="col-12 col-md-6">
+        <div className="col-12 col-md-6">
           <label className="form-label">Subtipo</label>
           <Select
             className="w-100"
@@ -335,18 +342,23 @@ export const Eventos: React.FC = () => {
             disabled={!item.evento_tipo_id}
           />
         </div>
-        
+      </div>
+
+      {/* Segunda fila: Causa y Estado de atención */}
+      <div className="row g-3">
         <div className="col-12 col-md-6">
           <label className="form-label">Causa</label>
-          <Select
-            className="w-100"
-            value={item.evento_causa_id != null ? Number(item.evento_causa_id) : undefined}
-            onChange={(v) => onChange({ target: { name: 'evento_causa_id', value: v } })}
+          <Dropdown
+            value={item.evento_causa_id != null ? Number(item.evento_causa_id) : null}
             options={causas.map(c => ({ value: Number(c.id), label: c.nombre }))}
+            onChange={(e) => onChange({ target: { name: 'evento_causa_id', value: e.value } })}
             placeholder="Seleccione causa"
+            filter
+            className="w-full"
+            style={{ height: "50%" }}
+            showClear
           />
         </div>
-       
         <div className="col-12 col-md-6">
           <label className="form-label">Estado de atención</label>
           <Select
@@ -357,6 +369,10 @@ export const Eventos: React.FC = () => {
             placeholder="Seleccione estado de atención"
           />
         </div>
+      </div>
+
+      {/* Tercera fila: Origen y Parroquia */}
+      <div className="row g-3">
         <div className="col-12 col-md-6">
           <label className="form-label">Origen</label>
           <Select
@@ -368,7 +384,7 @@ export const Eventos: React.FC = () => {
           />
         </div>
         <div className="col-12 col-md-6">
-          <label className="form-label">Parroquia</label>
+          <label className="form-label">Parroquia Afectada</label>
           <Select
             className="w-100"
             value={item.parroquia_id != null ? Number(item.parroquia_id) : undefined}
@@ -377,7 +393,25 @@ export const Eventos: React.FC = () => {
             placeholder="Seleccione parroquia"
           />
         </div>
-       
+      </div>
+
+      {/* Ubicación - Mapa y coordenadas */}
+      <div>
+        <label className="form-label">Ubicación en el mapa</label>
+        <MapSelector
+          latitud={item.latitud}
+          longitud={item.longitud}
+          onLocationChange={(lat, lng) => {
+            onChange({ target: { name: 'latitud', value: lat } });
+            onChange({ target: { name: 'longitud', value: lng } });
+          }}
+          height="250px"
+          placeholder="Buscar dirección, calle, ciudad..."
+        />
+      </div>
+
+      {/* Coordenadas */}
+      <div className="row g-3">
         <div className="col-12 col-md-6">
           <label className="form-label">Latitud</label>
           <input
@@ -387,6 +421,7 @@ export const Eventos: React.FC = () => {
             className="form-control"
             value={item.latitud ?? ''}
             onChange={(e) => onChange({ target: { name: 'latitud', value: e.target.value === '' ? undefined : Number(e.target.value) } })}
+            placeholder="Se actualizará automáticamente al seleccionar en el mapa"
           />
         </div>
         <div className="col-12 col-md-6">
@@ -398,10 +433,14 @@ export const Eventos: React.FC = () => {
             className="form-control"
             value={item.longitud ?? ''}
             onChange={(e) => onChange({ target: { name: 'longitud', value: e.target.value === '' ? undefined : Number(e.target.value) } })}
+            placeholder="Se actualizará automáticamente al seleccionar en el mapa"
           />
         </div>
+      </div>
 
-         <div className="col-12 col-md-6">
+      {/* Información adicional */}
+      <div className="row g-3">
+        <div className="col-12 col-md-6">
           <label className="form-label">Fecha del evento</label>
           <input
             type="datetime-local"
@@ -410,8 +449,8 @@ export const Eventos: React.FC = () => {
             value={item.evento_fecha ? String(item.evento_fecha).slice(0,16) : ''}
             onChange={onChange}
           />
-        </div>     
-         <div className="col-12 col-md-6 d-flex align-items-end">
+        </div>
+        <div className="col-12 col-md-6 d-flex align-items-end">
           <div className="form-check">
             <Checkbox
               checked={!!item.alto_impacto}
@@ -421,8 +460,9 @@ export const Eventos: React.FC = () => {
             </Checkbox>
           </div>
         </div>
-       
       </div>
+
+      {/* Campos de texto */}
       <div>
         <label className="form-label">Sector</label>
         <input name="sector" className="form-control" value={item.sector || ''} onChange={onChange} />
@@ -433,7 +473,7 @@ export const Eventos: React.FC = () => {
       </div>
       <div>
         <label className="form-label">Descripción</label>
-        <textarea name="descripcion" className="form-control" value={item.descripcion || ''} onChange={onChange} rows={4} />
+        <textarea name="descripcion" className="form-control" value={item.descripcion || ''} onChange={onChange} rows={3} />
       </div>
     </div>
   );
@@ -441,9 +481,9 @@ export const Eventos: React.FC = () => {
   const itemsWithKeys = useMemo(() => items.map((it, idx) => ({ ...it, key: String(it.id ?? `${idx}-${it.evento_fecha ?? ''}-${it.canton ?? ''}`) })), [items]);
 
   return (
-    <Card title="Eventos" className="shadow-sm">
+    <Card title="Eventos adversos" className="shadow-sm">
       <BaseCRUD<EventoItem>
-        title="Evento"
+        title=""
         items={itemsWithKeys}
         columns={columns}
         renderForm={renderForm}
