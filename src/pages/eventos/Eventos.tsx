@@ -161,7 +161,7 @@ export const Eventos: React.FC = () => {
         evento_fecha: item.evento_fecha ?? new Date().toISOString(),
         evento_origen_id: item.evento_origen_id ?? undefined,
         evento_tipo_id: item.evento_tipo_id ?? undefined,
-        evento_subtipo_id: item.evento_subtipo_id ?? undefined,
+        evento_subtipo_id: Number(item.evento_subtipo_id) || 0,
         latitud: item.latitud ?? 0,
         longitud: item.longitud ?? 0,
         modificador: isEdit ? (loginResponse?.usuario ?? '') : undefined,
@@ -322,7 +322,7 @@ export const Eventos: React.FC = () => {
               const value = e.value;
               await fetchSubtipos(Number(value));
               onChange({ target: { name: 'evento_tipo_id', value: value } });
-              onChange({ target: { name: 'evento_subtipo_id', value: '' } });
+              onChange({ target: { name: 'evento_subtipo_id', value: undefined } });
             }}
             placeholder="Seleccione tipo"
             filter

@@ -825,7 +825,7 @@ export const NuevoActaCOE: React.FC = () => {
               value={(resolucionDraft as any).mesaAsignadaIds || []}
               options={mesas.map(mesa => ({
                 ...mesa,
-                displayName: `${mesa.mesa_nombre} - ${mesa.grupo_mesa_abreviatura}`
+                displayName: `${mesa.mesa_nombre}`
               }))}
               optionLabel="displayName"
               optionValue="id"
