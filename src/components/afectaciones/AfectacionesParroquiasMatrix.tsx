@@ -79,7 +79,7 @@ export interface AfectacionesParroquiasMatrixProps {
 }
 
 const buildApiBase = () => process.env.REACT_APP_API_URL || '/api';
-const emergencyId = 1;
+const emergencyId = 4;
 
 export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrixProps> = ({
   apiBase = buildApiBase(),
