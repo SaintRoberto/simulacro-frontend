@@ -62,7 +62,7 @@ export const AccionesRespuestas: React.FC = () => {
 
       const data = await response.json();
       const mapped = Array.isArray(data) ? data.map(item => ({
-        respuesta_accion_id: item.respuesta_accion_id || 0,
+        respuesta_accion_id: item.accion_respuesta_id || 0,
         coe_acta_resolucion_mesa_id: item.coe_acta_resolucion_mesa_id || 0,
         detalle: item.detalle || '',
         estado_id: item.estado_id || 0,
