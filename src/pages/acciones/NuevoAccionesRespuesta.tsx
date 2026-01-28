@@ -125,7 +125,7 @@ export const NuevoAccionesRespuesta: React.FC = () => {
         ...prev,
         detalle: data.detalle || '',
         fecha_final: data.fecha_final ? new Date(data.fecha_final) : new Date(),
-        respuesta_estado_id: data.respuesta_estado_id || 0,
+        respuesta_estado_id: data.accion_respuesta_estado_id || 0,
         emergencia_id: data.emergencia_id || 1,
         usuario_id: data.usuario_id || (datosLogin?.usuario_id || 0),
         creador: data.creador || (datosLogin?.usuario_login || '')
@@ -153,7 +153,7 @@ export const NuevoAccionesRespuesta: React.FC = () => {
         const [mesasResponse, estadosResponse, respuestaEstadosResponse] = await Promise.all([
           authFetch(apiBase + `/mesas/coe/3`),
           authFetch(apiBase + `/acta_coe_resolucion_estados`),
-          authFetch(apiBase + `/acciones_respuesta`)
+          authFetch(apiBase + `/accion_respuesta_estados`)
         ]);
 
         if (mesasResponse.ok) {
@@ -168,19 +168,12 @@ export const NuevoAccionesRespuesta: React.FC = () => {
 
         if (respuestaEstadosResponse.ok) {
           const respuestaEstadosData = await respuestaEstadosResponse.json();
-          // Extraer y formatear los estados de respuesta únicos
-          const estadosUnicos: { id: number, nombre: string }[] = Array.from(
-            new Map(
-              (respuestaEstadosData as any[]).map((item) => [
-                item.respuesta_estado_id,
-                {
-                  id: item.respuesta_estado_id,
-                  nombre: item.estado_nombre || `Estado ${item.respuesta_estado_id}`
-                }
-              ])
-            ).values()
-          );
-          setRespuestaEstados(estadosUnicos);
+          // Formatear los estados de respuesta del endpoint
+          const estadosFormateados: { id: number, nombre: string }[] = (respuestaEstadosData as any[]).map((item) => ({
+            id: item.id,
+            nombre: item.nombre
+          }));
+          setRespuestaEstados(estadosFormateados);
         }
 
         // Si es una acción de respuesta nueva, establecer el usuario actual
@@ -209,6 +202,8 @@ export const NuevoAccionesRespuesta: React.FC = () => {
       cargarActividades(editId);
     } else {
       setActividades([]);
+      cargarAccionRespuesta(0);
+      cargarActividades(0);
     }
   }, [editId, cargarAccionRespuesta]);
 
@@ -424,14 +419,21 @@ export const NuevoAccionesRespuesta: React.FC = () => {
   const guardarActividad = async () => {
     try {
       setIsLoading(true);
+      // Función auxiliar para convertir fecha a formato compatible con Python (sin 'Z')
+      const formatFecha = (fecha: any) => {
+        if (!fecha) return undefined;
+        const d = new Date(fecha);
+        return d.toISOString().replace('Z', '+00:00');
+      };
+
       const payload: any = {
         accion_respuesta_id: editId ?? 0,
         actividad_ejecucion_estado_id: actividadDraft.actividad_ejecucion_estado_id ?? 0,
         actividad_ejecucion_funcion_id: actividadDraft.funcion_id ?? 0,
         creador: datosLogin?.usuario_login ?? '',
         detalle: actividadDraft.detalle ?? '',
-        fecha_final: actividadDraft.fecha_final ? new Date(actividadDraft.fecha_final).toISOString() : undefined,
-        fecha_inicio: actividadDraft.fecha_inicio ? new Date(actividadDraft.fecha_inicio).toISOString() : undefined,
+        fecha_final: formatFecha(actividadDraft.fecha_final),
+        fecha_inicio: formatFecha(actividadDraft.fecha_inicio),
         institucion_ejecutora_id: actividadDraft.institucion_ejecutora_id ?? 0,
         instituciones_apoyo: actividadDraft.instituciones_apoyo ?? '',
         porcentaje_avance_id: actividadDraft.porcentaje_avance_id ?? 0,
@@ -484,18 +486,18 @@ export const NuevoAccionesRespuesta: React.FC = () => {
         creador: accionRespuesta.creador,
         detalle: accionRespuesta.detalle,
         fecha_final: accionRespuesta.fecha_final.toISOString(),
-        respuesta_estado_id: accionRespuesta.respuesta_estado_id,
+        accion_respuesta_estado_id: accionRespuesta.respuesta_estado_id,
         usuario_id: accionRespuesta.usuario_id,
         // Valores por defecto que pueden ser necesarios
         resolucion_id: 0,
-        respuesta_accion_origen_id: 0
+        accion_respuesta_origen_id: 0
       };
 
       let response;
 
       if (editId) {
         // Actualizar acción existente
-        response = await authFetch(apiBase + `/actividades_ejecucion/${editId}`, {
+        response = await authFetch(apiBase + `/acciones_respuesta/${editId}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -504,7 +506,7 @@ export const NuevoAccionesRespuesta: React.FC = () => {
         });
       } else {
         // Crear nueva acción
-        response = await authFetch(apiBase + '/actividades_ejecucion', {
+        response = await authFetch(apiBase + `/acciones_respuesta`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -589,137 +591,133 @@ export const NuevoAccionesRespuesta: React.FC = () => {
                   disabled={isLoading || isReadOnly}
                   filter
                 />
-              </div>
+              </div>              
             </div>
+            {editId === null && (
+              <div className="flex justify-content-end mt-4 gap-2">
+                <Button
+                  label="Cancelar"
+                  icon="pi pi-times"
+                  className="p-button-text"
+                  onClick={() => navigate('/acciones')}
+                  disabled={isLoading}
+                />
+                <Button
+                  label={'Guardar Acción'}
+                  icon="pi pi-save"
+                  onClick={guardarAccion}
+                  loading={isLoading}
+                  disabled={isLoading}
+                />
+              </div>
+            )}
           </div>
         </Card>
       </div>
 
-      <div className="col-12">
-        <Card>
-          <div className="flex align-items-center justify-content-between mb-3">
-            <h3 className="m-0">Actividades de Ejecución</h3>
-            {/* {!isReadOnly && (
-              <Button
-                label="Añadir Actividad"
-                icon="pi pi-plus"
-                onClick={abrirDialogoActividad}
-                className="m-2"
-                disabled={isLoading}
-              />
-            )} */}
-          </div>
-
-          <DataTable
-            value={actividades}
-            emptyMessage={isLoading ? 'Cargando actividades...' : 'No hay actividades registradas'}
-            responsiveLayout="scroll"
-            loading={isLoading}
-            paginator
-            rows={5}
-            rowsPerPageOptions={[5, 10, 25, 50]}
-            paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
-            currentPageReportTemplate="Mostrando {first} a {last} de {totalRecords} actividades"
-          >
-            <Column field="descripcion" header="Descripción" sortable filter filterPlaceholder="Buscar descripción" />
-            <Column field="ejecucion_id" header="ID" className="d-none d-md-table-cell" headerClassName="d-none d-md-table-cell" />
-            <Column field="estado_actividad" header="Estado" sortable filter filterPlaceholder="Buscar estado" />
-            <Column field="fecha_inicio" header="Fecha inicio" body={(row: any) => (row.fecha_inicio ? String(row.fecha_inicio).slice(0,19).replace('T',' ') : '')} />
-            <Column field="fecha_final" header="Fecha final" body={(row: any) => (row.fecha_final ? String(row.fecha_final).slice(0,19).replace('T',' ') : '')} />
-            <Column field="institucion_ejecutora_nombre" header="Institución ejecutora" sortable filter filterPlaceholder="Buscar institución" />
-            <Column field="instituciones_apoyo" header="Instituciones apoyo" />
-            <Column field="porcentaje_avance" header="% Avance" />
-            <Column field="ubicaciones_atendidas" header="Ubicaciones atendidas" />
-            <Column
-              header="Acciones"
-              body={(row: any) => (
-                <div className="flex gap-2">
-                  <Button
-                    icon="pi pi-eye"
-                    text
-                    onClick={() => abrirDialogoActividad(row, true)}
-                    disabled={isLoading}
-                    tooltip="Consultar"
-                    tooltipOptions={{ position: 'top' }}
-                  />
-
-                  <Button
-                    icon="pi pi-pencil"
-                    severity="secondary"
-                    text
-                    onClick={() => abrirDialogoActividad(row, false)}
-                    disabled={isLoading}
-                    tooltip="Modificar"
-                    tooltipOptions={{ position: 'top' }}
-                  />
-                  
-                </div>
-              )}
-              style={{ width: '8rem' }}
-            />
-          </DataTable>
-
-          <Dialog header={actividadDraft.ejecucion_id ? 'Editar Actividad' : 'Actividad'} visible={showActividadDialog} style={{ width: '600px' }} onHide={() => setShowActividadDialog(false)} modal>
-            <div className="p-fluid">
-              <div className="row g-2">
-                <div className="col-12">
-                  <label className="form-label">Actividad</label>
-                  <InputText disabled={isActividadConsulta} value={actividadDraft.descripcion || ''} onChange={(e) => setActividadDraft({ ...actividadDraft, descripcion: e.target.value })} />
-                </div>
-                <div className="col-12">
-                  <label className="form-label">Detalle</label>
-                  <InputTextarea disabled={isActividadConsulta} rows={3} value={actividadDraft.detalle || ''} onChange={(e) => setActividadDraft({ ...actividadDraft, detalle: e.target.value })} />
-                </div>
-                <div className="col-6">
-                  <label className="form-label">Inicio</label>
-                  <Calendar disabled={isActividadConsulta} showIcon showTime hourFormat="24" value={actividadDraft.fecha_inicio} onChange={(e) => setActividadDraft({ ...actividadDraft, fecha_inicio: e.value })} className="w-full" />
-                </div>
-                <div className="col-6">
-                  <label className="form-label">Fin</label>
-                  <Calendar disabled={isActividadConsulta} showIcon showTime hourFormat="24" value={actividadDraft.fecha_final} onChange={(e) => setActividadDraft({ ...actividadDraft, fecha_final: e.value })} className="w-full" />
-                </div>
-                <div className="col-6">
-                  <label className="form-label">% Avance</label>
-                  <Dropdown disabled={isActividadConsulta} value={actividadDraft.porcentaje_avance_id ?? 0} options={[{label:'0',value:0},{label:'25',value:25},{label:'50',value:50},{label:'75',value:75},{label:'100',value:100}]} onChange={(e) => setActividadDraft({ ...actividadDraft, porcentaje_avance_id: e.value })} placeholder="Seleccione %" />
-                </div>
-                <div className="col-6">
-                  <label className="form-label">Institución ejecutora</label>
-                  <Dropdown disabled={isActividadConsulta} showClear value={actividadDraft.institucion_ejecutora_id} filter options={instituciones.map(i=>({label:i.nombre,value:i.id}))} onChange={(e) => setActividadDraft({ ...actividadDraft, institucion_ejecutora_id: e.value })} placeholder="Seleccione institución" />
-                </div>
-                <div className="col-12">
-                  <label className="form-label">Instituciones de apoyo</label>
-                  <InputText disabled={isActividadConsulta} value={actividadDraft.instituciones_apoyo || ''} onChange={(e) => setActividadDraft({ ...actividadDraft, instituciones_apoyo: e.target.value })} />
-                </div>
-                <div className="col-12">
-                  <label className="form-label">Ubicaciones atendidas</label>
-                  <InputText disabled={isActividadConsulta} value={actividadDraft.ubicaciones_atendidas || ''} onChange={(e) => setActividadDraft({ ...actividadDraft, ubicaciones_atendidas: e.target.value })} />
-                </div>
-              </div>
+      {editId && (
+        <div className="col-12">
+          <Card>
+            <div className="flex align-items-center justify-content-between mb-3">
+              <h3 className="m-0">Actividades de Ejecución</h3>
             </div>
-            <div className="flex justify-content-end mt-3 gap-2">
-              <Button label="Cancelar" icon="pi pi-times" className="p-button-text" onClick={() => setShowActividadDialog(false)} />
-              {!isActividadConsulta && <Button label="Guardar" icon="pi pi-save" onClick={async () => { await guardarActividad(); }} loading={isLoading} />}
-            </div>
-          </Dialog>
 
-          <div className="flex justify-content-end mt-4 gap-2">
-            <Button
-              label="Cancelar"
-              icon="pi pi-times"
-              className="p-button-text"
-              onClick={() => navigate('/acciones')}
-              disabled={isLoading}
-            />
-            <Button
-              label={editId ? 'Actualizar Acción' : 'Guardar Acción'}
-              icon="pi pi-save"
-              onClick={guardarAccion}
+            <DataTable
+              value={actividades}
+              emptyMessage={isLoading ? 'Cargando actividades...' : 'No hay actividades registradas'}
+              responsiveLayout="scroll"
               loading={isLoading}
-              disabled={isLoading}
-            />
-          </div>
-        </Card>
-      </div>
+              paginator
+              rows={5}
+              rowsPerPageOptions={[5, 10, 25, 50]}
+              paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
+              currentPageReportTemplate="Mostrando {first} a {last} de {totalRecords} actividades"
+            >
+              <Column field="descripcion" header="Descripción" sortable filter filterPlaceholder="Buscar descripción" />
+              <Column field="ejecucion_id" header="ID" className="d-none d-md-table-cell" headerClassName="d-none d-md-table-cell" />
+              <Column field="estado_actividad" header="Estado" sortable filter filterPlaceholder="Buscar estado" />
+              <Column field="fecha_inicio" header="Fecha inicio" body={(row: any) => (row.fecha_inicio ? String(row.fecha_inicio).slice(0, 19).replace('T', ' ') : '')} />
+              <Column field="fecha_final" header="Fecha final" body={(row: any) => (row.fecha_final ? String(row.fecha_final).slice(0, 19).replace('T', ' ') : '')} />
+              <Column field="institucion_ejecutora_nombre" header="Institución ejecutora" sortable filter filterPlaceholder="Buscar institución" />
+              <Column field="instituciones_apoyo" header="Instituciones apoyo" />
+              <Column field="porcentaje_avance" header="% Avance" />
+              <Column field="ubicaciones_atendidas" header="Ubicaciones atendidas" />
+              <Column
+                header="Acciones"
+                body={(row: any) => (
+                  <div className="flex gap-2">
+                    <Button
+                      icon="pi pi-eye"
+                      text
+                      onClick={() => abrirDialogoActividad(row, true)}
+                      disabled={isLoading || !editId}
+                      tooltip={!editId ? "Guarde la acción primero" : "Consultar"}
+                      tooltipOptions={{ position: 'top' }}
+                    />
+
+                    <Button
+                      icon="pi pi-pencil"
+                      severity="secondary"
+                      text
+                      onClick={() => abrirDialogoActividad(row, false)}
+                      disabled={isLoading || !editId}
+                      tooltip={!editId ? "Guarde la acción primero" : "Modificar"}
+                      tooltipOptions={{ position: 'top' }}
+                    />
+
+                  </div>
+                )}
+                style={{ width: '8rem' }}
+              />
+            </DataTable>
+
+            <Dialog header={actividadDraft.ejecucion_id ? 'Editar Actividad' : 'Actividad'} visible={showActividadDialog} style={{ width: '600px' }} onHide={() => setShowActividadDialog(false)} modal>
+              <div className="p-fluid">
+                <div className="row g-2">
+                  <div className="col-12">
+                    <label className="form-label">Actividad</label>
+                    <InputText disabled={isActividadConsulta} value={actividadDraft.descripcion || ''} onChange={(e) => setActividadDraft({ ...actividadDraft, descripcion: e.target.value })} />
+                  </div>
+                  <div className="col-12">
+                    <label className="form-label">Detalle</label>
+                    <InputTextarea disabled={isActividadConsulta} rows={3} value={actividadDraft.detalle || ''} onChange={(e) => setActividadDraft({ ...actividadDraft, detalle: e.target.value })} />
+                  </div>
+                  <div className="col-6">
+                    <label className="form-label">Inicio</label>
+                    <Calendar disabled={isActividadConsulta} showIcon showTime hourFormat="24" value={actividadDraft.fecha_inicio} onChange={(e) => setActividadDraft({ ...actividadDraft, fecha_inicio: e.value })} className="w-full" />
+                  </div>
+                  <div className="col-6">
+                    <label className="form-label">Fin</label>
+                    <Calendar disabled={isActividadConsulta} showIcon showTime hourFormat="24" value={actividadDraft.fecha_final} onChange={(e) => setActividadDraft({ ...actividadDraft, fecha_final: e.value })} className="w-full" />
+                  </div>
+                  <div className="col-6">
+                    <label className="form-label">% Avance</label>
+                    <Dropdown disabled={isActividadConsulta} value={actividadDraft.porcentaje_avance_id ?? 0} options={[{ label: '0', value: 0 }, { label: '25', value: 25 }, { label: '50', value: 50 }, { label: '75', value: 75 }, { label: '100', value: 100 }]} onChange={(e) => setActividadDraft({ ...actividadDraft, porcentaje_avance_id: e.value })} placeholder="Seleccione %" />
+                  </div>
+                  <div className="col-6">
+                    <label className="form-label">Institución ejecutora</label>
+                    <Dropdown disabled={isActividadConsulta} showClear value={actividadDraft.institucion_ejecutora_id} filter options={instituciones.map(i => ({ label: i.nombre, value: i.id }))} onChange={(e) => setActividadDraft({ ...actividadDraft, institucion_ejecutora_id: e.value })} placeholder="Seleccione institución" />
+                  </div>
+                  <div className="col-12">
+                    <label className="form-label">Instituciones de apoyo</label>
+                    <InputText disabled={isActividadConsulta} value={actividadDraft.instituciones_apoyo || ''} onChange={(e) => setActividadDraft({ ...actividadDraft, instituciones_apoyo: e.target.value })} />
+                  </div>
+                  <div className="col-12">
+                    <label className="form-label">Ubicaciones atendidas</label>
+                    <InputText disabled={isActividadConsulta} value={actividadDraft.ubicaciones_atendidas || ''} onChange={(e) => setActividadDraft({ ...actividadDraft, ubicaciones_atendidas: e.target.value })} />
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-content-end mt-3 gap-2">
+                <Button label="Cancelar" icon="pi pi-times" className="p-button-text" onClick={() => setShowActividadDialog(false)} />
+                {!isActividadConsulta && <Button label="Guardar" icon="pi pi-save" onClick={async () => { await guardarActividad(); }} loading={isLoading} />}
+              </div>
+            </Dialog>
+
+
+          </Card>
+        </div>
+      )}
     </div>
   );
 };

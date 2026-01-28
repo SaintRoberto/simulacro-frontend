@@ -114,6 +114,14 @@ export const RequerimientosEnviados: React.FC = () => {
     loadRequerimientos();
   }, [loadRequerimientos]);
 
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      loadRequerimientos();
+    }, 5000);
+
+    return () => window.clearInterval(intervalId);
+  }, [loadRequerimientos]);
+
   const handleSave = (requerimiento: Partial<RequerimientoEnviado>) => {
     if (requerimiento.id) {
       setRequerimientos((prev) => prev.map((r) => (r.id === requerimiento.id ? (requerimiento as RequerimientoEnviado) : r)));

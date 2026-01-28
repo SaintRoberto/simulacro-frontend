@@ -6,8 +6,10 @@ import { useNotifications } from '../../context/NotificationsContext';
 
 // Polls for new requerimientos recibidos for the logged-in user and shows a notification when new ones arrive
 export const NotificationWatcher: React.FC<{ intervalMs?: number }>= ({ intervalMs = 3000 }) => {
-  const { getRequerimientosRecibidosNotificaciones, datosLogin } = useAuth();
+  const { getRequerimientosEnviados, getRequerimientoEstados, datosLogin } = useAuth();
   const seenIdsRef = useRef<Set<number>>(new Set());
+  const lastSnapshotRef = useRef<Map<number, { estadoId?: number; avance?: number }>>(new Map());
+  const estadosMapRef = useRef<Map<number, string>>(new Map());
   const navigate = useNavigate();
   const location = useLocation();
   const { addNotification } = useNotifications();
@@ -32,9 +34,22 @@ export const NotificationWatcher: React.FC<{ intervalMs?: number }>= ({ interval
     let timer: number | undefined;
     const initializedRef = { current: false } as { current: boolean };
 
+    const loadEstados = async () => {
+      try {
+        const estados = await getRequerimientoEstados();
+        estadosMapRef.current = new Map((estados || []).map((e: any) => [e.id, e.nombre]));
+      } catch {}
+    };
+
+    const getEstadoNombre = (estadoId?: number) => {
+      if (typeof estadoId !== 'number') return 'Solicitado';
+      return estadosMapRef.current.get(estadoId) || `Estado ${estadoId}`;
+    };
+
     const loadInitial = async () => {
       try {
-        const list = await getRequerimientosRecibidosNotificaciones();
+        await loadEstados();
+        const list = await getRequerimientosEnviados();
         if (!isMounted) return;
         // eslint-disable-next-line no-console
         console.log('[NotificationWatcher] initial list size:', Array.isArray(list) ? list.length : 'n/a');
@@ -43,24 +58,18 @@ export const NotificationWatcher: React.FC<{ intervalMs?: number }>= ({ interval
           if (typeof id !== 'number') continue;
           if (!seenIdsRef.current.has(id)) {
             seenIdsRef.current.add(id);
-            const emisor = (r as any).usuario_emisor || (r as any).creador || 'Nuevo requerimiento';
-            // Seed notifications center with current items as UNREAD
-            addNotification({
-              id: `req-${id}`,
-              reqId: id,
-              title: `Requerimiento asignado REQ-${id}`,
-              description: `De: ${emisor}`,
-              from: emisor,
-              read: false,
-            });
           }
+          lastSnapshotRef.current.set(id, {
+            estadoId: (r as any).requerimiento_estado_id,
+            avance: (r as any).porcentaje_avance,
+          });
         }
       } catch {}
     };
 
     const poll = async () => {
       try {
-        const list = await getRequerimientosRecibidosNotificaciones();
+        const list = await getRequerimientosEnviados();
         if (!isMounted) return;
         // eslint-disable-next-line no-console
         console.log('[NotificationWatcher] poll list size:', Array.isArray(list) ? list.length : 'n/a');
@@ -69,26 +78,41 @@ export const NotificationWatcher: React.FC<{ intervalMs?: number }>= ({ interval
           if (typeof id !== 'number') continue;
           if (!seenIdsRef.current.has(id)) {
             seenIdsRef.current.add(id);
-            const emisor = (r as any).usuario_emisor || (r as any).creador || 'Nuevo requerimiento';
-            // Add to in-app notifications center
+            lastSnapshotRef.current.set(id, {
+              estadoId: (r as any).requerimiento_estado_id,
+              avance: (r as any).porcentaje_avance,
+            });
+            continue;
+          }
+
+          const prev = lastSnapshotRef.current.get(id);
+          const nextEstadoId = (r as any).requerimiento_estado_id;
+          const nextAvance = (r as any).porcentaje_avance;
+          const estadoCambio = typeof nextEstadoId === 'number' && nextEstadoId !== prev?.estadoId;
+          const avanceCambio = typeof nextAvance === 'number' && nextAvance !== prev?.avance;
+          if (estadoCambio || avanceCambio) {
+            const nuevoEstado = getEstadoNombre(nextEstadoId);
+            const avanceLabel = typeof nextAvance === 'number' ? `${nextAvance}%` : 'N/A';
             addNotification({
               reqId: id,
-              title: 'Nuevo requerimiento asignado',
-              description: `De: ${emisor}`,
-              from: emisor,
+              title: `Requerimiento actualizado REQ-${id}`,
+              description: `Estado: ${nuevoEstado} • Avance: ${avanceLabel}`,
             });
-            // Show toast using standardized helper
             openNotificationWithIcon(
               'info',
-              'Nuevo requerimiento asignado',
+              `Requerimiento actualizado REQ-${id}`,
               (<>
-                De: {emisor}
+                Estado: {nuevoEstado}
                 <br />
-                Numero de requerimiento: REQ-{id}
+                Avance: {avanceLabel}
               </>),
-              () => navigate(`/requerimientos/recibidos`),
+              () => navigate(`/requerimientos/enviados`),
             );
           }
+          lastSnapshotRef.current.set(id, {
+            estadoId: nextEstadoId,
+            avance: nextAvance,
+          });
         }
       } catch {}
     };

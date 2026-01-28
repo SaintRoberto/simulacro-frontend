@@ -54,7 +54,7 @@ export const Eventos: React.FC = () => {
   const [atencionEstados, setAtencionEstados] = useState<{ id: number; nombre: string }[]>([]);
 
   const load = useCallback(async () => {
-    if (!selectedEmergenciaId || !datosLogin?.provincia_id || !datosLogin?.canton_id) {
+    if (!selectedEmergenciaId || !datosLogin?.provincia_id ) {
       setItems([]);
       return;
     }
@@ -292,8 +292,8 @@ export const Eventos: React.FC = () => {
     { field: 'origen', header: 'Origen', className: 'd-none d-lg-table-cell', headerClassName: 'd-none d-lg-table-cell' },
     { field: 'estado', header: 'Estado' },
     { field: 'sector', header: 'Sector' },
-    { field: 'situacion', header: 'Situación' },
-    { field: 'descripcion', header: 'Descripción', className: 'text-truncate' },
+    { field: 'situacion', header: 'Situación', className: 'w-25' , headerClassName: 'w-25' },
+    { field: 'descripcion', header: 'Descripción', className: 'w-30', headerClassName: 'w-30'},
     { field: 'alto_impacto', header: 'Alto impacto', className: 'd-none d-xl-table-cell', headerClassName: 'd-none d-xl-table-cell' },
     { field: 'latitud', header: 'Latitud', className: 'd-none d-xl-table-cell', headerClassName: 'd-none d-xl-table-cell' },
     { field: 'longitud', header: 'Longitud', className: 'd-none d-xl-table-cell', headerClassName: 'd-none d-xl-table-cell' },

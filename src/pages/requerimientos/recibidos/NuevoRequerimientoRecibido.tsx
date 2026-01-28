@@ -80,7 +80,8 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
 
   const { datosLogin, authFetch, loadReceptores, receptores, receptoresStatus, recursoGrupos, recursoGruposStatus, recursoTipos, recursoTiposStatus, loadRecursoGrupos, loadRecursoTipos, createRequerimiento, createRequerimientoRecurso, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, getRequerimientoEstados } = useAuth();
   const isReadOnly = false; // En respuestas, permitimos edición
-  const apiBase = 'http://localhost:5000/api';
+  const apiBase = process.env.REACT_APP_API_URL;
+
 
   // Respuesta actual (formulario)
   const [fechaRespuesta, setFechaRespuesta] = useState<Date>(new Date());

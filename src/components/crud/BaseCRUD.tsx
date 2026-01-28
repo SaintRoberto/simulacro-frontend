@@ -81,6 +81,8 @@ export function BaseCRUD<T extends Record<string, any>>({
   const [globalFilter, setGlobalFilter] = useState('');
   const [opciones, setOpciones] = useState<Opcion[]>([]);
   const [isReadOnly, setIsReadOnly] = useState(false);
+  const [first, setFirst] = useState(0);
+  const [rows, setRows] = useState(5);
 
   const apiBase = process.env.REACT_APP_API_URL || '/api';
 
@@ -420,8 +422,19 @@ export function BaseCRUD<T extends Record<string, any>>({
     return items.filter((it) => JSON.stringify(it).toLowerCase().includes(q));
   }, [items, globalFilter]);
 
+  // Calcular items paginados
+  const paginatedItems = useMemo(() => {
+    return filteredItems.slice(first, first + rows);
+  }, [filteredItems, first, rows]);
+
   // Determinar si hay acciones disponibles para mostrar la columna
   const tieneAcciones = canRead || canEdit || canDelete;
+
+  // Manejador de cambio de página
+  const onPageChange = (event: any) => {
+    setFirst(event.first);
+    setRows(event.rows);
+  };
 
   return (
     <div className="container-fluid">
@@ -437,7 +450,11 @@ export function BaseCRUD<T extends Record<string, any>>({
           <thead className="table-light">
             <tr>
               {columns.map((col) => (
-                <th key={col.field} className={col.headerClassName || ''}>
+                <th 
+                  key={col.field} 
+                  className={col.headerClassName || ''}
+                  style={col.field === 'situacion' || col.field === 'descripcion' ? { minWidth: '250px' } : {}}
+                >
                   {col.header}
                 </th>
               ))}
@@ -445,13 +462,14 @@ export function BaseCRUD<T extends Record<string, any>>({
             </tr>
           </thead>
           <tbody>
-            {filteredItems.length > 0 ? (
-              filteredItems.map((item) => (
+            {paginatedItems.length > 0 ? (
+              paginatedItems.map((item) => (
                 <tr key={String(item[idField as keyof T])}>
                   {columns.map((col) => (
                     <td 
                       key={`${item[idField as keyof T]}-${col.field}`}
                       className={col.className || ''}
+                      style={col.field === 'situacion' || col.field === 'descripcion' ? { minWidth: '250px' } : {}}
                       title={col.field === 'detalle' ? String(item[col.field as keyof T] || '') : undefined}
                     >
                       {col.body ? 
@@ -477,6 +495,52 @@ export function BaseCRUD<T extends Record<string, any>>({
           </tbody>
         </table>
       </div>
+
+      {/* Pagination Controls */}
+      {filteredItems.length > 0 && (
+        <div className="d-flex align-items-center justify-content-between mt-3 p-3 bg-light border-top">
+          <div>
+            <span className="text-muted">
+              Mostrando {filteredItems.length === 0 ? 0 : first + 1} a {Math.min(first + rows, filteredItems.length)} de {filteredItems.length} registros
+            </span>
+          </div>
+          <div className="d-flex gap-2 align-items-center">
+            <label className="me-2">Filas por página:</label>
+            <select 
+              className="form-select form-select-sm" 
+              style={{ width: 'auto' }}
+              value={rows}
+              onChange={(e) => {
+                setRows(Number(e.target.value));
+                setFirst(0);
+              }}
+            >
+              <option value={5}>5</option>
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+            </select>
+            <div className="btn-group ms-3" role="group">
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary"
+                onClick={() => setFirst(Math.max(0, first - rows))}
+                disabled={first === 0}
+              >
+                Anterior
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary"
+                onClick={() => setFirst(first + rows)}
+                disabled={first + rows >= filteredItems.length}
+              >
+                Siguiente
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Modal
         open={showDialog}

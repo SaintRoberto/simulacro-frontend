@@ -49,12 +49,14 @@ export const AsistenciaEntregada: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
   const [grupos, setGrupos] = useState<Array<{ id: number; nombre: string }>>([]);
-  const [gruposStatus, setGruposStatus] = useState<'idle'|'loading'|'succeeded'|'failed'>('idle');
+  const [gruposStatus, setGruposStatus] = useState<'idle' | 'loading' | 'succeeded' | 'failed'>('idle');
   const [itemsAll, setItemsAll] = useState<Array<{ id: number; nombre: string; recurso_grupo_id: number }>>([]);
   const [items, setItems] = useState<Array<{ id: number; nombre: string; recurso_grupo_id?: number }>>([]);
-  const [itemsStatus, setItemsStatus] = useState<'idle'|'loading'|'succeeded'|'failed'>('idle');
+  const [itemsStatus, setItemsStatus] = useState<'idle' | 'loading' | 'succeeded' | 'failed'>('idle');
 
   const [instituciones, setInstituciones] = useState<Array<{ id: number; nombre: string; siglas: string }>>([]);
+  const [cantones, setCantones] = useState<Array<{ id: number; nombre: string }>>([]);
+  const [selectedCantonId, setSelectedCantonId] = useState<number | null>(null);
   const [parroquias, setParroquias] = useState<Array<{ id: number; nombre: string }>>([]);
 
   const apiBase = process.env.REACT_APP_API_URL || '/api';
@@ -101,23 +103,57 @@ export const AsistenciaEntregada: React.FC = () => {
     setItems(itemsAll.filter(i => i.recurso_grupo_id === grupoId));
   };
 
+  const handleCantonChange = async (cantonId: number) => {
+    setSelectedCantonId(cantonId);
+    try {
+      const paRes = await authFetch(`${apiBase}/parroquias/canton/${cantonId}`, { headers: { accept: 'application/json' } });
+      setParroquias(paRes.ok ? await paRes.json() : []);
+    } catch {
+      setParroquias([]);
+    }
+  };
+
   useEffect(() => {
     const run = async () => {
       try {
         const inst = await authFetch(`${apiBase}/instituciones`, { headers: { accept: 'application/json' } });
         setInstituciones(inst.ok ? await inst.json() : []);
       } catch { setInstituciones([]); }
+
+      // Determinar si es usuario provincial o cantonal
+      const isProvincial = datosLogin?.provincia_id && !datosLogin?.canton_id;
+      const isCantonal = datosLogin?.canton_id;
+
       try {
-        if (datosLogin?.canton_id) {
-          const pa = await authFetch(`${apiBase}/parroquias/canton/${datosLogin.canton_id}`, { headers: { accept: 'application/json' } });
-          setParroquias(pa.ok ? await pa.json() : []);
-        } else {
+        if (isCantonal) {
+          // Usuario cantonal: cargar cantones de su provincia y seleccionar el suyo
+          if (datosLogin?.provincia_id) {
+            const canRes = await authFetch(`${apiBase}/provincia/${datosLogin.provincia_id}/cantones/`, { headers: { accept: 'application/json' } });
+            const cantonesData = canRes.ok ? await canRes.json() : [];
+            setCantones(cantonesData);
+          }
+          const paRes = await authFetch(`${apiBase}/parroquias/canton/${datosLogin.canton_id}`, { headers: { accept: 'application/json' } });
+          setParroquias(paRes.ok ? await paRes.json() : []);
+          setSelectedCantonId(datosLogin.canton_id);
+        } else if (datosLogin?.provincia_id) {
+          // Cargar cantones de la provincia del usuario (provincial o sin asignación específica)
+          const canRes = await authFetch(`${apiBase}/provincia/${datosLogin.provincia_id}/cantones/`, { headers: { accept: 'application/json' } });
+          setCantones(canRes.ok ? await canRes.json() : []);
           setParroquias([]);
+          setSelectedCantonId(null);
+        } else {
+          setCantones([]);
+          setParroquias([]);
+          setSelectedCantonId(null);
         }
-      } catch { setParroquias([]); }
+      } catch {
+        setCantones([]);
+        setParroquias([]);
+        setSelectedCantonId(null);
+      }
     };
     run();
-  }, [apiBase, authFetch, datosLogin?.canton_id]);
+  }, [apiBase, authFetch, datosLogin?.canton_id, datosLogin?.provincia_id]);
 
   const fetchRows = async () => {
     if (!emergenciaId || !usuarioId) return;
@@ -152,7 +188,7 @@ export const AsistenciaEntregada: React.FC = () => {
       asistencia_grupo_id: resolvedGrupoId,
       asistencia_item_id: Number(payload.asistencia_item_id ?? 0),
       cantidad: Number(payload.cantidad ?? 0),
-      canton_id: datosLogin?.canton_id || 0,
+      canton_id: selectedCantonId || datosLogin?.canton_id || 0,
       creador: payload.creador ?? creator,
       emergencia_id: selectedEmergenciaId || 0,
       familias: Number(payload.familias ?? 0),
@@ -182,7 +218,7 @@ export const AsistenciaEntregada: React.FC = () => {
     try {
       const res = await authFetch(`${apiBase}/asistencia_entregada/${id}`, { method: 'DELETE', headers: { accept: 'application/json' } });
       if (res.ok) await fetchRows();
-    } catch {}
+    } catch { }
   };
 
   const renderForm = (item: Partial<AsistenciaPostPayload>, onChange: (e: any) => void) => {
@@ -222,15 +258,15 @@ export const AsistenciaEntregada: React.FC = () => {
         </div>
 
         <div className="field col-12md:col-4">
-        <label>Institución donante</label>
-        <Dropdown
+          <label>Institución donante</label>
+          <Dropdown
             value={typeof item.institucion_donante_id === 'number' ? item.institucion_donante_id : null}
             options={institucionOptions}
             onChange={(e) => onDropdownChange(e, 'institucion_donante_id')}
             placeholder="Seleccionar institución"
             filter
             className="w-full"
-        />
+          />
         </div>
 
         <div className="row" >
@@ -267,7 +303,7 @@ export const AsistenciaEntregada: React.FC = () => {
               className="w-full"
             />
           </div>
-        
+
         </div>
 
         <div className="row">
@@ -275,6 +311,21 @@ export const AsistenciaEntregada: React.FC = () => {
             <label>Fecha Entrega *</label>
             <Calendar value={item.fecha_entrega ? new Date(item.fecha_entrega) : null} onChange={(e) => onDateChange(e.value as Date, 'fecha_entrega')} showIcon dateFormat="dd/mm/yy" className="w-full" />
           </div>
+          <div className="field col-6 md:col-6">
+            <label>Cantón</label>
+            <Dropdown
+              value={selectedCantonId}
+              options={cantones.map(c => ({ label: c.nombre, value: c.id }))}
+              onChange={(e) => handleCantonChange(e.value)}
+              placeholder="Seleccionar cantón"
+              disabled={!!datosLogin?.canton_id || cantones.length === 0}
+              filter
+              className="w-full"
+            />
+          </div>
+        </div>
+
+        <div className="row">
           <div className="field col-6 md:col-6">
             <label>Parroquia *</label>
             <Dropdown
@@ -353,7 +404,7 @@ export const AsistenciaEntregada: React.FC = () => {
         const paData = paRes.ok ? await paRes.json() : [];
         setParroquias(Array.isArray(paData) ? paData : []);
       }
-    } catch {}
+    } catch { }
     if (row.parroquia_nombre) {
       const pa = (parroquias || []).find(p => p.nombre === row.parroquia_nombre);
       if (pa) parroquia_id = pa.id;
@@ -383,15 +434,15 @@ export const AsistenciaEntregada: React.FC = () => {
 
   const columns = [
     { field: 'id', header: 'ID', sortable: true },
+    { field: 'parroquia_nombre', header: 'Parroquia', sortable: true },
+    { field: 'fecha_entrega', header: 'Fecha Entrega', sortable: true },
+    { field: 'sector', header: 'Sector', sortable: true },
+    { field: 'institucion_donante', header: 'Institución', sortable: true },
     { field: 'asistencia_grupo', header: 'Grupo', sortable: true },
     { field: 'asistencia_item', header: 'Ítem', sortable: true },
     { field: 'cantidad', header: 'Cantidad', sortable: true },
     { field: 'familias', header: 'Familias', sortable: true },
     { field: 'personas', header: 'Personas', sortable: true },
-    { field: 'institucion_donante', header: 'Institución', sortable: true },
-    { field: 'parroquia_nombre', header: 'Parroquia', sortable: true },
-    { field: 'sector', header: 'Sector', sortable: true },
-    { field: 'fecha_entrega', header: 'Fecha Entrega', sortable: true },
   ];
 
   return (

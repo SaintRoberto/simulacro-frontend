@@ -228,15 +228,16 @@ export const ActasCOE: React.FC = () => {
           title=""
           items={actas}
           columns={columns}
-          leftToolbarTemplate={() => (
+          leftToolbarTemplate={() => (            
             <Button
               label="Nueva Acta"
               icon="pi pi-plus"
               severity="success"
               onClick={() => navigate('/actas/nueva')}
               disabled={isLoading}
+              visible={datosLogin.perfil_id === 3}
             />
-          )}
+          )}          
           onEdit={(row) => navigate(`/actas/nueva?id=${row.id}`)}
           onRead={handleRead}
           showDeleteButton={false}
