@@ -99,7 +99,7 @@ export const ActasCOE: React.FC = () => {
       setIsLoading(true);
       const storedUserId = Number(localStorage.getItem('userId') || '0');
       const usuarioId = datosLogin?.usuario_id || (storedUserId > 0 ? storedUserId : 84);
-      const emergenciaId = 1;
+      const emergenciaId = datosLogin?.emergencia_id || 4;
       const url = `${apiBase}/actas_coe/usuario/${usuarioId}/emergencia/${emergenciaId}`;
       const response = await authFetch(url, { headers: { accept: 'application/json' } });
       if (!response.ok) {

@@ -88,7 +88,7 @@ export const NuevoActaCOE: React.FC = () => {
     detalle: '',
     fechaHoraSesion: new Date(),
     resoluciones: [],
-    emergencia_id: 1, // Valor por defecto, ajustar según sea necesario
+    emergencia_id: datosLogin?.emergencia_id || 4, // Valor por defecto, ajustar según sea necesario
     usuario_id: datosLogin?.usuario_id || 0,
     creador: datosLogin?.usuario_login || '',
     acta_coe_estado_id: undefined

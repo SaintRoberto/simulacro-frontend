@@ -64,7 +64,7 @@ export const NuevoAccionesRespuesta: React.FC = () => {
     fecha_final: new Date(),
     respuesta_estado_id: 0,
     resoluciones: [],
-    emergencia_id: 1,
+    emergencia_id: 4,
     usuario_id: datosLogin?.usuario_id || 0,
     creador: datosLogin?.usuario_login || ''
   });
@@ -126,7 +126,7 @@ export const NuevoAccionesRespuesta: React.FC = () => {
         detalle: data.detalle || '',
         fecha_final: data.fecha_final ? new Date(data.fecha_final) : new Date(),
         respuesta_estado_id: data.accion_respuesta_estado_id || 0,
-        emergencia_id: data.emergencia_id || 1,
+        emergencia_id: data.emergencia_id || 4,
         usuario_id: data.usuario_id || (datosLogin?.usuario_id || 0),
         creador: data.creador || (datosLogin?.usuario_login || '')
       }));

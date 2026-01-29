@@ -9,6 +9,7 @@ export interface LoginResponse {
 }
 
 export interface DatosLogin {
+  emergencia_id: number;
   canton_id: number;
   canton_nombre: string;
   coe_abreviatura: string;
