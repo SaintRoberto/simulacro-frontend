@@ -6,6 +6,7 @@ import { InputNumber } from 'primereact/inputnumber';
 import { InputSwitch } from 'primereact/inputswitch';
 import { InputText } from 'primereact/inputtext';
 import { BaseCRUD } from '../../components/crud/BaseCRUD';
+import MapSelector from '../../components/map/MapSelector';
 import { useAuth } from '../../context/AuthContext';
 
 interface AsistenciaListItem {
@@ -242,6 +243,7 @@ export const AsistenciaEntregada: React.FC = () => {
 
     return (
       <div className="grid p-fluid">
+       
         <div className="row">
           <div className="field col-6 md:col-4">
             <label>Cantidad *</label>
@@ -338,6 +340,20 @@ export const AsistenciaEntregada: React.FC = () => {
               className="w-full"
             />
           </div>
+        </div>
+
+         <div>
+          <label>Ubicación en el mapa</label>
+          <MapSelector
+            latitud={item.latitud}
+            longitud={item.longitud}
+            onLocationChange={(lat, lng) => {
+              onChange({ target: { name: 'latitud', value: lat } });
+              onChange({ target: { name: 'longitud', value: lng } });
+            }}
+            height="200px"
+            placeholder="Buscar dirección, calle, ciudad..."
+          />
         </div>
 
         <div className="row">
