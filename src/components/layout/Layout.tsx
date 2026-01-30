@@ -111,7 +111,7 @@ export const Layout: React.FC = () => {
             fontWeight: 600,
           }}
         >
-          <img src={logo} alt="Logo" style={{ width: 100, height: 45 }} />
+          <img src={logo} alt="Logo" style={{ width: 120, height: 45 }} />
         </div>
         <Menu
           theme="dark"

@@ -89,6 +89,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
 }) => {
   const { datosLogin, authFetch } = useAuth();  
   const mesagrupo_Id = datosLogin?.mesa_grupo_id ?? mesaGrupoId;
+  const menuId =6;
   const [loading, setLoading] = useState(false);
   const [parroquias, setParroquias] = useState<Parroquia[]>([]);
   const [variables, setVariables] = useState<AfectacionVariable[]>([]);
@@ -130,6 +131,43 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
   const [recordIds, setRecordIds] = useState<Record<string, Record<number, number>>>({});
   const [saving, setSaving] = useState(false);
   const [hasExisting, setHasExisting] = useState(false);
+  const [opciones, setOpciones] = useState<Array<{ abreviatura: string; activo: boolean }>>([]);
+
+  const opcionesActivas = useMemo(() => {
+    const activas = opciones.filter(op => op.activo);
+    return {
+      puedeCrear: activas.some(op => op.abreviatura === 'C'),
+      puedeActualizar: activas.some(op => op.abreviatura === 'U'),
+    };
+  }, [opciones]);
+  const puedeGuardar = opciones.length === 0 ? true : (opcionesActivas.puedeCrear || opcionesActivas.puedeActualizar);
+
+  useEffect(() => {
+    const loadOpciones = async () => {
+      if (!menuId || 
+          datosLogin?.perfil_id == null || 
+          datosLogin?.coe_id == null || 
+          datosLogin?.mesa_id == null) {
+        setOpciones([]);
+        return;
+      }
+
+      try {
+        const url = `${apiBase}/opciones/usuario/${datosLogin.perfil_id}/coe/${datosLogin.coe_id}/mesa/${datosLogin.mesa_id}/menu/${menuId}`;
+        const res = await authFetch(url, { headers: { accept: 'application/json' } });
+        if (res.ok) {
+          const data = await res.json();
+          setOpciones(Array.isArray(data) ? data : []);
+        } else {
+          setOpciones([]);
+        }
+      } catch {
+        setOpciones([]);
+      }
+    };
+
+    loadOpciones();
+  }, [menuId, datosLogin?.perfil_id, datosLogin?.coe_id, datosLogin?.mesa_id, apiBase, authFetch]);
 
   // Initialize selectors from login
   useEffect(() => {
@@ -686,9 +724,11 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
       </Row>
       <div style={{ marginBottom: 12 }}>
         <Space>
-          <Button type="primary" onClick={saveAll} loading={saving} disabled={!parroquias.length || !variables.length}>
-            {hasExisting ? 'Guardar cambios' : 'Guardar cambios'}
-          </Button>
+          {!puedeGuardar || !parroquias.length || !variables.length ? null : (
+            <Button type="primary" onClick={saveAll} loading={saving} disabled={!puedeGuardar || !parroquias.length || !variables.length}>
+              {hasExisting ? 'Guardar cambios' : 'Guardar cambios'}
+            </Button>
+          )}
         </Space>
       </div>
       <Spin spinning={loading}>

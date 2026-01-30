@@ -61,6 +61,8 @@ const CellEditor: React.FC<{
   const [cantidad, setCantidad] = useState<number | null | undefined>(initial.cantidad ?? null);
   const [costo, setCosto] = useState<number | null | undefined>(initial.costo ?? null);
 
+
+  
   // Sync if external store changes for this specific cell
   useEffect(() => {
     const fresh = getValue(parroquiaId, variable.id) || {};

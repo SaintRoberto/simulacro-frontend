@@ -169,7 +169,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       const requerimientoData: RequerimientoRequest = {
         activo: true,
         creador: datosLogin.usuario_login,
-        emergencia_id: 1, // Default value, you may need to adjust this
+        emergencia_id: datosLogin?.emergencia_id || 4, // Default value, you may need to adjust this
         fecha_fin: fechaFin ? fechaFin.toISOString() : new Date().toISOString(),
         fecha_inicio: fechaInicio ? fechaInicio.toISOString() : new Date().toISOString(),
         usuario_emisor_id: datosLogin.usuario_id,

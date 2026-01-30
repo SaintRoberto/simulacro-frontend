@@ -79,10 +79,10 @@ code {
 }
 
 .base-crud-table table {
-  min-width: 720px;
+  min-width: 1200px;
 }
 
-@media (max-width: 768px) {
+@media (min-width: 200px) and (max-width: 1200px) {
   .base-crud {
     padding-left: 0.5rem;
     padding-right: 0.5rem;
@@ -96,6 +96,6 @@ code {
   }
 
   .base-crud-table table {
-    min-width: 560px;
+    min-width: 1200px;
   }
 }
