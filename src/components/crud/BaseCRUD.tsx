@@ -437,7 +437,7 @@ export function BaseCRUD<T extends Record<string, any>>({
   };
 
   return (
-    <div className="container-fluid">
+    <div className="container-fluid base-crud">
       <div className="d-flex align-items-center justify-content-between mb-3">
         {leftToolbarTemplate ? leftToolbarTemplate() : defaultLeftToolbarTemplate()}
         {/* header includes right side search when showHeader */}
@@ -445,7 +445,7 @@ export function BaseCRUD<T extends Record<string, any>>({
 
       {header}
 
-      <div className="table-responsive">
+      <div className="table-responsive base-crud-table">
         <table className="table table-hover">
           <thead className="table-light">
             <tr>

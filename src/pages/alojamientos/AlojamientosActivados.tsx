@@ -96,8 +96,8 @@ export const AlojamientosActivados: React.FC = () => {
 
   const loadAlojamientos = useCallback(async () => {
     const provinciaId = datosLogin?.provincia_id;
-    const cantonId = datosLogin?.canton_id;
-    if (!provinciaId || !cantonId) return;
+    const cantonId = datosLogin?.canton_id || 0;
+    
     try {
       const url = `${apiBase}/alojamientos/provincia/${provinciaId}/canton/${cantonId}`;
       const res = await authFetch(url, { headers: { accept: 'application/json' } });

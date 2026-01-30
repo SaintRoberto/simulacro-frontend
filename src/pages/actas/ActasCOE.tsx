@@ -100,7 +100,8 @@ export const ActasCOE: React.FC = () => {
       const storedUserId = Number(localStorage.getItem('userId') || '0');
       const usuarioId = datosLogin?.usuario_id || (storedUserId > 0 ? storedUserId : 84);
       const emergenciaId = datosLogin?.emergencia_id || 4;
-      const url = `${apiBase}/actas_coe/usuario/${usuarioId}/emergencia/${emergenciaId}`;
+      //const url = `${apiBase}/actas_coe/usuario/${usuarioId}/emergencia/${emergenciaId}`;
+      const url = `${apiBase}/actas_coe/emergencia/${emergenciaId}/provincia/${datosLogin?.provincia_id}/canton/${datosLogin?.canton_id}`;
       const response = await authFetch(url, { headers: { accept: 'application/json' } });
       if (!response.ok) {
         console.error('No se pudo cargar la lista de actas COE', response.status, response.statusText);

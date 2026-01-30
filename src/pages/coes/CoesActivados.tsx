@@ -458,7 +458,7 @@ export const CoesActivados: React.FC = () => {
   return (
     <Card title="COEs Activados">
       <BaseCRUD<COEActivado>
-        title="COE Activado"
+        title=""
         items={coes}
         columns={columns}
         renderForm={renderForm}

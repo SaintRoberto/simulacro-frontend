@@ -344,8 +344,13 @@ export const RecursosMovilizados: React.FC = () => {
     const cantonOptions = cantones
       .filter((c) => !item.provincia_id || c.provincia_id === item.provincia_id)
       .map((c) => ({ label: c.nombre, value: c.id }));
+    const effectiveCantonId =
+      (typeof item.canton_id === "number" && item.canton_id !== 0
+        ? item.canton_id
+        : datosLogin?.canton_id || 0) || 0;
+    const isCantonalUser = !!datosLogin?.canton_id;
     const parroquiaOptions = parroquias
-      .filter((pa) => !item.canton_id || pa.canton_id === item.canton_id)
+      .filter((pa) => !effectiveCantonId || pa.canton_id === effectiveCantonId)
       .map((pa) => ({ label: pa.nombre, value: pa.id }));
 
     const handleProvinciaChange = async (provId: number | null) => {
@@ -484,7 +489,19 @@ export const RecursosMovilizados: React.FC = () => {
           </div>
         </div>
 
-        {/* Provincia y Cantón se obtienen del login; no se muestran en el modal */}
+        {/* Cantón: editable para perfil provincial, fijo para perfil cantonal */}
+        <div className="field col-12 md:col-4">
+          <label>Cantón *</label>
+          <Dropdown
+            value={effectiveCantonId || null}
+            options={cantonOptions}
+            onChange={(e) => handleCantonChange(e.value)}
+            placeholder="Seleccionar cantón"
+            disabled={isCantonalUser || cantonOptions.length === 0}
+            filter
+            className="w-full"
+          />
+        </div>
         <div className="field col-12 md:col-4">
           <label>Parroquia *</label>
           <Dropdown

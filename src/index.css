@@ -61,8 +61,41 @@ code {
   font-size: 0.875rem;
 }
 
-
 .label-uniform {
   display: inline;
   min-height: 2px; /* ajusta según el alto de una línea en tu tema */
+}
+
+/* BaseCRUD responsive tweaks */
+.base-crud {
+  width: 100%;
+  overflow-x: hidden;
+}
+
+.base-crud-table {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.base-crud-table table {
+  min-width: 720px;
+}
+
+@media (max-width: 768px) {
+  .base-crud {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  .base-crud-table {
+    margin-left: -0.5rem;
+    margin-right: -0.5rem;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  .base-crud-table table {
+    min-width: 560px;
+  }
 }
