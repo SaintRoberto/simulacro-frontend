@@ -15,7 +15,7 @@ export const Layout: React.FC = () => {
 
   const { Header, Sider, Content } = AntLayout;
 
-  const { datosLogin, selectedEmergenciaId, authFetch, isRestoringSession } = useAuth();
+  const { datosLogin, selectedEmergenciaId, authFetch, isRestoringSession, loginResponse } = useAuth();
   const { setMenuItems } = useMenu();
   const apiBase = process.env.REACT_APP_API_URL || '/api';
   type MenuItemAPI = { id: number; nombre: string; ruta: string; icono?: string; orden?: number; padre_id?: number };
@@ -122,6 +122,7 @@ export const Layout: React.FC = () => {
             if (key && key !== "#") navigate(key);
           }}
           items={(() => {
+            const isAdminUser = loginResponse?.usuario === "Admin";
             if (localMenuItems && localMenuItems.length > 0) {
               const parents = localMenuItems
                 .filter((mi) => mi.orden === 0 && (!mi.ruta || mi.ruta === ""))
@@ -181,13 +182,18 @@ export const Layout: React.FC = () => {
               for (const mi of orphans) {
                 flat.push({ key: mi.ruta!, label: mi.nombre });
               }
+              if (isAdminUser) {
+                flat.push({ key: "/usuarios", label: "Usuarios" });
+              }
               return flat;
             }
-            return [
-              { key: "/", icon: <HomeOutlined />, label: "Dashboard" },
-              { key: "/afectaciones", label: "Afectaciones" },
-              { key: "/eventos", label: "Eventos" },
+            const baseItems = [
+              { key: "/", icon: <HomeOutlined />, label: "Dashboard" }
             ];
+            if (isAdminUser) {
+              baseItems.push({ key: "/usuarios", icon: <UserOutlined />, label: "Usuarios" });
+            }
+            return baseItems;
           })()}
         />
       </Sider>

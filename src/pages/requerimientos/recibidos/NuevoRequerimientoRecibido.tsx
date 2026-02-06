@@ -452,6 +452,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
             <Column field="tipo" header="Tipo" />
             <Column field="cantidad" header="Cantidad" />
             <Column field="destinoUbicacion" header="Destino" />
+            <Column field="especificacionesAdicionales" header="Especificaciones" />
           </DataTable>
         </div>
       </Dialog>

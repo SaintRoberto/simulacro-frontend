@@ -87,9 +87,9 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
   mesaGrupoId = 1,
   tableTitle = 'Matriz de Afectaciones por Parroquia',
 }) => {
-  const { datosLogin, authFetch } = useAuth();  
+  const { datosLogin, authFetch } = useAuth();
   const mesagrupo_Id = datosLogin?.mesa_grupo_id ?? mesaGrupoId;
-  const menuId =6;
+  const menuId = 6;
   const [loading, setLoading] = useState(false);
   const [parroquias, setParroquias] = useState<Parroquia[]>([]);
   const [variables, setVariables] = useState<AfectacionVariable[]>([]);
@@ -144,10 +144,10 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
 
   useEffect(() => {
     const loadOpciones = async () => {
-      if (!menuId || 
-          datosLogin?.perfil_id == null || 
-          datosLogin?.coe_id == null || 
-          datosLogin?.mesa_id == null) {
+      if (!menuId ||
+        datosLogin?.perfil_id == null ||
+        datosLogin?.coe_id == null ||
+        datosLogin?.mesa_id == null) {
         setOpciones([]);
         return;
       }
@@ -299,13 +299,24 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
         setRows(Array.from(rowMap.values()));
         // Build fresh matrix aggregated by rowKey+variable, preferring non-zero values when duplicates exist
         const fresh: Record<string, Record<number, AfectacionCellPayload>> = {};
+        const freshRecordIds: Record<string, Record<number, number>> = {};
+        const getRegistroId = (row: any): number | undefined => {
+          const candidates = [
+            row?.afectacion_variable_registro_id,
+            row?.registro_id,
+            row?.id,
+          ];
+          const found = candidates.find((v) => typeof v === 'number');
+          return typeof found === 'number' ? found : undefined;
+        };
         for (const r of filtered) {
           const rowKey = `${r.parroquia_id}-${r.evento_id ?? 0}`;
           const current = fresh[rowKey]?.[r.afectacion_variable_id];
+          const registroId = getRegistroId(r);
           const cand = {
             cantidad: typeof r.cantidad === 'number' ? r.cantidad : null,
             costo: typeof r.costo === 'number' ? r.costo : null,
-            id: current?.id, // keep any existing id if present later
+            id: registroId ?? current?.id, // prefer id from backend, fallback to existing
           } as AfectacionCellPayload;
           const isNonZero = (cand.cantidad ?? 0) !== 0 || (cand.costo ?? 0) !== 0;
           const hasExisting = !!current;
@@ -324,8 +335,15 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
               fresh[rowKey][r.afectacion_variable_id] = { ...current!, ...cand };
             }
           }
+          if (typeof cand.id === 'number') {
+            if (!freshRecordIds[rowKey]) freshRecordIds[rowKey] = {};
+            freshRecordIds[rowKey][r.afectacion_variable_id] = cand.id;
+          }
         }
         setMatrix(fresh);
+        if (Object.keys(freshRecordIds).length) {
+          setRecordIds(freshRecordIds);
+        }
         // If any non-empty data returned, toggle to update label
         setHasExisting(Object.values(fresh).some(vars => Object.values(vars).length > 0));
       } finally {
@@ -364,7 +382,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
               cantidad: cell.cantidad ?? 0,
               canton_id: cantonSelId,
               costo: cell.costo ?? 0,
-              creador: 'frontend',
+              creador: datosLogin?.usuario_login || 'frontend',
               emergencia_id: emergencyId,
               parroquia_id: r.parroquia_id,
               provincia_id: provinciaId,
@@ -432,45 +450,91 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
       commitCell(rowKey, variable.id, { cantidad: typeof cantidad === 'number' ? cantidad : null, costo: typeof costo === 'number' ? costo : null });
     }, [cantidad, costo, rowKey, variable.id]);
 
-      return (
-        <Space size="small" wrap style={{ display: 'flex', alignItems: 'flex-end' }}>
-          <div style={{ display: 'flex', flexDirection: 'row', gap: 8 }}>
-            {/* Columna CANTIDAD */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <span style={{ fontSize: 12, fontWeight: 500, marginBottom: 2 }}>Cantidad</span>
-              <div style={{ display: 'inline-flex', width: 80, alignItems: 'stretch' }}>
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '0 8px',
-                    color: 'rgba(0,0,0,.85)',
-                    fontSize: '14px',
-                    fontWeight: 400,
-                    backgroundColor: '#fafafa',
-                    border: '1px solid #d9d9d9',
-                    borderRadius: '6px 0px 0px 6px',
-                    borderRight: 'none',
-                    height: '32px',
-                    flexShrink: 0,
-                  }}
-                >
-                  #
-                </span>
-                <InputNumber
-                  placeholder="Cant"
-                  min={0}
-                  value={cantidad ?? null}
-                  onChange={(val) => setCantidad(typeof val === 'number' ? val : null)}
-                  onBlur={onCommit}
-                  onPressEnter={onCommit}
-                  style={{ flex: 1, borderTopLeftRadius: 0, borderBottomLeftRadius: 0, minWidth: 0 }}
-                />
-              </div>
+    return (
+      <Space size="small" wrap style={{ display: 'flex', alignItems: 'flex-end' }}>
+        <div style={{ display: 'flex', flexDirection: 'row', gap: 8 }}>
+          {/* Columna CANTIDAD */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <div style={{ display: 'inline-flex', width: 200, alignItems: 'stretch' }}>
+              <span style={{ fontSize: 12, fontWeight: 500, width: '60px', marginBottom: 2 }}>Cantidad</span>
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0 8px',
+                  color: 'rgba(0,0,0,.85)',
+                  fontSize: '14px',
+                  fontWeight: 400,
+                  backgroundColor: '#fafafa',
+                  border: '1px solid #d9d9d9',
+                  borderRadius: '6px 0px 0px 6px',
+                  borderRight: 'none',
+                  height: '32px',
+                  flexShrink: 0,
+                }}
+              >
+                {variable?.dato_tipo_id  === 3 ? '%' : '#'}
+              </span>
+              <InputNumber
+                placeholder="Cant"
+                min={0}
+                value={cantidad ?? null}
+                onChange={(val) => setCantidad(typeof val === 'number' ? val : null)}
+                onBlur={onCommit}
+                onPressEnter={onCommit}
+                style={{ flex: 1, borderTopLeftRadius: 0, borderBottomLeftRadius: 0, minWidth: 0 }}
+              />
             </div>
-            {/* Columna COSTO */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <div style={{ display: 'inline-flex', width: 200, alignItems: 'stretch' }}>
+              <span style={{ fontSize: 12, fontWeight: 500, width: '60px', marginBottom: 2 }}>Costo</span>
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0 8px',
+                  color: 'rgba(0,0,0,.85)',
+                  fontSize: '14px',
+                  fontWeight: 400,
+                  backgroundColor: '#fafafa',
+                  border: '1px solid #d9d9d9',
+                  borderRadius: '6px 0px 0px 6px',
+                  borderRight: 'none',
+                  height: '32px',
+                  flexShrink: 0,
+                }}
+              >
+                $
+              </span>
+              <InputNumber
+                placeholder="Costo"
+                min={0}
+                value={costo ?? null}
+                onChange={(val) => setCosto(typeof val === 'number' ? val : null)}
+                onBlur={onCommit}
+                onPressEnter={onCommit}
+                formatter={(value) =>
+                  value ? `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''
+                }
+                parser={(value) =>
+                  value ? Number(value.replace(/\$\s?|,/g, '')) : 0
+                }
+                style={{ flex: 1, borderTopLeftRadius: 0, borderBottomLeftRadius: 0, minWidth: 0 }}
+                disabled={!variable.requiere_costo}
+
+              />
+            </div>
+            <div style={{ display: 'inline-flex', width: 200, alignItems: 'stretch' }}>
+              <span style={{ fontSize: 12, fontWeight: 500, width: '60px', marginBottom: 2 }}>Infra.</span>
+              <Button icon={<SettingOutlined />}
+                onClick={() => openDetails(parroquia as Parroquia, variable, rowKey)}
+                hidden={!variable.requiere_gis}
+              />
+            </div>
+          </div>
+          {/* Columna COSTO */}
+          {/* <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <span style={{ fontSize: 12, fontWeight: 500, marginBottom: 2 }}>Costo</span>
               <div style={{ display: 'inline-flex', width: 110, alignItems: 'stretch' }}>
                 <span
@@ -504,12 +568,9 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
                   
                 />
               </div>
-            </div>
-          </div>
-        <Button icon={<SettingOutlined />}
-         onClick={() => openDetails(parroquia as Parroquia, variable, rowKey)}
-         hidden={!variable.requiere_gis}
-        />
+            </div> */}
+        </div>
+
       </Space>
     );
   });
@@ -647,7 +708,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
         dataIndex: 'parroquia_nombre',
         key: 'parroquia',
         fixed: 'left',
-        width: 200,
+        width: 120,
         render: (value: string) => <Text strong>{value}</Text>,
       },
       {
@@ -655,7 +716,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
         dataIndex: 'evento_nombre',
         key: 'evento_nombre',
         fixed: 'left',
-        width: 260,
+        width: 180,
         render: (value: string) => <Text>{value || '-'}</Text>,
       },
     ];
@@ -683,7 +744,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
     }));
 
     return [...base, ...variableColumns];
-  // Only re-create columns when variables change (not on every keystroke)
+    // Only re-create columns when variables change (not on every keystroke)
   }, [variables, matrix]);
 
   return (
@@ -720,7 +781,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
             />
           </Space>
         </Col>
-        
+
       </Row>
       <div style={{ marginBottom: 12 }}>
         <Space>

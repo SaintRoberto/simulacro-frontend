@@ -7,6 +7,8 @@ import { useNavigate, Link } from 'react-router-dom';
 import { classNames } from 'primereact/utils';
 import { Message } from 'primereact/message';
 import { useAuth } from '../../context/AuthContext';
+import logoMain from '../../assets/logoMain.png';
+
 
 export const Login: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -31,7 +33,11 @@ export const Login: React.FC = () => {
     try {
       const ok = await login(formData.user, formData.password);
       if (ok) {
+        if(formData .user !== 'Admin' ){
         navigate('/emergencias');
+        } else {
+          navigate('/');
+        }
       } else {
         setError('Credenciales inválidas. Por favor, intente nuevamente.');
       }
@@ -52,10 +58,9 @@ export const Login: React.FC = () => {
     <div className="d-flex align-items-center justify-content-center min-vh-100 auth-bg">
       <Card className="w-100 auth-card p-3 p-md-4" style={{ maxWidth: 420 }}>
         <div className="auth-header mb-3">
-          <div className="brand-badge mb-3">
-            <i className="pi pi-shield"></i>
+          <div className="mb-3">
+            <img src={logoMain} alt="Brand" style={{ width: 260, height: 60 }}/>
           </div>
-          <h4 className="mb-1">Bienvenido</h4>
           <div className="text-muted">Ingresa para continuar</div>
         </div>
         {error && (

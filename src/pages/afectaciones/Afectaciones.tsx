@@ -1,7 +1,6 @@
 import React from 'react';
 import { Card } from 'primereact/card';
 import AfectacionesParroquiasMatrix from '../../components/afectaciones/AfectacionesParroquiasMatrix';
-import AfectacionesParroquiasAntdTable from '../../components/afectaciones/AfectacionesParroquiasAntdTable';
 
 export const Afectaciones: React.FC = () => {
   return (

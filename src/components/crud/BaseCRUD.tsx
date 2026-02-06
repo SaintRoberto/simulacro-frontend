@@ -376,7 +376,7 @@ export function BaseCRUD<T extends Record<string, any>>({
               handleRead(rowData);
             }} 
             className="btn btn-sm btn-link p-0 text-info"
-            title="Consultar"
+            title="Detalle"
           >
             <i className="pi pi-search" style={{ fontSize: '1.1rem' }}></i>
           </button>

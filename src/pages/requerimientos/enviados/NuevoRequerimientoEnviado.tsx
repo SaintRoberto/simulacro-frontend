@@ -47,7 +47,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
   // Recursos
   const [recursos, setRecursos] = useState<Recurso[]>([]);
   const [showRecursoDialog, setShowRecursoDialog] = useState(false);
-  const [recursoDraft, setRecursoDraft] = useState<Partial<Recurso>>({ cantidad: 1 });
+  const [recursoDraft, setRecursoDraft] = useState<Partial<Recurso>>({ cantidad: 0 });
   const [viewRecursoDialog, setViewRecursoDialog] = useState<Recurso | null>(null);
 
   const { datosLogin, loadReceptores, receptores, receptoresStatus, recursoGrupos, recursoGruposStatus, recursoTipos, recursoTiposStatus, loadRecursoGrupos, loadRecursoTipos, createRequerimiento, createRequerimientoRecurso, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo } = useAuth();
@@ -132,7 +132,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
   // ];
 
   const openRecurso = () => {
-    setRecursoDraft({ cantidad: 1 });
+    setRecursoDraft({ cantidad: 0 });
     setShowRecursoDialog(true);
   };
 

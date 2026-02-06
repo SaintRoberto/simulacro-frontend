@@ -6,7 +6,9 @@ import { Progress, Tag, Modal, Button as AntButton } from 'antd';
 import { Button } from 'primereact/button';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
- 
+import { DataTable } from 'primereact/datatable';
+import { Column } from 'primereact/column';
+
 
 interface RequerimientoEnviado {
   id: number;
@@ -68,6 +70,17 @@ interface RecursoSolicitado {
   tipo_nombre?: string;
 }
 
+interface RespuestaHistorialItem {
+  id?: number;
+  requerimiento_id: number;
+  fecha_respuesta: string; // ISO
+  responsable: string;
+  requerimiento_estado_id: number;
+  requerimiento_estado_nombre?: string;
+  porcentaje_avance: number;
+  situacion_actual: string;
+}
+
 export const RequerimientosEnviados: React.FC = () => {
   const [requerimientos, setRequerimientos] = useState<RequerimientoEnviado[]>([]);
   const navigate = useNavigate();
@@ -79,12 +92,17 @@ export const RequerimientosEnviados: React.FC = () => {
     getRecursoTiposByGrupo,
     recursoGrupos
   } = useAuth();
+  const { datosLogin, authFetch } = useAuth();
+  const apiBase = process.env.REACT_APP_API_URL || '/api';
 
   // Estados para el modal de consulta
   const [showConsultaModal, setShowConsultaModal] = useState(false);
   const [requerimientoDetalle, setRequerimientoDetalle] = useState<RequerimientoDetalle | null>(null);
   const [recursosSolicitados, setRecursosSolicitados] = useState<RecursoSolicitado[]>([]);
   const [loadingDetalle, setLoadingDetalle] = useState(false);
+  const [historial, setHistorial] = useState<RespuestaHistorialItem[]>([]);
+  const [estados, setEstados] = useState<Array<{ id: number; nombre: string }>>([]);
+
 
   const loadRequerimientos = useCallback(async () => {
     try {
@@ -109,6 +127,33 @@ export const RequerimientosEnviados: React.FC = () => {
       console.error('Error loading requerimientos:', error);
     }
   }, [getRequerimientosEnviados, getRequerimientoEstados]);
+
+  const loadHistorial = useCallback(async (rid: number) => {
+    try {
+      // Nuevo endpoint: trae historial por requerimiento_id
+      const res = await authFetch(`${apiBase}/requerimiento-respuestas/${rid}`, {
+        headers: { accept: 'application/json' },
+      });
+      if (!res.ok) {
+        setHistorial([]);
+        return;
+      }
+      const data = (await res.json()) as any[];
+      const mapped: RespuestaHistorialItem[] = data.map((d: any) => ({
+        id: d.id,
+        requerimiento_id: d.requerimiento_id ?? rid,
+        fecha_respuesta: d.respuesta_fecha || d.fecha_respuesta || d.creacion || new Date().toISOString(),
+        responsable: d.responsable || d.creador || '',
+        requerimiento_estado_id: d.respuesta_estado_id ?? d.requerimiento_estado_id ?? d.estado_id ?? 0,
+        requerimiento_estado_nombre: d.respuesta_estado_nombre || d.estado || d.requerimiento_estado_nombre,
+        porcentaje_avance: typeof d.porcentaje_avance === 'number' ? d.porcentaje_avance : 0,
+        situacion_actual: d.situacion_actual || d.descripcion || '',
+      }));
+      setHistorial(mapped);
+    } catch (e) {
+      setHistorial([]);
+    }
+  }, [apiBase]);
 
   useEffect(() => {
     loadRequerimientos();
@@ -177,6 +222,7 @@ export const RequerimientosEnviados: React.FC = () => {
       setShowConsultaModal(true);
       setRequerimientoDetalle(null);
       setRecursosSolicitados([]);
+      await loadHistorial(item.id);
 
       // Cargar detalle del requerimiento
       const detalle = await getRequerimientoById(item.id);
@@ -264,110 +310,143 @@ export const RequerimientosEnviados: React.FC = () => {
   };
 
   return (
-    <>  
-    <Card title="Requerimientos Enviados">
-      <BaseCRUD<RequerimientoEnviado>
-        title=""
-        items={requerimientos}
-        columns={columns}
-        onEdit={(row) => navigate(`/requerimientos/enviados/nuevo?id=${row.id}`)}
-        onRead={handleRead}
-        leftToolbarTemplate={() => (
-          <Button label="Nuevo" icon="pi pi-plus" severity="success" onClick={() => navigate('/requerimientos/enviados/nuevo')} />
-        )}
-        // renderForm={(item, onChange) => (
-        //   <RequerimientoEnviadoForm<RequerimientoEnviado> item={item} onChange={onChange} />
-        // )}
-        onSave={handleSave}
-        onDelete={handleDelete}
-        initialItem={{
-          id: 0,
-          codigo: '',
-          solicitante: '',
-          destinatario: '',
-          fechaSolicitud: new Date(),
-          fechaCumplimiento: null,
-          porcentajeAvance: 0,
-          estado: 'Solicitado',
-        }}
-      />
-    </Card>
-  
+    <>
+      <Card title="Requerimientos Enviados">
+        <BaseCRUD<RequerimientoEnviado>
+          title=""
+          items={requerimientos}
+          columns={columns}
+          onEdit={(row) => navigate(`/requerimientos/enviados/nuevo?id=${row.id}`)}
+          onRead={handleRead}
+          leftToolbarTemplate={() => (
+            <Button label="Nuevo" icon="pi pi-plus" severity="success" onClick={() => navigate('/requerimientos/enviados/nuevo')} />
+          )}
+          // renderForm={(item, onChange) => (
+          //   <RequerimientoEnviadoForm<RequerimientoEnviado> item={item} onChange={onChange} />
+          // )}
+          onSave={handleSave}
+          onDelete={handleDelete}
+          initialItem={{
+            id: 0,
+            codigo: '',
+            solicitante: '',
+            destinatario: '',
+            fechaSolicitud: new Date(),
+            fechaCumplimiento: null,
+            porcentajeAvance: 0,
+            estado: 'Solicitado',
+          }}
+        />
+      </Card>
 
-    <Modal
-      open={showConsultaModal}
-      title="Detalle del Requerimiento"
-      onCancel={() => {
-        setShowConsultaModal(false);
-        setRequerimientoDetalle(null);
-        setRecursosSolicitados([]);
-      }}
-      footer={[
-        <AntButton key="close" type="primary" onClick={() => {
+
+      <Modal
+        open={showConsultaModal}
+        title="Detalle del Requerimiento"
+        onCancel={() => {
           setShowConsultaModal(false);
           setRequerimientoDetalle(null);
           setRecursosSolicitados([]);
-        }}>
-          Cerrar
-        </AntButton>
-      ]}
-      width={900}
-    >
-      {loadingDetalle ? (
-        <div className="text-center py-4">Cargando información...</div>
-      ) : requerimientoDetalle ? (
-        <div>
-          {/* Información del Requerimiento */}
-          <div className="mb-4">
-            <div className="row mb-2">
-              <div className="col-md-3"><strong>Número:</strong></div>
-              <div className="col-md-9">REQ-{requerimientoDetalle.id}</div>
-            </div>
-            <div className="row mb-2">
-              <div className="col-md-3"><strong>Fecha Solicitud:</strong></div>
-              <div className="col-md-9">{formatDateTime(requerimientoDetalle.fecha_inicio)}</div>
-            </div>
-            <div className="row mb-2">
-              <div className="col-md-3"><strong>Fecha Fin:</strong></div>
-              <div className="col-md-9">{formatDateTime(requerimientoDetalle.fecha_fin)}</div>
-            </div>
-          </div>
-
-          {/* Grilla de Recursos Solicitados */}
-          <div className="mt-4">
-            <h5 className="mb-3">Recursos solicitados</h5>
-            {recursosSolicitados.length > 0 ? (
-              <div className="table-responsive">
-                <table className="table table-bordered table-hover">
-                  <thead className="table-light">
-                    <tr>
-                      <th>Grupo</th>
-                      <th>Tipo</th>
-                      <th>Cantidad</th>
-                      <th>Destino</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recursosSolicitados.map((recurso) => (
-                      <tr key={recurso.id}>
-                        <td>{recurso.grupo_nombre || '-'}</td>
-                        <td>{recurso.tipo_nombre || '-'}</td>
-                        <td>{recurso.cantidad}</td>
-                        <td>{recurso.destino || '-'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+        }}
+        footer={[
+          <AntButton key="close" type="primary" onClick={() => {
+            setShowConsultaModal(false);
+            setRequerimientoDetalle(null);
+            setRecursosSolicitados([]);
+          }}>
+            Cerrar
+          </AntButton>
+        ]}
+        width={900}
+      >
+        {loadingDetalle ? (
+          <div className="text-center py-4">Cargando información...</div>
+        ) : requerimientoDetalle ? (
+          <div>
+            {/* Información del Requerimiento */}
+            <div className="mb-4">
+              <div className="row mb-2">
+                <div className="col-md-3"><strong>Número:</strong></div>
+                <div className="col-md-9">REQ-{requerimientoDetalle.id}</div>
               </div>
-            ) : (
-              <p className="text-muted">No hay recursos solicitados para este requerimiento.</p>
-            )}
+              <div className="row mb-2">
+                <div className="col-md-3"><strong>Fecha Solicitud:</strong></div>
+                <div className="col-md-9">{formatDateTime(requerimientoDetalle.fecha_inicio)}</div>
+              </div>
+              <div className="row mb-2">
+                <div className="col-md-3"><strong>Fecha Fin:</strong></div>
+                <div className="col-md-9">{formatDateTime(requerimientoDetalle.fecha_fin)}</div>
+              </div>
+            </div>
+
+            {/* Grilla de Recursos Solicitados */}
+            <div className="mt-4">
+              <h5 className="mb-3">Recursos solicitados</h5>
+              {recursosSolicitados.length > 0 ? (
+                <div className="table-responsive">
+                  <table className="table table-bordered table-hover">
+                    <thead className="table-light">
+                      <tr>
+                        <th>Grupo</th>
+                        <th>Tipo</th>
+                        <th>Cantidad</th>
+                        <th>Destino</th>
+                        <th>Especificacion</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recursosSolicitados.map((recurso) => (
+                        <tr key={recurso.id}>
+                          <td>{recurso.grupo_nombre || '-'}</td>
+                          <td>{recurso.tipo_nombre || '-'}</td>
+                          <td>{recurso.cantidad}</td>
+                          <td>{recurso.destino || '-'}</td>
+                          <td>{recurso.especificaciones || '-'}</td>
+
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-muted">No hay recursos solicitados para este requerimiento.</p>
+              )}
+            </div>
+
+            <div className="col-12">
+                <div className="mb-3 flex align-items-center justify-content-between"></div>
+                <div className="row mt-2">
+                  <h5 style={{fontSize: '18px', fontWeight: 'bold', color: '#000000ee' }}>Historial de Respuestas</h5>
+                </div>
+
+                <DataTable value={historial} emptyMessage="Sin respuestas registradas" responsiveLayout="scroll" style={{ fontSize: '13px'}}>
+                  <Column header="#" body={(row: RespuestaHistorialItem, { rowIndex }) => `#${historial.length - rowIndex}`} />
+                  <Column header="Fecha y Hora" style={{minWidth: '10px'}} body={(row: RespuestaHistorialItem) => (
+                    <div>
+                      {new Date(row.fecha_respuesta).toLocaleDateString()}<br />
+                      <small>{new Date(row.fecha_respuesta).toLocaleTimeString()}</small>
+                    </div>
+                  )} />
+                  <Column header="Responsable" field="responsable" />
+                  <Column className="w-3 p-2" header="Estado del Requerimiento" style={{ minWidth: '30px' }} body={(row: RespuestaHistorialItem) => (
+                    <Tag color="blue">{row.requerimiento_estado_nombre || (estados.find(e => e.id === row.requerimiento_estado_id)?.nombre || row.requerimiento_estado_id)}</Tag>
+                  )} />
+                  <Column header="Progreso" body={(row: RespuestaHistorialItem) => (
+                    <div style={{ minWidth: 140 }}>
+                      <Progress percent={row.porcentaje_avance} showInfo size="small" />
+                    </div>
+                  )} />
+                  <Column header="Situación Actual" field="situacion_actual" />
+               
+                </DataTable>
+
+
+            </div>
           </div>
-        </div>
-      ) : (
-        <div className="text-center py-4 text-muted">No se pudo cargar la información del requerimiento.</div>
-      )}
-    </Modal>
+        ) : (
+          <div className="text-center py-4 text-muted">No se pudo cargar la información del requerimiento.</div>
+        )}
+      </Modal>
     </>
   );
 };

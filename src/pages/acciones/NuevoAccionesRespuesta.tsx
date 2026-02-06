@@ -64,7 +64,7 @@ export const NuevoAccionesRespuesta: React.FC = () => {
     fecha_final: new Date(),
     respuesta_estado_id: 0,
     resoluciones: [],
-    emergencia_id: 4,
+    emergencia_id: datosLogin?.emergencia_id || 4,
     usuario_id: datosLogin?.usuario_id || 0,
     creador: datosLogin?.usuario_login || ''
   });
