@@ -80,6 +80,7 @@ export interface AfectacionesParroquiasMatrixProps {
 
 const buildApiBase = () => process.env.REACT_APP_API_URL || '/api';
 const emergencyId = 4;
+const rowColor = '#a8eeb3';
 
 export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrixProps> = ({
   apiBase = buildApiBase(),
@@ -439,6 +440,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
   const CellEditor: React.FC<CellEditorProps> = React.memo(({ rowKey, variable, cell, parroquia }) => {
     const [cantidad, setCantidad] = useState<number | null | undefined>(cell?.cantidad ?? null);
     const [costo, setCosto] = useState<number | null | undefined>(cell?.costo ?? null);
+    const hasValue = (typeof cantidad === 'number' && cantidad !== 0) || (typeof costo === 'number' && costo !== 0);
 
     // When external matrix updates for this cell (rare), sync local values
     useEffect(() => {
@@ -451,7 +453,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
     }, [cantidad, costo, rowKey, variable.id]);
 
     return (
-      <Space size="small" wrap style={{ display: 'flex', alignItems: 'flex-end' }}>
+      <Space size="small" wrap style={{ display: 'flex', alignItems: 'flex-end', padding: 6, borderRadius: 6, backgroundColor: hasValue ? rowColor : 'transparent' }}>
         <div style={{ display: 'flex', flexDirection: 'row', gap: 8 }}>
           {/* Columna CANTIDAD */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -474,7 +476,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
                   flexShrink: 0,
                 }}
               >
-                {variable?.dato_tipo_id  === 3 ? '%' : '#'}
+                {variable?.dato_tipo_id === 3 ? '%' : '#'}
               </span>
               <InputNumber
                 placeholder="Cant"
@@ -635,7 +637,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
           cantidad: 0,
           canton_id: cantonSelId,
           costo: 0,
-          creador: 'frontend',
+          creador: datosLogin?.usuario_login || 'frontend',
           emergencia_id: emergencyId,
           parroquia_id: pid,
           provincia_id: provinciaId,
@@ -676,7 +678,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
           activo: true,
           afectacion_variable_registro_id: registroId,
           costo: 0,
-          creador: 'frontend',
+          creador: datosLogin?.usuario_login || 'frontend',
           infraestructura_id: d.infraestructura_id,
         };
         return authFetch(`${apiBase}/afectacion_variable_registro_detalles`, {
