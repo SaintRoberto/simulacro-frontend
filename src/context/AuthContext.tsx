@@ -249,6 +249,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (resDatos.ok) {
         const datos = (await resDatos.json()) as DatosLogin;
         setDatosLogin(datos);
+        if (typeof datos.emergencia_id === 'number') {
+          _setSelectedEmergenciaId(datos.emergencia_id);
+          localStorage.setItem('selectedEmergenciaId', String(datos.emergencia_id));
+        }
 
         // Crear un loginResponse básico con la información disponible
         setLoginResponse({
@@ -352,6 +356,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (resDatos.ok) {
             const datos = (await resDatos.json()) as DatosLogin;
             setDatosLogin(datos);
+            if (typeof datos.emergencia_id === 'number') {
+              _setSelectedEmergenciaId(datos.emergencia_id);
+              localStorage.setItem('selectedEmergenciaId', String(datos.emergencia_id));
+            }
           }
         } catch (error) {
           console.error('Error al cargar datos adicionales del usuario:', error);
@@ -534,11 +542,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const coeId = datosLogin?.coe_id ?? 0;
       const provinciaId = datosLogin?.provincia_id ?? 0;
       const cantonId = datosLogin?.canton_id ?? 0;
+      const emergenciaFromStorage = Number(localStorage.getItem('selectedEmergenciaId') || 'NaN');
+      const effectiveEmergenciaId =
+        selectedEmergenciaId ??
+        datosLogin?.emergencia_id ??
+        (Number.isNaN(emergenciaFromStorage) ? null : emergenciaFromStorage);
       const userId = Number(effectiveId);
-      if (isNaN(userId)) {
+      if (isNaN(userId) || effectiveEmergenciaId == null) {
         return [];
       }
-      const url = `${apiBase}/requerimientos/recibidos/usuario/${userId}/perfil/${perfilId}/coe/${coeId}/provincia/${provinciaId}/canton/${cantonId}`;
+      const url = `${apiBase}/requerimientos/recibidos/usuario/${userId}/perfil/${perfilId}/coe/${coeId}/provincia/${provinciaId}/canton/${cantonId}/emergencia/${effectiveEmergenciaId}`;
       const res = await authFetch(url, { headers: { accept: 'application/json' } });
       if (!res.ok) {
         return [];
@@ -547,7 +560,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       return [];
     }
-  }, [apiBase, authFetch, datosLogin?.usuario_id, datosLogin?.perfil_id, datosLogin?.coe_id, datosLogin?.provincia_id, datosLogin?.canton_id]);
+  }, [apiBase, authFetch, datosLogin?.usuario_id, datosLogin?.perfil_id, datosLogin?.coe_id, datosLogin?.provincia_id, datosLogin?.canton_id, datosLogin?.emergencia_id, selectedEmergenciaId]);
 
   const getRequerimientosRecibidosNotificaciones = useCallback(async (): Promise<RequerimientoRecibidoNotificacion[]> => {
     try {
@@ -610,5 +623,3 @@ export const useAuth = () => {
   if (!ctx) throw new Error('useAuth must be used within AuthProvider');
   return ctx;
 };
-
-
