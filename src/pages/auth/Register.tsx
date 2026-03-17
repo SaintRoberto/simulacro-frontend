@@ -31,7 +31,7 @@ export const Register: React.FC = () => {
 
     try {
       // TODO: Replace with actual API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 10000));
       
       // Simulate successful registration
       navigate('/login', { state: { registrationSuccess: true } });

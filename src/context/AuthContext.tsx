@@ -520,11 +520,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const provinciaId = datosLogin?.provincia_id ?? 0;
       const cantonId = datosLogin?.canton_id ?? 0;
       const userId = Number(effectiveId);
+      const emergenciaFromStorage = Number(localStorage.getItem('selectedEmergenciaId') || 'NaN');
+      const effectiveEmergenciaId =
+        selectedEmergenciaId ??
+        datosLogin?.emergencia_id ??
+        (Number.isNaN(emergenciaFromStorage) ? null : emergenciaFromStorage);
       if (isNaN(userId)) {
         return [];
       }
       
-      const url = `${apiBase}/requerimientos/enviados/usuario/${userId}/perfil/${perfilId}/coe/${coeId}/provincia/${provinciaId}/canton/${cantonId}`;
+      const url = `${apiBase}/requerimientos/enviados/usuario/${userId}/perfil/${perfilId}/coe/${coeId}/provincia/${provinciaId}/canton/${cantonId}/emergencia/${effectiveEmergenciaId}`;
       const res = await authFetch(url, { headers: { accept: 'application/json' } });
       if (!res.ok) {
         return [];

@@ -110,6 +110,7 @@ export const NuevoActaCOE: React.FC = () => {
   const [mesas, setMesas] = useState<Mesa[]>([]);
   const [estadosResolucion, setEstadosResolucion] = useState<EstadoResolucion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [editingResolucion, setEditingResolucion] = useState<{ ids: number[]; detalle: string } | null>(null);
   const isReadOnly = !!editId;
   const apiBase = process.env.REACT_APP_API_URL;
 
@@ -275,9 +276,21 @@ export const NuevoActaCOE: React.FC = () => {
 
   const abrirDialogoResolucion = (resolucion?: Resolucion) => {
     if (resolucion) {
+      const resolucionAny = resolucion as any;
+      const mesasDesdeFila: number[] = Array.isArray(resolucionAny.mesaAsignadaIds)
+        ? resolucionAny.mesaAsignadaIds
+        : Array.isArray(resolucionAny.mesas)
+          ? resolucionAny.mesas.map((m: any) => m.id).filter((id: unknown) => typeof id === 'number')
+          : (typeof resolucionAny.mesaAsignadaId === 'number' ? [resolucionAny.mesaAsignadaId] : []);
+      const resolucionIds: number[] = Array.isArray(resolucionAny.resoluciones)
+        ? resolucionAny.resoluciones
+          .map((r: any) => r.id)
+          .filter((id: unknown) => typeof id === 'number')
+        : (typeof resolucionAny.id === 'number' ? [resolucionAny.id] : []);
       // Modo edición
       setResolucionDraft({
         id: resolucion.id,
+        mesaAsignadaIds: mesasDesdeFila,
         // En edición mantenemos selección única como primer valor del arreglo
         // Usaremos 'mesaAsignadaIds' solo a nivel lógico del borrador
         detalle: resolucion.detalle,
@@ -285,6 +298,10 @@ export const NuevoActaCOE: React.FC = () => {
         responsable: resolucion.responsable,
         estadoId: resolucion.estadoId,
         activo: resolucion.activo
+      });
+      setEditingResolucion({
+        ids: resolucionIds,
+        detalle: resolucion.detalle
       });
     } else {
       // Modo nueva resolución
@@ -295,6 +312,7 @@ export const NuevoActaCOE: React.FC = () => {
         estadoId: estadosResolucion[0]?.id || 0,
         activo: true
       });
+      setEditingResolucion(null);
     }
     setShowResolucionDialog(true);
   };
@@ -315,7 +333,45 @@ export const NuevoActaCOE: React.FC = () => {
       setIsLoading(true);
       const estadoSeleccionado = estadosResolucion.find(e => e.id === resolucionDraft.estadoId);
 
-      if (resolucionDraft.id) {
+      if (editingResolucion) {
+        setActa(prev => {
+          const shouldReplace = (r: Resolucion) => {
+            if (editingResolucion.ids.length > 0 && typeof r.id === 'number') {
+              return editingResolucion.ids.includes(r.id);
+            }
+            return r.detalle === editingResolucion.detalle;
+          };
+
+          const existentes = prev.resoluciones.filter(shouldReplace);
+          const actualizadas: Resolucion[] = mesasSeleccionadas.map((mesaId, idx) => {
+            const mesaSeleccionada = mesas.find(m => m.id === mesaId);
+            const base = existentes[idx];
+            return {
+              id: base?.id,
+              mesaAsignadaId: mesaId,
+              mesaAsignadaIds: mesasSeleccionadas,
+              mesaAsignadaNombre: mesaSeleccionada?.mesa_nombre || mesaSeleccionada?.nombre || '',
+              detalle: resolucionDraft.detalle || '',
+              fechaCumplimiento: resolucionDraft.fechaCumplimiento || null,
+              responsable: resolucionDraft.responsable || '',
+              estadoId: resolucionDraft.estadoId!,
+              estadoNombre: estadoSeleccionado?.nombre || '',
+              activo: true,
+              mesas: [{
+                id: mesaSeleccionada?.id || mesaId,
+                nombre: mesaSeleccionada?.mesa_nombre || mesaSeleccionada?.nombre || '',
+                siglas: mesaSeleccionada?.mesa_siglas || mesaSeleccionada?.siglas || '',
+                mesa_abreviatura: mesaSeleccionada?.mesa_siglas || mesaSeleccionada?.siglas || ''
+              }]
+            };
+          });
+
+          return {
+            ...prev,
+            resoluciones: [...prev.resoluciones.filter(r => !shouldReplace(r)), ...actualizadas]
+          };
+        });
+      } else if (resolucionDraft.id) {
       // Edición: tomar el primer elemento
         const mesaId = mesasSeleccionadas[0];
       const mesaSeleccionada = mesas.find(m => m.id === mesaId);
@@ -375,7 +431,8 @@ export const NuevoActaCOE: React.FC = () => {
         }));
       }
 
-      setShowResolucionDialog(false);
+        setShowResolucionDialog(false);
+        setEditingResolucion(null);
     } catch (error) {
       console.error('Error al guardar la resolución:', error);
       alert('Error al guardar la resolución');
@@ -775,19 +832,28 @@ export const NuevoActaCOE: React.FC = () => {
             <Column
               header="Acciones"
               body={(row: any) => (
-                <div className="flex gap-2">
+                <div className="flex flex-nowrap align-items-center justify-content-center gap-2">
+                  {!isReadOnly && (
+                    <Button
+                      icon="pi pi-pencil"
+                      severity="info"
+                      text                      
+                      onClick={() => abrirDialogoResolucion(row)}
+                      disabled={isLoading}
+                    />
+                  )}
                   {!isReadOnly && (
                     <Button
                       icon="pi pi-trash"
                       severity="danger"
-                      text
+                      text                     
                       onClick={() => eliminarResolucion(row.detalle)}
                       disabled={isLoading}
                     />
                   )}
                 </div>
               )}
-              style={{ width: '6rem' }}
+              style={{ width: '8rem' }}
             />
           </DataTable>
 
@@ -814,7 +880,10 @@ export const NuevoActaCOE: React.FC = () => {
       <Dialog
         visible={showResolucionDialog}
         header="Agregar Resolución"
-        onHide={() => setShowResolucionDialog(false)}
+        onHide={() => {
+          setShowResolucionDialog(false);
+          setEditingResolucion(null);
+        }}
         style={{ width: '600px' }}
         modal
       >
@@ -902,7 +971,10 @@ export const NuevoActaCOE: React.FC = () => {
             <Button
               label="Cancelar"
               text
-              onClick={() => setShowResolucionDialog(false)}
+              onClick={() => {
+                setShowResolucionDialog(false);
+                setEditingResolucion(null);
+              }}
               disabled={isLoading}
             />
             <Button

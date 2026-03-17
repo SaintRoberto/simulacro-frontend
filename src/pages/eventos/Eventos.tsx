@@ -54,7 +54,7 @@ export const Eventos: React.FC = () => {
   const [atencionEstados, setAtencionEstados] = useState<{ id: number; nombre: string }[]>([]);
 
   const load = useCallback(async () => {
-    if (!selectedEmergenciaId || !datosLogin?.provincia_id ) {
+    if (!selectedEmergenciaId) {
       setItems([]);
       return;
     }
