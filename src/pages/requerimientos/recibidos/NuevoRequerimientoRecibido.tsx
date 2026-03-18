@@ -23,7 +23,7 @@ interface Recurso {
   recursosComplementarios?: string;
   caracteristicasTecnicas?: string;
   cantidad: number;
-  costoEstimado: string;
+  costo: number;
   especificacionesAdicionales?: string;
   destinoUbicacion?: string;
   activo: boolean;
@@ -225,7 +225,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
           recursosComplementarios: tipo?.complemento,
           caracteristicasTecnicas: tipo?.descripcion,
           cantidad: r.cantidad,
-          costoEstimado: tipo?.costo || '',
+          costo: r.costo,
           especificacionesAdicionales: r.especificaciones,
           destinoUbicacion: r.destino,
           activo: r.activo,
@@ -451,6 +451,11 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
             <Column field="grupo" header="Grupo" />
             <Column field="tipo" header="Tipo" />
             <Column field="cantidad" header="Cantidad" />
+            <Column
+                    field="costo"
+                    header="Costo"
+                    body={(row) => `$${Number(row.costo ?? 0).toFixed(2)}`}
+                  />
             <Column field="destinoUbicacion" header="Destino" />
             <Column field="especificacionesAdicionales" header="Especificaciones" />
           </DataTable>

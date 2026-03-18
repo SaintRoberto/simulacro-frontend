@@ -83,6 +83,7 @@ export interface RequerimientoResponse {
 export interface RequerimientoRecursoRequest {
   activo: boolean;
   cantidad: number;
+  costo: number;
   creador: string;
   destino: string;
   especificaciones: string;
@@ -166,6 +167,7 @@ export interface RequerimientoRecursoResponse {
   id: number;
   activo: boolean;
   cantidad: number;
+  costo: number;
   creacion: string;
   creador: string;
   destino: string;

@@ -8,6 +8,7 @@ import { Dialog } from 'primereact/dialog';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { InputNumber } from 'primereact/inputnumber';
+import type { InputNumberValueChangeEvent } from 'primereact/inputnumber';
 import { useAuth } from '../../../context/AuthContext';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { RequerimientoRequest, RequerimientoRecursoRequest } from '../../../context/AuthContext';
@@ -23,7 +24,7 @@ interface Recurso {
   recursosComplementarios?: string;
   caracteristicasTecnicas?: string;
   cantidad: number;
-  costoEstimado: string;
+  costoEstimado: number;
   especificacionesAdicionales?: string;
   destinoUbicacion?: string;
   activo: boolean;
@@ -36,12 +37,6 @@ const parseCostoToNumber = (value: unknown): number => {
   const parsed = Number(numeric);
   return Number.isFinite(parsed) ? parsed : 0;
 };
-
-const formatCostoUSD = (value: number): string =>
-  `${new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(Number.isFinite(value) ? value : 0)}`;
 
 export const NuevoRequerimientoEnviado: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -125,7 +120,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
           recursosComplementarios: tipo?.complemento,
           caracteristicasTecnicas: tipo?.descripcion,
           cantidad: r.cantidad,
-          costoEstimado: tipo?.costo || '',
+          costoEstimado: parseCostoToNumber((r as any).costo ?? tipo?.costo),
           especificacionesAdicionales: r.especificaciones,
           destinoUbicacion: r.destino,
           activo: r.activo,
@@ -165,7 +160,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         tipoId,
         recursosComplementarios: tipo.complemento,
         caracteristicasTecnicas: tipo.descripcion,
-        costoEstimado: tipo.costo
+        costoEstimado: parseCostoToNumber(tipo.costo)
       }));
     }
   };
@@ -207,6 +202,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         const recursoData: RequerimientoRecursoRequest = {
           activo: true,
           cantidad: recurso.cantidad,
+          costo: parseCostoToNumber(recurso.costoEstimado),
           creador: datosLogin.usuario_login,
           destino: recurso.destinoUbicacion || '',
           especificaciones: recurso.especificacionesAdicionales || '',
@@ -247,7 +243,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       recursosComplementarios: recursoDraft.recursosComplementarios as string,
       caracteristicasTecnicas: recursoDraft.caracteristicasTecnicas as string,
       cantidad: Number(recursoDraft.cantidad || 1),
-      costoEstimado: formatCostoUSD(parseCostoToNumber(recursoDraft.costoEstimado)),
+      costoEstimado: parseCostoToNumber(recursoDraft.costoEstimado),
       especificacionesAdicionales: recursoDraft.especificacionesAdicionales as string,
       destinoUbicacion: recursoDraft.destinoUbicacion as string,
       activo: true,
@@ -262,7 +258,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
 
   const totalEstimado = recursos.reduce((acc, r) => {
     // Intentar extraer un número simple si viene en formato "$400 - $1,200 por día"
-    return acc + parseCostoToNumber(r.costoEstimado);
+    return acc + r.costoEstimado;
   }, 0);
 
   return (
@@ -330,6 +326,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
             <Column field="destinoUbicacion" header="Destino" sortable></Column>
             <Column field="especificacionesAdicionales" header="Especificaciones Adicionales" sortable></Column>
             <Column field="cantidad" header="Cantidad" sortable></Column>
+            <Column field="costoEstimado" header="Costo" sortable></Column>
             <Column 
               field="activo" 
               header="Activo" 
@@ -425,13 +422,17 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
           <div className="field col-12 md:col-6">
             <label>Costo Estimado</label>
             <InputNumber
-              value={parseCostoToNumber(recursoDraft.costoEstimado)}
-              onValueChange={(e) => setRecursoDraft(prev => ({ ...prev, costoEstimado: formatCostoUSD(Number(e.value || 0)) }))}
+              value={typeof recursoDraft.costoEstimado === 'number' ? recursoDraft.costoEstimado : 0}
+              onValueChange={(e: InputNumberValueChangeEvent) => {
+                const value = typeof e.value === 'number' ? e.value : 0;
+                setRecursoDraft(prev => ({ ...prev, costoEstimado: value }));
+              }}
               mode="decimal"
               min={0}
               minFractionDigits={2}
               maxFractionDigits={2}
-              useGrouping              
+              useGrouping
+              prefix="US "
               disabled={isReadOnly}
               className="w-full"
             />
@@ -469,6 +470,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
             <div className="field col-12"><strong>Grupo:</strong> {viewRecursoDialog.grupo} (ID: {viewRecursoDialog.grupoId})</div>
             <div className="field col-12"><strong>Tipo:</strong> {viewRecursoDialog.tipo} (ID: {viewRecursoDialog.tipoId})</div>
             <div className="field col-12"><strong>Cantidad:</strong> {viewRecursoDialog.cantidad}</div>
+            <div className="field col-12"><strong>Costo:</strong> ${viewRecursoDialog.costoEstimado?.toFixed(2) || '0.00'}</div>
             <div className="field col-12"><strong>Destino:</strong> {viewRecursoDialog.destinoUbicacion || '-'}</div>
             <div className="field col-12"><strong>Especificaciones:</strong> {viewRecursoDialog.especificacionesAdicionales || '-'}</div>
             <div className="field col-12"><strong>Complementarios:</strong> {viewRecursoDialog.recursosComplementarios || '-'}</div>

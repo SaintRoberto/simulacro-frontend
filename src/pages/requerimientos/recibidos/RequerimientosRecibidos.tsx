@@ -51,6 +51,8 @@ interface RequerimientoDetalle {
 interface RecursoSolicitado {
   activo: boolean;
   cantidad: number;
+  costoEstimado?: number;
+  costo?: number;
   creacion: string;
   creador: string;
   destino: string;
@@ -163,6 +165,7 @@ export const RequerimientosRecibidos: React.FC = () => {
 
         recursosConNombres.push({
           ...recurso,
+          costoEstimado: Number((recurso as any).costo ?? (recurso as any).costoEstimado ?? 0),
           grupo_nombre: grupoNombre,
           tipo_nombre: tipoNombre
         });
@@ -326,6 +329,7 @@ export const RequerimientosRecibidos: React.FC = () => {
                         <th>Grupo</th>
                         <th>Tipo</th>
                         <th>Cantidad</th>
+                        <th>Costo</th>
                         <th>Destino</th>
                       </tr>
                     </thead>
@@ -335,6 +339,7 @@ export const RequerimientosRecibidos: React.FC = () => {
                           <td>{recurso.grupo_nombre || '-'}</td>
                           <td>{recurso.tipo_nombre || '-'}</td>
                           <td>{recurso.cantidad}</td>
+                          <td>${recurso.costoEstimado?.toFixed(2) || 0}</td>
                           <td>{recurso.destino || '-'}</td>
                         </tr>
                       ))}
