@@ -90,8 +90,23 @@ export const AccionesRespuestas: React.FC = () => {
     // Persistencia se definirá en una iteración futura
   };
 
-  const handleDelete = (_item: AccionesRespuestasItem) => {
-    // Pendiente de definir con el backend
+  const handleDelete = async (item: AccionesRespuestasItem) => {
+    try {
+      const id = item.respuesta_accion_id;
+      if (!id) return;
+      const url = `${apiBase}/acciones_respuesta/${id}`;
+      const response = await authFetch(url, {
+        method: 'DELETE',
+        headers: { accept: 'application/json' }
+      });
+      if (!response.ok) {
+        console.error('No se pudo eliminar la acción de respuesta', response.status, response.statusText);
+        return;
+      }
+      await loadAcciones();
+    } catch (error) {
+      console.error('Error eliminando acción de respuesta:', error);
+    }
   };
 
   const columns = [
@@ -135,7 +150,19 @@ export const AccionesRespuestas: React.FC = () => {
       field: 'detalle', 
       header: 'Detalle', 
       sortable: true,
-      className: 'text-truncate'
+      className: 'd-none d-lg-table-cell',
+      style: { maxWidth: '700px', width: '700px' },
+      body: (row: AccionesRespuestasItem) => (
+        <div
+          title={row.detalle || ''}
+          style={{
+            maxWidth: '700px',
+            width: '700px',
+          }}
+        >
+          {row.detalle}
+        </div>
+      )
     },
   ];
 
@@ -166,7 +193,7 @@ export const AccionesRespuestas: React.FC = () => {
         )}
         onEdit={(row) => navigate(`/acciones/nueva?id=${row.respuesta_accion_id}`)}
         showDeleteButton={false}
-        showDeleteAction={false}
+        showDeleteAction={true}
         onSave={handleSave}
         onDelete={handleDelete}
         initialItem={{
@@ -186,4 +213,3 @@ export const AccionesRespuestas: React.FC = () => {
 };
 
 export default AccionesRespuestas;
-
