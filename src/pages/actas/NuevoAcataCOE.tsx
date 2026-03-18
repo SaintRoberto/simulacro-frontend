@@ -75,6 +75,11 @@ export const NuevoActaCOE: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { authFetch, datosLogin } = useAuth();
+  const emergenciaFromStorage = Number(localStorage.getItem('selectedEmergenciaId') || 'NaN');
+  const effectiveEmergenciaId =
+    Number.isNaN(emergenciaFromStorage)
+      ? (datosLogin?.emergencia_id ?? 0)
+      : emergenciaFromStorage;
 
   const editId = useMemo(() => {
     const idStr = searchParams.get('id');
@@ -88,7 +93,7 @@ export const NuevoActaCOE: React.FC = () => {
     detalle: '',
     fechaHoraSesion: new Date(),
     resoluciones: [],
-    emergencia_id: datosLogin?.emergencia_id || 4, // Valor por defecto, ajustar según sea necesario
+    emergencia_id: effectiveEmergenciaId,
     usuario_id: datosLogin?.usuario_id || 0,
     creador: datosLogin?.usuario_login || '',
     acta_coe_estado_id: undefined
@@ -131,6 +136,18 @@ export const NuevoActaCOE: React.FC = () => {
     return Array.from(grupos.entries()).map(([detalle, resoluciones]) => {
       // Tomar la primera resolución como base
       const base = resoluciones[0];
+      const mesasAgrupadas = resoluciones
+        .map(r => r.mesaAsignadaId)
+        .filter((id): id is number => typeof id === 'number')
+        .map((mesaId) => {
+          const mesa = mesas.find(m => m.id === mesaId);
+          return {
+            id: mesaId,
+            nombre: mesa?.mesa_nombre || mesa?.nombre || '',
+            siglas: mesa?.mesa_siglas || mesa?.siglas || '',
+            mesa_abreviatura: mesa?.mesa_siglas || mesa?.siglas || ''
+          };
+        });
       return {
         id: base.id, // Usar el ID real de la resolución
         key: base.id || detalle, // Key única para React basada en ID o detalle
@@ -140,13 +157,13 @@ export const NuevoActaCOE: React.FC = () => {
         estadoId: base.estadoId,
         estadoNombre: base.estadoNombre,
         activo: base.activo,
-        // Mantener las mesas como un array para mostrarlas como tags
-        mesas: base.mesas || [],
+        // Mostrar todas las mesas del grupo
+        mesas: mesasAgrupadas,
         // Mantener referencia a todas las resoluciones originales para acciones
         resoluciones: resoluciones
       };
     });
-  }, [acta.resoluciones]);
+  }, [acta.resoluciones, mesas]);
 
   // Cargar datos del acta cuando está en modo edición
   const cargarActa = useCallback(async (id: number) => {
@@ -220,7 +237,7 @@ export const NuevoActaCOE: React.FC = () => {
 
         // Cargar mesas, estados de resolución y estados de acta en paralelo
         const [mesasResponse, estadosResponse, estadosActaResponse] = await Promise.all([
-          authFetch(apiBase + '/mesas/coe/3'),
+          authFetch(apiBase + `/mesas/coe/${datosLogin?.coe_id}`),
           authFetch(apiBase + '/acta_coe_resolucion_estados'),
           authFetch(apiBase + '/acta_coe_estados')
         ]);
@@ -250,8 +267,12 @@ export const NuevoActaCOE: React.FC = () => {
 
         // Si es un acta nueva, establecer el usuario actual
         if (datosLogin?.usuario_id && !editId) {
+          const selectedEmergenciaId = Number(localStorage.getItem('selectedEmergenciaId') || 'NaN');
           setActa(prev => ({
             ...prev,
+            emergencia_id: Number.isNaN(selectedEmergenciaId)
+              ? (datosLogin?.emergencia_id ?? prev.emergencia_id)
+              : selectedEmergenciaId,
             usuario_id: datosLogin.usuario_id,
             creador: datosLogin.usuario_login
           }));
@@ -357,12 +378,15 @@ export const NuevoActaCOE: React.FC = () => {
               estadoId: resolucionDraft.estadoId!,
               estadoNombre: estadoSeleccionado?.nombre || '',
               activo: true,
-              mesas: [{
-                id: mesaSeleccionada?.id || mesaId,
-                nombre: mesaSeleccionada?.mesa_nombre || mesaSeleccionada?.nombre || '',
-                siglas: mesaSeleccionada?.mesa_siglas || mesaSeleccionada?.siglas || '',
-                mesa_abreviatura: mesaSeleccionada?.mesa_siglas || mesaSeleccionada?.siglas || ''
-              }]
+              mesas: mesasSeleccionadas.map(id => {
+                const m = mesas.find(x => x.id === id);
+                return {
+                  id: m?.id || id,
+                  nombre: m?.mesa_nombre || m?.nombre || '',
+                  siglas: m?.mesa_siglas || m?.siglas || '',
+                  mesa_abreviatura: m?.mesa_siglas || m?.siglas || ''
+                };
+              })
             };
           });
 

@@ -97,10 +97,17 @@ export const ActasCOE: React.FC = () => {
   const loadActas = useCallback(async () => {
     try {
       setIsLoading(true);
-      const storedUserId = Number(localStorage.getItem('userId') || '0');
-      const usuarioId = datosLogin?.usuario_id || (storedUserId > 0 ? storedUserId : 84);
-      const emergenciaId = datosLogin?.emergencia_id || 4;
-      //const url = `${apiBase}/actas_coe/usuario/${usuarioId}/emergencia/${emergenciaId}`;
+      const emergenciaFromStorage = Number(localStorage.getItem('selectedEmergenciaId') || 'NaN');
+      const emergenciaId =
+        Number.isNaN(emergenciaFromStorage)
+          ? (datosLogin?.emergencia_id ?? 0)
+          : emergenciaFromStorage;
+
+      if (!emergenciaId) {
+        setActas([]);
+        return;
+      }
+
       const url = `${apiBase}/actas_coe/emergencia/${emergenciaId}/provincia/${datosLogin?.provincia_id}/canton/${datosLogin?.canton_id}`;
       const response = await authFetch(url, { headers: { accept: 'application/json' } });
       if (!response.ok) {
@@ -124,7 +131,7 @@ export const ActasCOE: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [apiBase, authFetch, datosLogin?.usuario_id]);
+  }, [apiBase, authFetch, datosLogin?.emergencia_id, datosLogin?.provincia_id, datosLogin?.canton_id]);
 
   useEffect(() => {
     loadActas();
@@ -373,4 +380,3 @@ export const ActasCOE: React.FC = () => {
 };
 
 export default ActasCOE;
-

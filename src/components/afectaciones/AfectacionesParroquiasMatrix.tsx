@@ -79,7 +79,7 @@ export interface AfectacionesParroquiasMatrixProps {
 }
 
 const buildApiBase = () => process.env.REACT_APP_API_URL || '/api';
-const emergencyId = 4;
+const emergencyId = Number(localStorage.getItem('selectedEmergenciaId') || 0);
 const rowColor = '#a8eeb3';
 
 export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrixProps> = ({

@@ -151,7 +151,7 @@ export const NuevoAccionesRespuesta: React.FC = () => {
 
         // Cargar mesas, estados de resolución y estados de respuesta en paralelo
         const [mesasResponse, estadosResponse, respuestaEstadosResponse] = await Promise.all([
-          authFetch(apiBase + `/mesas/coe/3`),
+          authFetch(apiBase + `/mesas/coe/${datosLogin?.coe_id}`),
           authFetch(apiBase + `/acta_coe_resolucion_estados`),
           authFetch(apiBase + `/accion_respuesta_estados`)
         ]);
