@@ -214,7 +214,7 @@ export const Layout: React.FC = () => {
               icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
             />
             <Typography.Title level={4} style={{ margin: 0 }}>
-              {`Simulacros COE${
+              {`Sistemas COE${
                 selectedEmergenciaName ? " - " + selectedEmergenciaName : ""
               }`}
             </Typography.Title>

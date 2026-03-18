@@ -7,7 +7,11 @@ export const Afectaciones: React.FC = () => {
     <div className="grid">
       <div className="col-12">
         <Card>
-          <AfectacionesParroquiasMatrix cantonId={901} mesaGrupoId={1} tableTitle="Matriz de Afectaciones por Parroquia" />
+          <AfectacionesParroquiasMatrix 
+            cantonId={901} 
+            mesaGrupoId={0}
+            tableTitle="Matriz de Afectaciones por Parroquia" 
+          />
         </Card>
       </div>
     </div>

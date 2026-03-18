@@ -89,7 +89,9 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
   tableTitle = 'Matriz de Afectaciones por Parroquia',
 }) => {
   const { datosLogin, authFetch } = useAuth();
-  const mesagrupo_Id = datosLogin?.mesa_grupo_id ?? mesaGrupoId;
+  const isNacionalReadOnly = datosLogin?.coe_id === 1;
+  // Si mesa_grupo_id es null/undefined, usar 0; si no, usar el valor del login o el prop
+  const mesagrupo_Id = datosLogin?.mesa_grupo_id ?? mesaGrupoId ?? 0;
   const menuId = 6;
   const [loading, setLoading] = useState(false);
   const [parroquias, setParroquias] = useState<Parroquia[]>([]);
@@ -279,11 +281,49 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
         setLoading(true);
         const url = `${apiBase}/afectaciones_registros/eventos/emergencia/${emergencyId}/canton/${cantonSelId}/mesa_grupo/${mesagrupo_Id}/`;
         const res = await authFetch(url, { headers: { accept: 'application/json' } });
-        const all: Array<{ parroquia_id: number; parroquia_nombre?: string; evento_id?: number; evento_nombre?: string; afectacion_variable_id: number; cantidad: number; costo: number }>
+        const all: Array<{
+          parroquia_id: number;
+          parroquia_nombre?: string;
+          evento_id?: number;
+          evento_nombre?: string;
+          afectacion_variable_id: number;
+          variable_nombre?: string;
+          requiere_gis?: boolean;
+          cantidad: number;
+          costo: number;
+          id?: number | null;
+          afectacion_variable_registro_id?: number | null;
+          registro_id?: number | null;
+        }>
           = res.ok ? await res.json() : [];
         if (!isMounted) return;
         // Filter only selected parroquias
         const filtered = (all || []).filter(r => parroquiasSelIds.includes(r.parroquia_id));
+        // Fallback: con mesa_grupo=0 el endpoint de variables puede venir vacío.
+        // En ese caso, derivamos columnas de variables desde los registros cargados.
+        if (variables.length === 0 && filtered.length > 0) {
+          const byVar = new Map<number, AfectacionVariable>();
+          for (const r of filtered) {
+            if (byVar.has(r.afectacion_variable_id)) continue;
+            byVar.set(r.afectacion_variable_id, {
+              activo: true,
+              coe_id: datosLogin?.coe_id ?? 0,
+              creacion: '',
+              creador: '',
+              dato_tipo_id: 1,
+              id: r.afectacion_variable_id,
+              infraestructura_tipo_id: 0,
+              mesa_grupo_id: mesagrupo_Id,
+              modificacion: '',
+              modificador: '',
+              nombre: r.variable_nombre || `Variable ${r.afectacion_variable_id}`,
+              observaciones: '',
+              requiere_costo: true,
+              requiere_gis: Boolean(r.requiere_gis),
+            });
+          }
+          setVariables(Array.from(byVar.values()));
+        }
         // Build row list (duplicated parroquia per evento)
         const rowMap = new Map<string, RowItem>();
         for (const r of filtered) {
@@ -353,9 +393,13 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
     };
     loadRegistros();
     return () => { isMounted = false; };
-  }, [parroquiasSelIds, apiBase, mesagrupo_Id, emergencyId, cantonSelId]);
+  }, [parroquiasSelIds, apiBase, mesagrupo_Id, emergencyId, cantonSelId, variables.length, datosLogin?.coe_id]);
 
   const saveAll = useCallback(async () => {
+    // if (isNacionalReadOnly) {
+    //   message.warning('El COE Nacional no puede editar esta matriz.');
+    //   return;
+    // }
     if (!provinciaId || !cantonSelId || !rows.length) {
       message.warning('Seleccione provincia, cantón y al menos una parroquia');
       return;
@@ -418,7 +462,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
     } finally {
       setSaving(false);
     }
-  }, [apiBase, provinciaId, cantonSelId, rows, variables, recordIds, hasExisting]);
+  }, [apiBase, provinciaId, cantonSelId, rows, variables, recordIds, hasExisting, isNacionalReadOnly]);
 
   const commitCell = useCallback((rowKey: string, variableId: number, patch: Partial<AfectacionCellPayload>) => {
     setMatrix(prev => ({
@@ -438,14 +482,14 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
   };
 
   const CellEditor: React.FC<CellEditorProps> = React.memo(({ rowKey, variable, cell, parroquia }) => {
-    const [cantidad, setCantidad] = useState<number | null | undefined>(cell?.cantidad ?? null);
-    const [costo, setCosto] = useState<number | null | undefined>(cell?.costo ?? null);
+    const [cantidad, setCantidad] = useState<number | null | undefined>(cell?.cantidad ?? 0);
+    const [costo, setCosto] = useState<number | null | undefined>(cell?.costo ?? 0);
     const hasValue = (typeof cantidad === 'number' && cantidad !== 0) || (typeof costo === 'number' && costo !== 0);
 
     // When external matrix updates for this cell (rare), sync local values
     useEffect(() => {
-      setCantidad(cell?.cantidad ?? null);
-      setCosto(cell?.costo ?? null);
+      setCantidad(cell?.cantidad ?? 0);
+      setCosto(cell?.costo ?? 0);
     }, [cell?.cantidad, cell?.costo, rowKey, variable.id]);
 
     const onCommit = useCallback(() => {
@@ -479,13 +523,14 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
                 {variable?.dato_tipo_id === 3 ? '%' : '#'}
               </span>
               <InputNumber
-                placeholder="Cant"
+                placeholder="0"
                 min={0}
                 value={cantidad ?? null}
                 onChange={(val) => setCantidad(typeof val === 'number' ? val : null)}
                 onBlur={onCommit}
                 onPressEnter={onCommit}
                 style={{ flex: 1, borderTopLeftRadius: 0, borderBottomLeftRadius: 0, minWidth: 0 }}
+                disabled={isNacionalReadOnly}
               />
             </div>
             <div style={{ display: 'inline-flex', width: 200, alignItems: 'stretch' }}>
@@ -510,7 +555,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
                 $
               </span>
               <InputNumber
-                placeholder="Costo"
+                placeholder="0"
                 min={0}
                 value={costo ?? null}
                 onChange={(val) => setCosto(typeof val === 'number' ? val : null)}
@@ -523,7 +568,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
                   value ? Number(value.replace(/\$\s?|,/g, '')) : 0
                 }
                 style={{ flex: 1, borderTopLeftRadius: 0, borderBottomLeftRadius: 0, minWidth: 0 }}
-                disabled={!variable.requiere_costo}
+                disabled={isNacionalReadOnly || !variable.requiere_costo}
 
               />
             </div>
@@ -532,6 +577,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
               <Button icon={<SettingOutlined />}
                 onClick={() => openDetails(parroquia as Parroquia, variable, rowKey)}
                 hidden={!variable.requiere_gis}
+                disabled={isNacionalReadOnly}
               />
             </div>
           </div>
@@ -607,6 +653,10 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
   }, [modalOpen, selected?.parroquia?.id, selected?.variable?.id, apiBase]);
 
   const saveInfraDetalles = async () => {
+    if (isNacionalReadOnly) {
+      message.warning('El COE Nacional no puede editar esta matriz.');
+      return;
+    }
     if (!selected?.parroquia || !selected?.variable) return;
     const pid = selected.parroquia.id;
     const vid = selected.variable.id;
@@ -764,7 +814,6 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
               value={provinciaId}
               onChange={(val) => setProvinciaId(val)}
               allowClear
-              disabled={Boolean(datosLogin && datosLogin.provincia_id)}
               style={{ width: '100%' }}
             />
           </Space>
@@ -788,7 +837,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
       <div style={{ marginBottom: 12 }}>
         <Space>
           {!puedeGuardar || !parroquias.length || !variables.length ? null : (
-            <Button type="primary" onClick={saveAll} loading={saving} disabled={!puedeGuardar || !parroquias.length || !variables.length}>
+            <Button type="primary" onClick={saveAll} loading={saving} disabled={isNacionalReadOnly || !puedeGuardar || !parroquias.length || !variables.length}>
               {hasExisting ? 'Guardar cambios' : 'Guardar cambios'}
             </Button>
           )}
@@ -832,6 +881,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
                     <input
                       type="checkbox"
                       checked={infraChecked.includes(item.infraestructura_id)}
+                      disabled={isNacionalReadOnly}
                       onChange={(e) => {
                         const checked = e.currentTarget.checked;
                         setInfraChecked(prev => checked ? [...prev, item.infraestructura_id] : prev.filter(id => id !== item.infraestructura_id));
@@ -845,7 +895,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
               <div style={{ marginTop: 12 }}>
                 <Space>
                   <Button onClick={() => setModalOpen(false)}>Cerrar</Button>
-                  <Button type="primary" onClick={saveInfraDetalles} loading={infraLoading}>Guardar</Button>
+                  <Button type="primary" onClick={saveInfraDetalles} loading={infraLoading} disabled={isNacionalReadOnly}>Guardar</Button>
                 </Space>
               </div>
             </Spin>
