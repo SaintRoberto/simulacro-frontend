@@ -7,6 +7,7 @@ import { Button } from 'primereact/button';
 import { Dialog } from 'primereact/dialog';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
+import { InputNumber } from 'primereact/inputnumber';
 import { useAuth } from '../../../context/AuthContext';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { RequerimientoRequest, RequerimientoRecursoRequest } from '../../../context/AuthContext';
@@ -27,6 +28,20 @@ interface Recurso {
   destinoUbicacion?: string;
   activo: boolean;
 }
+
+const parseCostoToNumber = (value: unknown): number => {
+  if (typeof value === 'number') return value;
+  const raw = String(value || '');
+  const numeric = raw.replace(/[^0-9.]/g, '');
+  const parsed = Number(numeric);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const formatCostoUSD = (value: number): string =>
+  `${new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(Number.isFinite(value) ? value : 0)}`;
 
 export const NuevoRequerimientoEnviado: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -50,7 +65,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
   const [recursoDraft, setRecursoDraft] = useState<Partial<Recurso>>({ cantidad: 0 });
   const [viewRecursoDialog, setViewRecursoDialog] = useState<Recurso | null>(null);
 
-  const { datosLogin, loadReceptores, receptores, receptoresStatus, recursoGrupos, recursoGruposStatus, recursoTipos, recursoTiposStatus, loadRecursoGrupos, loadRecursoTipos, createRequerimiento, createRequerimientoRecurso, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo } = useAuth();
+  const { datosLogin, selectedEmergenciaId, loadReceptores, receptores, receptoresStatus, recursoGrupos, recursoGruposStatus, recursoTipos, recursoTiposStatus, loadRecursoGrupos, loadRecursoTipos, createRequerimiento, createRequerimientoRecurso, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo } = useAuth();
   const mttOptions = (receptores || []).map(r => ({ label: `${r.siglas} - ${r.mesa_nombre}`.trim(), value: `${r.mesa_id}-${r.siglas}-${r.usuario_id}` }));
   const isReadOnly = !!editId;
 
@@ -165,11 +180,16 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       // Parse receptor info from mtt value (format: "coe_id-mesa_id-siglas-usuario_id")
       const [, , , usuarioReceptorId] = mtt.split('-');
       
+      const emergenciaFromStorage = Number(localStorage.getItem('selectedEmergenciaId') || 'NaN');
+      const effectiveEmergenciaId =
+        selectedEmergenciaId ??
+        (Number.isNaN(emergenciaFromStorage) ? (datosLogin?.emergencia_id ?? 0) : emergenciaFromStorage);
+
       // Create requerimiento
       const requerimientoData: RequerimientoRequest = {
         activo: true,
         creador: datosLogin.usuario_login,
-        emergencia_id: datosLogin?.emergencia_id || 4, // Default value, you may need to adjust this
+        emergencia_id: effectiveEmergenciaId,
         fecha_fin: fechaFin ? fechaFin.toISOString() : new Date().toISOString(),
         fecha_inicio: fechaInicio ? fechaInicio.toISOString() : new Date().toISOString(),
         usuario_emisor_id: datosLogin.usuario_id,
@@ -227,7 +247,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       recursosComplementarios: recursoDraft.recursosComplementarios as string,
       caracteristicasTecnicas: recursoDraft.caracteristicasTecnicas as string,
       cantidad: Number(recursoDraft.cantidad || 1),
-      costoEstimado: (recursoDraft.costoEstimado as string) || '-',
+      costoEstimado: formatCostoUSD(parseCostoToNumber(recursoDraft.costoEstimado)),
       especificacionesAdicionales: recursoDraft.especificacionesAdicionales as string,
       destinoUbicacion: recursoDraft.destinoUbicacion as string,
       activo: true,
@@ -242,9 +262,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
 
   const totalEstimado = recursos.reduce((acc, r) => {
     // Intentar extraer un número simple si viene en formato "$400 - $1,200 por día"
-    const match = /\$\s*([\d,.]+)/.exec(r.costoEstimado || '');
-    const val = match ? Number(match[1].replace(/,/g, '')) : 0;
-    return acc + val;
+    return acc + parseCostoToNumber(r.costoEstimado);
   }, 0);
 
   return (
@@ -315,6 +333,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
             <Column 
               field="activo" 
               header="Activo" 
+              hidden
               sortable
               body={(row: Recurso) => (
                 <Tag color={row.activo ? 'blue' : 'red'}>
@@ -405,7 +424,17 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
           </div>
           <div className="field col-12 md:col-6">
             <label>Costo Estimado</label>
-            <InputText value={recursoDraft.costoEstimado || ''} onChange={(e) => setRecursoDraft(prev => ({ ...prev, costoEstimado: e.target.value }))} disabled={isReadOnly} />
+            <InputNumber
+              value={parseCostoToNumber(recursoDraft.costoEstimado)}
+              onValueChange={(e) => setRecursoDraft(prev => ({ ...prev, costoEstimado: formatCostoUSD(Number(e.value || 0)) }))}
+              mode="decimal"
+              min={0}
+              minFractionDigits={2}
+              maxFractionDigits={2}
+              useGrouping              
+              disabled={isReadOnly}
+              className="w-full"
+            />
           </div>
 
           <div className="field col-12">

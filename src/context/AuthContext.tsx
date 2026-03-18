@@ -433,7 +433,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!datosLogin) return;
     setReceptoresStatus('loading');
     try {
-      const url = `${apiBase}/mesas/${datosLogin.coe_id}/${datosLogin.mesa_id}/${datosLogin.mesa_grupo_id}/${datosLogin.provincia_id}/${datosLogin.canton_id}`;
+      const url = `${apiBase}/coe/${datosLogin.coe_id}/mesa/${datosLogin.mesa_id}/mesa_grupo/${datosLogin.mesa_grupo_id}/provincia/${datosLogin.provincia_id}/canton/${datosLogin.canton_id}`;
       const res = await authFetch(url, { headers: { 'Content-Type': 'application/json' } });
       if (!res.ok) {
         setReceptoresStatus('failed');
