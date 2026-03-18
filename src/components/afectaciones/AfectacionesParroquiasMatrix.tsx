@@ -393,7 +393,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
     };
     loadRegistros();
     return () => { isMounted = false; };
-  }, [parroquiasSelIds, apiBase, mesagrupo_Id, emergencyId, cantonSelId, variables.length, datosLogin?.coe_id]);
+  }, [parroquiasSelIds, apiBase, mesagrupo_Id, emergencyId, cantonSelId, datosLogin?.coe_id]);
 
   const saveAll = useCallback(async () => {
     // if (isNacionalReadOnly) {
