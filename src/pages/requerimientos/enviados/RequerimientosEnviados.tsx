@@ -57,6 +57,7 @@ interface RecursoSolicitado {
   id: number;
   activo: boolean;
   cantidad: number;
+  costo: number;
   creacion: string;
   creador: string;
   destino: string;
@@ -390,6 +391,7 @@ export const RequerimientosEnviados: React.FC = () => {
                         <th>Grupo</th>
                         <th>Tipo</th>
                         <th>Cantidad</th>
+                        <th>Costo</th>
                         <th>Destino</th>
                         <th>Especificacion</th>
                       </tr>
@@ -400,6 +402,7 @@ export const RequerimientosEnviados: React.FC = () => {
                           <td>{recurso.grupo_nombre || '-'}</td>
                           <td>{recurso.tipo_nombre || '-'}</td>
                           <td>{recurso.cantidad}</td>
+                          <td>{`$ ${Number(recurso.costo ?? 0).toFixed(2)}`}</td>
                           <td>{recurso.destino || '-'}</td>
                           <td>{recurso.especificaciones || '-'}</td>
 

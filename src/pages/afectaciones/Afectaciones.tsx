@@ -1,13 +1,13 @@
 import React from 'react';
 import { Card } from 'primereact/card';
-import AfectacionesParroquiasMatrix from '../../components/afectaciones/AfectacionesParroquiasMatrix';
+import AfectacionesParroquiasMatrixSidePanel from '../../components/afectaciones/AfectacionesParroquiasMatrixSidePanel';
 
 export const Afectaciones: React.FC = () => {
   return (
     <div className="grid">
       <div className="col-12">
         <Card>
-          <AfectacionesParroquiasMatrix 
+          <AfectacionesParroquiasMatrixSidePanel 
             cantonId={901} 
             mesaGrupoId={0}
             tableTitle="Matriz de Afectaciones por Parroquia" 
