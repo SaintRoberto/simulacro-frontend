@@ -550,7 +550,6 @@ export const AfectacionesParroquiasMatrixSidePanel: React.FC<AfectacionesParroqu
 
   return (
     <div>
-      {saving && <Spin spinning fullscreen tip="Guardando cambios..." />}
       <div style={{ marginBottom: 12 }}>
         <Title level={4} style={{ margin: 0 }}>{tableTitle}</Title>
       </div>
@@ -563,7 +562,7 @@ export const AfectacionesParroquiasMatrixSidePanel: React.FC<AfectacionesParroqu
               options={provincias.map(p => ({ label: p.nombre, value: p.id }))}
               value={provinciaId}
               onChange={setProvinciaId}
-              disabled={!isNacionalReadOnly || Boolean(datosLogin?.provincia_id)}
+              disabled={Boolean(datosLogin?.provincia_id)}
               style={{ width: '100%' }}
             />
           </Space>
@@ -576,7 +575,7 @@ export const AfectacionesParroquiasMatrixSidePanel: React.FC<AfectacionesParroqu
               options={cantones.map(c => ({ label: c.nombre, value: c.id }))}
               value={cantonSelId}
               onChange={setCantonSelId}
-              disabled={!isNacionalReadOnly || !provinciaId || Boolean(datosLogin?.canton_id)}
+              disabled={!provinciaId || Boolean(datosLogin?.canton_id)}
               style={{ width: '100%' }}
             />
           </Space>
