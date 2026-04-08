@@ -855,55 +855,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
           size="middle"
         />
       </Spin>
-      <Modal
-        open={modalOpen}
-        title="Detalle de Afectación"
-        onCancel={() => setModalOpen(false)}
-        footer={null}
-      >
-        {selected?.parroquia && selected?.variable ? (
-          <div>
-            <p>
-              <Text strong>Parroquia: </Text>
-              <Text>{selected.parroquia.nombre} (ID: {selected.parroquia.id})</Text>
-            </p>
-            <p>
-              <Text strong>Afectación: </Text>
-              <Text>{selected.variable.nombre} (ID: {selected.variable.id})</Text>
-            </p>
-            <div style={{ margin: '12px 0' }}>
-              <Text strong>Infraestructuras</Text>
-            </div>
-            <Spin spinning={infraLoading}>
-              <div style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid #f0f0f0', padding: 8, borderRadius: 4 }}>
-                {(infraList || []).map(item => (
-                  <div key={item.infraestructura_id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-                    <input
-                      type="checkbox"
-                      checked={infraChecked.includes(item.infraestructura_id)}
-                      disabled={isNacionalReadOnly}
-                      onChange={(e) => {
-                        const checked = e.currentTarget.checked;
-                        setInfraChecked(prev => checked ? [...prev, item.infraestructura_id] : prev.filter(id => id !== item.infraestructura_id));
-                      }}
-                    />
-                    <span>{item.nombre}</span>
-                    {item.registrada && <span style={{ marginLeft: 'auto', color: '#389e0d' }}>Registrada</span>}
-                  </div>
-                ))}
-              </div>
-              <div style={{ marginTop: 12 }}>
-                <Space>
-                  <Button onClick={() => setModalOpen(false)}>Cerrar</Button>
-                  <Button type="primary" onClick={saveInfraDetalles} loading={infraLoading} disabled={isNacionalReadOnly}>Guardar</Button>
-                </Space>
-              </div>
-            </Spin>
-          </div>
-        ) : (
-          <Text type="secondary">Seleccione una celda para ver detalles</Text>
-        )}
-      </Modal>
+  
     </div>
   );
 };
