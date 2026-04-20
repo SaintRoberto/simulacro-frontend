@@ -10,6 +10,13 @@ export type Institucion = {
   siglas?: string;
 };
 
+export type Mesa = {
+  id: number;
+  nombre: string;
+  siglas?: string;
+  grupo_mesa_abreviatura: string
+};
+
 export type RecursoTipoRow = {
   recurso_tipo_id: number;
   recurso_tipo_nombre: string;
@@ -23,6 +30,10 @@ export type InventarioCellPayload = {
 
 export interface InventarioMatrixProps {
   tableTitle: string;
+  mesas: Mesa[];
+  mesasStatus: 'idle' | 'loading' | 'succeeded' | 'failed';
+  selectedMesaId?: number;
+  onMesaChange: (mesaId: number) => void;
   recursoGrupos: Array<{ id: number; nombre: string }>;
   recursoGruposStatus: 'idle' | 'loading' | 'succeeded' | 'failed';
   selectedGrupoId?: number;
@@ -44,6 +55,10 @@ export interface InventarioMatrixProps {
 
 export const InventarioMatrix: React.FC<InventarioMatrixProps> = ({
   tableTitle,
+  mesas,
+  mesasStatus,
+  selectedMesaId,
+  onMesaChange,
   recursoGrupos,
   recursoGruposStatus,
   selectedGrupoId,
@@ -80,7 +95,6 @@ export const InventarioMatrix: React.FC<InventarioMatrixProps> = ({
       render: (_, row) => {
         const cell = getCell(row.recurso_tipo_id, inst.id);
         const existencias = Number(cell?.existencias ?? 0);
-        const disponible = Number(cell?.inventario_disponible ?? 0);
         const isSelected = selectedRowId === row.recurso_tipo_id && selectedInstitucionId === inst.id;
         return (
           <button
@@ -101,10 +115,7 @@ export const InventarioMatrix: React.FC<InventarioMatrixProps> = ({
               <Text style={{ fontSize: 12 }}>Existencias</Text>
               <Text strong>{existencias}</Text>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Text style={{ fontSize: 12 }}>Disponible</Text>
-              <Text strong style={{ color: disponible > 0 ? '#15803d' : '#9ca3af' }}>{disponible}</Text>
-            </div>
+            
           </button>
         );
       },
@@ -120,6 +131,7 @@ export const InventarioMatrix: React.FC<InventarioMatrixProps> = ({
       </div>
 
       <Row gutter={[12, 12]} style={{ marginBottom: 8 }}>
+        
         <Col xs={24} md={10} lg={6}>
           <Space direction="vertical" size={4} style={{ width: '100%' }}>
             <Text strong>Grupo Recurso</Text>
@@ -136,12 +148,29 @@ export const InventarioMatrix: React.FC<InventarioMatrixProps> = ({
             />
           </Space>
         </Col>
-        <Col xs={24} md={8} lg={4} style={{ display: 'flex', alignItems: 'end' }}>
+        <Col xs={24} md={10} lg={6}>
+          <Space direction="vertical" size={4} style={{ width: '100%' }}>
+            <Text strong>Mesa</Text>
+            <Select
+              placeholder="Seleccione mesa"
+              options={mesas.map((m) => ({ label: m.grupo_mesa_abreviatura ? `${m.grupo_mesa_abreviatura} - ${m.nombre}` : m.nombre, value: m.id }))}
+              value={selectedMesaId}
+              onChange={(value) => onMesaChange(value)}
+              disabled={mesasStatus === 'loading'}
+              loading={mesasStatus === 'loading'}
+              style={{ width: '100%' }}
+              showSearch
+              optionFilterProp="label"
+            />
+          </Space>
+        </Col>
+        <Col xs={24} md={8} lg={2} style={{ display: 'flex', alignItems: 'end' }}>
           <Button type="default" onClick={onLoadMatrix} disabled={loadDisabled} loading={loading}>
             Cargar Matriz
           </Button>
+          
         </Col>
-        <Col xs={24} md={6} lg={6} style={{ display: 'flex', alignItems: 'end', justifyContent: 'flex-end' }}>
+        <Col xs={24} md={6} lg={3} style={{ display: 'flex', alignItems: 'end', justifyContent: 'flex-end' }}>
           <Button type="primary" onClick={onSaveAll} loading={saving} disabled={saveDisabled}>
             Guardar Cambios ({dirtyCount})
           </Button>
