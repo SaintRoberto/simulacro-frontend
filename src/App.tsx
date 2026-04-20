@@ -23,6 +23,7 @@ import { AccionesRespuestas } from './pages/acciones/AccionesRespuestas';
 import { NuevoAccionesRespuesta } from './pages/acciones/NuevoAccionesRespuesta';
 import EmergencySelection from './pages/EmergencySelection';
 import { Eventos } from './pages/eventos/Eventos';
+import { Inventario } from './pages/inventario/Inventario';
 
 const App: React.FC = () => {
   return (
@@ -39,6 +40,7 @@ const App: React.FC = () => {
         <Route path="/" element={<Layout />}>
           <Route index element={<Dashboard />} />
           <Route path="afectaciones" element={<Afectaciones />} />
+          <Route path="inventario" element={<Inventario />} />
           <Route path="eventos" element={<Eventos />} />
           <Route path="acciones" element={<AccionesRespuestas />} />
           <Route path="acciones/nueva" element={<NuevoAccionesRespuesta />} />
@@ -67,4 +69,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-
