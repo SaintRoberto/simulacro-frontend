@@ -34,6 +34,7 @@ export interface InventarioMatrixProps {
   mesasStatus: 'idle' | 'loading' | 'succeeded' | 'failed';
   selectedMesaId?: number;
   onMesaChange: (mesaId: number) => void;
+  hideMesaSelector?: boolean;
   recursoGrupos: Array<{ id: number; nombre: string }>;
   recursoGruposStatus: 'idle' | 'loading' | 'succeeded' | 'failed';
   selectedGrupoId?: number;
@@ -59,6 +60,7 @@ export const InventarioMatrix: React.FC<InventarioMatrixProps> = ({
   mesasStatus,
   selectedMesaId,
   onMesaChange,
+  hideMesaSelector = false,
   recursoGrupos,
   recursoGruposStatus,
   selectedGrupoId,
@@ -148,22 +150,24 @@ export const InventarioMatrix: React.FC<InventarioMatrixProps> = ({
             />
           </Space>
         </Col>
-        <Col xs={24} md={10} lg={6}>
-          <Space direction="vertical" size={4} style={{ width: '100%' }}>
-            <Text strong>Mesa</Text>
-            <Select
-              placeholder="Seleccione mesa"
-              options={mesas.map((m) => ({ label: m.grupo_mesa_abreviatura ? `${m.grupo_mesa_abreviatura} - ${m.nombre}` : m.nombre, value: m.id }))}
-              value={selectedMesaId}
-              onChange={(value) => onMesaChange(value)}
-              disabled={mesasStatus === 'loading'}
-              loading={mesasStatus === 'loading'}
-              style={{ width: '100%' }}
-              showSearch
-              optionFilterProp="label"
-            />
-          </Space>
-        </Col>
+        {!hideMesaSelector && (
+          <Col xs={24} md={10} lg={6}>
+            <Space direction="vertical" size={4} style={{ width: '100%' }}>
+              <Text strong>Mesa</Text>
+              <Select
+                placeholder="Seleccione mesa"
+                options={mesas.map((m) => ({ label: m.grupo_mesa_abreviatura ? `${m.grupo_mesa_abreviatura} - ${m.nombre}` : m.nombre, value: m.id }))}
+                value={selectedMesaId}
+                onChange={(value) => onMesaChange(value)}
+                disabled={mesasStatus === 'loading'}
+                loading={mesasStatus === 'loading'}
+                style={{ width: '100%' }}
+                showSearch
+                optionFilterProp="label"
+              />
+            </Space>
+          </Col>
+        )}
         <Col xs={24} md={8} lg={2} style={{ display: 'flex', alignItems: 'end' }}>
           <Button type="default" onClick={onLoadMatrix} disabled={loadDisabled} loading={loading}>
             Cargar Matriz

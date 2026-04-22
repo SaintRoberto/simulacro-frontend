@@ -7,7 +7,7 @@ export const Inventario: React.FC = () => {
     <div className="grid">
       <div className="col-12">
         <Card>
-          <InventarioMatrixSidePanel tableTitle="Matriz de Inventario por Institucion" />
+          <InventarioMatrixSidePanel tableTitle="Matriz de Inventario por Institución" />
         </Card>
       </div>
     </div>

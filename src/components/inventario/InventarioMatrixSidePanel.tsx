@@ -45,6 +45,8 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
 
   const emergencyId = Number(localStorage.getItem('selectedEmergenciaId') || '0');
   const coeId = Number(datosLogin?.coe_id || 0);
+  const assignedMesaId = Number(datosLogin?.mesa_id ?? 0);
+  const hasAssignedMesa = Number.isFinite(assignedMesaId) && assignedMesaId !== 0;
   const isNacionalReadOnly = datosLogin?.coe_id === 1;
 
   const [loading, setLoading] = useState(false);
@@ -56,6 +58,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
   const [instituciones, setInstituciones] = useState<Institucion[]>([]);
   const [rows, setRows] = useState<RecursoTipoRow[]>([]);
   const [matrix, setMatrix] = useState<Record<number, Record<number, InventarioCellPayload>>>({});
+  const effectiveMesaId = hasAssignedMesa ? assignedMesaId : selectedMesaId;
 
   const matrixRef = useRef(matrix);
   useEffect(() => {
@@ -77,7 +80,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
   const fetchMesas = useCallback(async () => {
     if (!coeId) {
       setMesas([]);
-      setSelectedMesaId(undefined);
+      setSelectedMesaId(hasAssignedMesa ? assignedMesaId : undefined);
       setMesasStatus('failed');
       return;
     }
@@ -99,23 +102,22 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
       setMesas(mapped);
       setMesasStatus('succeeded');
 
-      const mesaLogin = Number(datosLogin?.mesa_id || 0);
-      const defaultMesa = mapped.find((m) => m.id === mesaLogin)?.id ?? mapped[0]?.id;
+      const defaultMesa = hasAssignedMesa ? assignedMesaId : mapped[0]?.id;
       setSelectedMesaId(defaultMesa);
     } catch {
       setMesas([]);
-      setSelectedMesaId(undefined);
+      setSelectedMesaId(hasAssignedMesa ? assignedMesaId : undefined);
       setMesasStatus('failed');
     }
-  }, [apiBase, authFetch, coeId, datosLogin?.mesa_id]);
+  }, [apiBase, assignedMesaId, authFetch, coeId, hasAssignedMesa]);
 
   const fetchInstituciones = useCallback(async () => {
-    if (!coeId || !selectedMesaId) {
+    if (!coeId || !effectiveMesaId) {
       setInstituciones([]);
       return;
     }
     const candidates = [
-      `${apiBase}/instituciones_coe_mesa/coe/${coeId}/mesa/${selectedMesaId}`,
+      `${apiBase}/instituciones_coe_mesa/coe/${coeId}/mesa/${effectiveMesaId}`,
       `${apiBase}/instituciones/emergencia/${emergencyId}`,
       `${apiBase}/instituciones`,
     ];
@@ -140,7 +142,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
       }
     }
     setInstituciones([]);
-  }, [apiBase, authFetch, coeId, emergencyId, selectedMesaId]);
+  }, [apiBase, authFetch, coeId, effectiveMesaId, emergencyId]);
 
   useEffect(() => {
     fetchMesas();
@@ -156,14 +158,14 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     setDirtyKeys(new Set());
     setSelectedRow(null);
     setSelectedInstitucion(null);
-  }, [selectedMesaId]);
+  }, [effectiveMesaId]);
 
   const getCell = useCallback((recursoTipoId: number, institucionId: number) => {
     return matrix[recursoTipoId]?.[institucionId];
   }, [matrix]);
 
   const loadMatrixByGrupo = useCallback(async () => {
-    if (!selectedGrupoId || !selectedMesaId || !coeId) return;
+    if (!selectedGrupoId || !effectiveMesaId || !coeId) return;
     setLoading(true);
     try {
       const tipos = await getRecursoTiposByGrupo(selectedGrupoId);
@@ -175,7 +177,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
 
       const fresh: Record<number, Record<number, InventarioCellPayload>> = {};
       try {
-        const url = `${apiBase}/recursos_inventario/recurso_grupo/${selectedGrupoId}/coe/${coeId}/mesa/${selectedMesaId}/`;
+        const url = `${apiBase}/recursos_inventario/recurso_grupo/${selectedGrupoId}/coe/${coeId}/mesa/${effectiveMesaId}/`;
         const res = await withTimeout(authFetch(url, { headers: { accept: 'application/json' } }), 4000);
         if (!res.ok) throw new Error('inventario_not_ok');
         const data = await res.json();
@@ -216,7 +218,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     } finally {
       setLoading(false);
     }
-  }, [apiBase, authFetch, coeId, getRecursoTiposByGrupo, instituciones, selectedGrupoId, selectedMesaId]);
+  }, [apiBase, authFetch, coeId, effectiveMesaId, getRecursoTiposByGrupo, instituciones, selectedGrupoId]);
 
   const openCellPanel = useCallback((row: RecursoTipoRow, institucion: Institucion) => {
     const cell = matrixRef.current[row.recurso_tipo_id]?.[institucion.id];
@@ -258,11 +260,11 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
   }, [draftExistencias, draftDisponible, drawerOpen, selectedRow, selectedInstitucion, applyDrawerToMatrix]);
 
   const saveAll = async () => {
-    if (isNacionalReadOnly) {
-      message.warning('El COE Nacional no puede editar esta matriz.');
-      return;
-    }
-    if (!selectedMesaId || !selectedGrupoId || rows.length === 0 || instituciones.length === 0) {
+    // if (isNacionalReadOnly) {
+    //   message.warning('El COE Nacional no puede editar esta matriz.');
+    //   return;
+    // }
+    if (!effectiveMesaId || !selectedGrupoId || rows.length === 0 || instituciones.length === 0) {
       message.warning('Seleccione mesa y grupo de recurso para cargar la matriz.');
       return;
     }
@@ -316,7 +318,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
           recurso_tipo_id: tipoId,
           existencias,
           institucion_duena_id: instId,
-          mesa_id: selectedMesaId,
+          mesa_id: effectiveMesaId,
           modificador: usuarioLogin,
           parroquia_id: parroquiaId,
           provincia_id: provinciaId,
@@ -352,8 +354,9 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
           tableTitle={tableTitle}
           mesas={mesas}
           mesasStatus={mesasStatus}
-          selectedMesaId={selectedMesaId}
+          selectedMesaId={effectiveMesaId}
           onMesaChange={(mesaId) => setSelectedMesaId(mesaId)}
+          hideMesaSelector={hasAssignedMesa}
           recursoGrupos={recursoGrupos}
           recursoGruposStatus={recursoGruposStatus}
           selectedGrupoId={selectedGrupoId}
@@ -361,7 +364,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
           onLoadMatrix={loadMatrixByGrupo}
           onSaveAll={saveAll}
           saving={saving}
-          saveDisabled={isNacionalReadOnly || rows.length === 0 || instituciones.length === 0}
+          saveDisabled={rows.length === 0 || instituciones.length === 0}
           dirtyCount={dirtyKeys.size}
           rows={rows}
           instituciones={instituciones}
@@ -370,7 +373,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
           selectedRowId={selectedRow?.recurso_tipo_id}
           selectedInstitucionId={selectedInstitucion?.id}
           loading={loading}
-          loadDisabled={!selectedMesaId || !selectedGrupoId || instituciones.length === 0}
+          loadDisabled={!effectiveMesaId || !selectedGrupoId || instituciones.length === 0}
         />
       </Spin>
 
@@ -398,7 +401,6 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
                       if (draftDisponible > val) setDraftDisponible(val);
                     }}
                     style={{ width: '100%' }}
-                    disabled={isNacionalReadOnly}
                   />
                 </div>                
               </div>
