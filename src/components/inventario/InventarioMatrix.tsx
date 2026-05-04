@@ -26,6 +26,13 @@ export type InventarioCellPayload = {
   existencias?: number | null;
   inventario_disponible?: number | null;
   id?: number;
+  existencias_detalle?: Array<{
+    parroquia_id: number;
+    parroquia_nombre?: string;
+    canton_id?: number;
+    provincia_id?: number;
+    existencias: number;
+  }>;
 };
 
 export interface InventarioMatrixProps {
@@ -40,10 +47,6 @@ export interface InventarioMatrixProps {
   selectedGrupoId?: number;
   onGrupoChange: (grupoId: number) => void;
   onLoadMatrix: () => void;
-  onSaveAll: () => void;
-  saving?: boolean;
-  saveDisabled?: boolean;
-  dirtyCount?: number;
   rows: RecursoTipoRow[];
   instituciones: Institucion[];
   getCell: (recursoTipoId: number, institucionId: number) => InventarioCellPayload | undefined;
@@ -66,10 +69,6 @@ export const InventarioMatrix: React.FC<InventarioMatrixProps> = ({
   selectedGrupoId,
   onGrupoChange,
   onLoadMatrix,
-  onSaveAll,
-  saving = false,
-  saveDisabled = false,
-  dirtyCount = 0,
   rows,
   instituciones,
   getCell,
@@ -174,11 +173,6 @@ export const InventarioMatrix: React.FC<InventarioMatrixProps> = ({
           </Button>
           
         </Col>
-        <Col xs={24} md={6} lg={3} style={{ display: 'flex', alignItems: 'end', justifyContent: 'flex-end' }}>
-          <Button type="primary" onClick={onSaveAll} loading={saving} disabled={saveDisabled}>
-            Guardar Cambios ({dirtyCount})
-          </Button>
-        </Col>
       </Row>
 
       <Table<RecursoTipoRow>
@@ -186,7 +180,8 @@ export const InventarioMatrix: React.FC<InventarioMatrixProps> = ({
         dataSource={rows}
         columns={columns}
         pagination={false}
-        scroll={{ x: 1200 }}
+        scroll={{ x: 1200, y: 550 }}
+        sticky
         bordered
         size="middle"
         loading={loading}
