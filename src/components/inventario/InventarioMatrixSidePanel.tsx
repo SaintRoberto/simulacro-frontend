@@ -6,10 +6,11 @@ import InventarioMatrix, { Institucion, InventarioCellPayload, RecursoTipoRow, M
 const { Text } = Typography;
 
 type InventarioRegistroApi = {
-  id?: number;
-  recurso_inventario_id?: number;
-  recurso_tipo_id?: number;
-  institucion_id?: number;
+  id?: number | string;
+  recurso_inventario_id?: number | string;
+  recurso_tipo_id?: number | string;
+  institucion_id?: number | string;
+  institucion_duena_id?: number | string;
   institucion_siglas?: string;
   existencias?: number;
   inventario_disponible?: number;
@@ -25,6 +26,23 @@ type Canton = { id: number; nombre: string; provincia_id?: number };
 type Parroquia = { id: number; nombre: string; canton_id?: number; provincia_id?: number };
 type ParroquiaExistenciaDetalle = NonNullable<InventarioCellPayload['existencias_detalle']>[number];
 type ParroquiaExistenciaDetalleLocal = ParroquiaExistenciaDetalle & { recurso_inventario_id?: number };
+const resolveInventarioId = (value: { recurso_inventario_id?: unknown; id?: unknown }): number | undefined => {
+  const parsed = Number(value?.recurso_inventario_id ?? value?.id ?? 0);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+};
+const resolveInstitucionId = (value: {
+  institucion_id?: unknown;
+  institucion_duena_id?: unknown;
+}): number | undefined => {
+  const parsed = Number(value?.institucion_id ?? value?.institucion_duena_id ?? 0);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+};
+const normalizeName = (value: unknown) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
 
 export interface InventarioMatrixSidePanelProps {
   apiBase?: string;
@@ -90,10 +108,14 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
   const [drawerInitialDetalles, setDrawerInitialDetalles] = useState<ParroquiaExistenciaDetalleLocal[]>([]);
   const [drawerParroquiaValues, setDrawerParroquiaValues] = useState<Record<number, number>>({});
   const [drawerParroquiaMeta, setDrawerParroquiaMeta] = useState<
-    Record<number, { parroquia_nombre: string; canton_id?: number; provincia_id?: number }>
+    Record<number, { parroquia_nombre: string; canton_id?: number; provincia_id?: number; recurso_inventario_id?: number }>
   >({});
   const [drawerHasUnsavedChanges, setDrawerHasUnsavedChanges] = useState(false);
   const [geoLoading, setGeoLoading] = useState(false);
+  const confirmDiscardUnsavedChanges = useCallback(() => {
+    if (!drawerHasUnsavedChanges) return true;
+    return window.confirm('Tienes cambios sin guardar. Si sales, se perderán. ¿Deseas continuar?');
+  }, [drawerHasUnsavedChanges]);
 
   useEffect(() => {
     if (recursoGruposStatus === 'idle') loadRecursoGrupos();
@@ -206,6 +228,54 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     return matrix[recursoTipoId]?.[institucionId];
   }, [matrix]);
 
+  const fetchDrawerDetallesFromBd = useCallback(async (
+    rowId: number,
+    institucionId: number
+  ): Promise<ParroquiaExistenciaDetalleLocal[]> => {
+    if (!selectedGrupoId || !effectiveMesaId || !coeId) return [];
+    try {
+      const url = `${apiBase}/recursos_inventario/recurso_grupo/${selectedGrupoId}/coe/${coeId}/mesa/${effectiveMesaId}/`;
+      const res = await withTimeout(authFetch(url, { headers: { accept: 'application/json' } }), 4000);
+      if (!res.ok) return [];
+      const data = await res.json();
+      const registros = (Array.isArray(data) ? data : []) as InventarioRegistroApi[];
+
+      const detallesByParroquia = new Map<number, ParroquiaExistenciaDetalleLocal>();
+      for (const it of registros) {
+        const tipoId = Number(it.recurso_tipo_id);
+        if (tipoId !== rowId) continue;
+
+        let instId = Number(resolveInstitucionId(it) ?? 0);
+        if (!Number.isFinite(instId) || instId <= 0) {
+          const siglas = String(it.institucion_siglas || '').trim().toLowerCase();
+          if (siglas) {
+            const inst = instituciones.find((x) => String(x.siglas || '').trim().toLowerCase() === siglas);
+            if (inst) instId = inst.id;
+          }
+        }
+        if (instId !== institucionId) continue;
+
+        const parroquiaId = Number(it.parroquia_id ?? 0);
+        if (!Number.isFinite(parroquiaId) || parroquiaId <= 0) continue;
+
+        const prev = detallesByParroquia.get(parroquiaId);
+        const existencias = Math.max(0, Number(it.existencias ?? 0));
+        detallesByParroquia.set(parroquiaId, {
+          parroquia_id: parroquiaId,
+          parroquia_nombre: String(it.parroquia_nombre ?? prev?.parroquia_nombre ?? ''),
+          canton_id: Number(it.canton_id ?? prev?.canton_id ?? 0) || undefined,
+          provincia_id: Number(it.provincia_id ?? prev?.provincia_id ?? 0) || undefined,
+          existencias: Math.max(0, Number(prev?.existencias ?? 0)) + existencias,
+          recurso_inventario_id:
+            prev?.recurso_inventario_id ?? resolveInventarioId(it),
+        });
+      }
+      return Array.from(detallesByParroquia.values());
+    } catch {
+      return [];
+    }
+  }, [apiBase, authFetch, coeId, effectiveMesaId, instituciones, selectedGrupoId]);
+
   const loadMatrixByGrupo = useCallback(async () => {
     if (!selectedGrupoId || !effectiveMesaId || !coeId) return;
     setLoading(true);
@@ -229,7 +299,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
           const tipoId = Number(it.recurso_tipo_id);
           if (!Number.isFinite(tipoId)) return;
 
-          let instId = Number(it.institucion_id);
+          let instId = Number(resolveInstitucionId(it) ?? 0);
           if (!Number.isFinite(instId) || instId <= 0) {
             const siglas = String(it.institucion_siglas || '').trim().toLowerCase();
             if (siglas) {
@@ -262,11 +332,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
             provincia_id: Number(it.provincia_id ?? 0) || undefined,
             existencias,
             recurso_inventario_id:
-              typeof it.recurso_inventario_id === 'number'
-                ? it.recurso_inventario_id
-                : typeof it.id === 'number'
-                ? it.id
-                : undefined,
+              resolveInventarioId(it),
           };
 
           if (detalle.parroquia_id > 0) {
@@ -427,15 +493,54 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
           }))
           .filter((x: Parroquia) => Number.isFinite(x.id) && x.id > 0);
 
-        const detallesMap = new Map<number, ParroquiaExistenciaDetalle>();
-        drawerInitialDetalles.forEach((d) => {
-          detallesMap.set(Number(d.parroquia_id), d);
-        });
+        const detallesMap = new Map<number, ParroquiaExistenciaDetalleLocal>();
+        const rowId = Number(selectedRow?.recurso_tipo_id ?? 0);
+        const institucionId = Number(selectedInstitucion?.id ?? 0);
+
+        if (coeId > 0 && effectiveMesaId && provinciaIdForParroquias && rowId > 0 && institucionId > 0) {
+          try {
+            const endpoint = `${apiBase}/recursos_inventario/coe_id/${coeId}/mesa_id/${effectiveMesaId}/provincia_id/${provinciaIdForParroquias}/canton_id/${cantonIdForParroquias}/recurso_tipo_id/${rowId}/institucion_duena_id/${institucionId}`;
+            const res = await withTimeout(authFetch(endpoint, { headers: { accept: 'application/json' } }), 4000);
+            if (res.ok) {
+              const invData = await res.json();
+              const invRows = Array.isArray(invData) ? invData : [];
+              invRows.forEach((it: any) => {
+                let parroquiaId = Number(it.parroquia_id ?? it.parroquiaId ?? 0);
+                if (!Number.isFinite(parroquiaId) || parroquiaId <= 0) {
+                  const byName = normalizeName(it.parroquia_nombre ?? it.parroquia ?? it.nombre);
+                  const matched = mapped.find((p) => normalizeName(p.nombre) === byName);
+                  parroquiaId = Number(matched?.id ?? 0);
+                }
+                if (!Number.isFinite(parroquiaId) || parroquiaId <= 0) return;
+                const prev = detallesMap.get(parroquiaId);
+                detallesMap.set(parroquiaId, {
+                  parroquia_id: parroquiaId,
+                  parroquia_nombre: String(it.parroquia_nombre ?? prev?.parroquia_nombre ?? ''),
+                  canton_id: Number(it.canton_id ?? cantonIdForParroquias) || undefined,
+                  provincia_id: Number(it.provincia_id ?? provinciaIdForParroquias) || undefined,
+                  existencias: Math.max(0, Number(prev?.existencias ?? 0)) + Math.max(0, Number(it.existencias ?? 0)),
+                  recurso_inventario_id:
+                    prev?.recurso_inventario_id ?? resolveInventarioId(it),
+                });
+              });
+            }
+          } catch {
+            // fallback a los detalles ya cargados en memoria
+          }
+        }
+
+        if (detallesMap.size === 0) {
+          drawerInitialDetalles.forEach((d) => {
+            detallesMap.set(Number(d.parroquia_id), d);
+          });
+        }
 
         const nextValues: Record<number, number> = {};
-        const nextMeta: Record<number, { parroquia_nombre: string; canton_id?: number; provincia_id?: number }> = {};
+        const nextMeta: Record<number, { parroquia_nombre: string; canton_id?: number; provincia_id?: number; recurso_inventario_id?: number }> = {};
         mapped.forEach((p) => {
-          const fromDetalle = detallesMap.get(p.id);
+          const fromDetalle =
+            detallesMap.get(p.id) ??
+            Array.from(detallesMap.values()).find((d) => normalizeName(d.parroquia_nombre) === normalizeName(p.nombre));
           const val = Number(fromDetalle?.existencias ?? 0);
           if (val > 0) {
             nextValues[p.id] = val;
@@ -444,6 +549,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
             parroquia_nombre: p.nombre,
             canton_id: p.canton_id,
             provincia_id: p.provincia_id,
+            recurso_inventario_id: fromDetalle?.recurso_inventario_id,
           };
         });
 
@@ -462,23 +568,25 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     };
   }, [
     apiBase,
+    authFetch,
+    coeId,
     drawerCantonId,
     drawerInitialDetalles,
     drawerOpen,
     drawerProvinciaId,
     emergencyId,
+    effectiveMesaId,
     fetchFirstArray,
     isUsuarioCantonal,
     isUsuarioNacional,
     loginCantonId,
     loginProvinciaId,
+    selectedInstitucion,
+    selectedRow,
   ]);
 
   const openCellPanel = useCallback((row: RecursoTipoRow, institucion: Institucion) => {
-    if (drawerHasUnsavedChanges) {
-      message.warning('Debe guardar los cambios de parroquia antes de cambiar de registro.');
-      return;
-    }
+    if (!confirmDiscardUnsavedChanges()) return;
 
     const cell = matrixRef.current[row.recurso_tipo_id]?.[institucion.id];
     const detalles = (Array.isArray(cell?.existencias_detalle) ? cell.existencias_detalle : []) as ParroquiaExistenciaDetalleLocal[];
@@ -508,7 +616,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     }
 
     setDrawerOpen(true);
-  }, [drawerHasUnsavedChanges, isUsuarioCantonal, isUsuarioNacional, isUsuarioProvincial, loginCantonId, loginProvinciaId]);
+  }, [confirmDiscardUnsavedChanges, isUsuarioCantonal, isUsuarioNacional, isUsuarioProvincial, loginCantonId, loginProvinciaId]);
 
   const handleParroquiaExistenciaChange = useCallback((parroquia: Parroquia, value: number | null) => {
     const safeValue = Math.max(0, Math.floor(Number(value ?? 0)));
@@ -554,7 +662,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
           canton_id: selectedCantonId,
           provincia_id: selectedProvinciaId,
           existencias,
-          recurso_inventario_id: original?.recurso_inventario_id,
+          recurso_inventario_id: original?.recurso_inventario_id ?? meta?.recurso_inventario_id,
         };
       })
       .filter((d) =>
@@ -580,10 +688,8 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
   ]);
 
   const blockContextChangeOnUnsaved = useCallback(() => {
-    if (!drawerHasUnsavedChanges) return false;
-    message.warning('Tiene datos no guardados. Guarde antes de cambiar cantón o provincia.');
-    return true;
-  }, [drawerHasUnsavedChanges]);
+    return !confirmDiscardUnsavedChanges();
+  }, [confirmDiscardUnsavedChanges]);
 
   const persistInventarioCreateOrUpdate = useCallback(async (
     detalle: ParroquiaExistenciaDetalleLocal,
@@ -591,7 +697,25 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     institucionId: number
   ): Promise<number | undefined> => {
     const usuarioLogin = String(datosLogin?.usuario_login || 'frontend');
-    const recordId = Number(detalle.recurso_inventario_id ?? 0);
+    let recordId = Number(detalle.recurso_inventario_id ?? 0);
+
+    // Primera carga/cambio de canton: si el id aun no esta en memoria, buscarlo en backend
+    if (recordId <= 0 && coeId > 0 && effectiveMesaId) {
+      try {
+        const lookupUrl = `${apiBase}/recursos_inventario/coe_id/${coeId}/mesa_id/${effectiveMesaId}/provincia_id/${Number(detalle.provincia_id ?? 0)}/canton_id/${Number(detalle.canton_id ?? 0)}/recurso_tipo_id/${recursoTipoId}/institucion_duena_id/${institucionId}`;
+        const lookupRes = await withTimeout(authFetch(lookupUrl, { headers: { accept: 'application/json' } }), 4000);
+        if (lookupRes.ok) {
+          const lookupData = await lookupRes.json();
+          const lookupRows = Array.isArray(lookupData) ? lookupData : [];
+          const byParroquia = lookupRows.find((it: any) => Number(it?.parroquia_id ?? 0) === Number(detalle.parroquia_id ?? 0));
+          const resolved = resolveInventarioId(byParroquia ?? {});
+          if (resolved) recordId = resolved;
+        }
+      } catch {
+        // si falla la busqueda, continuar con flujo normal
+      }
+    }
+
     if (recordId > 0) {
       const updateBody = [{ existencias: detalle.existencias, recurso_inventario_id: recordId }];
       const updateRes = await authFetch(`${apiBase}/recursos_inventario/${recordId}`, {
@@ -749,12 +873,23 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
   }, [blockContextChangeOnUnsaved]);
 
   const closeDrawer = useCallback(() => {
-    if (drawerHasUnsavedChanges) {
-      message.warning('Debe guardar los cambios antes de cerrar.');
-      return;
-    }
+    if (!confirmDiscardUnsavedChanges()) return;
     setDrawerOpen(false);
-  }, [drawerHasUnsavedChanges]);
+  }, [confirmDiscardUnsavedChanges]);
+
+  useEffect(() => {
+    if (!drawerOpen || !selectedRow || !selectedInstitucion) return;
+    let mounted = true;
+    const refreshDrawerFromBd = async () => {
+      const bdDetalles = await fetchDrawerDetallesFromBd(selectedRow.recurso_tipo_id, selectedInstitucion.id);
+      if (!mounted || bdDetalles.length === 0) return;
+      setDrawerInitialDetalles(bdDetalles);
+    };
+    refreshDrawerFromBd();
+    return () => {
+      mounted = false;
+    };
+  }, [drawerOpen, fetchDrawerDetallesFromBd, selectedInstitucion, selectedRow]);
 
   return (
     <div>
@@ -826,7 +961,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
                 <div>
                   <Text style={{ fontSize: 12, color: '#6b7280' }}>Existencias por Parroquia</Text>
                   <Spin spinning={geoLoading}>
-                    <div style={{ maxHeight: 500, overflowY: 'auto', border: '1px solid #bfdbfe', borderRadius: 8, background: '#fff', padding: 8 }}>
+                    <div style={{ maxHeight: 450, overflowY: 'auto', border: '1px solid #bfdbfe', borderRadius: 8, background: '#fff', padding: 8 }}>
                       {(isUsuarioNacional && !drawerProvinciaId) ? (
                         <Text type="secondary">Seleccione una provincia para continuar.</Text>
                       ) : ((isUsuarioNacional || isUsuarioProvincial) && !drawerCantonId) ? (
