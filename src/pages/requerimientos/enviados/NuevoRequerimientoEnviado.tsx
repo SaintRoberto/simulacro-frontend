@@ -61,6 +61,7 @@ const formatDateTime = (date: Date | null): string => {
 };
 
 export const NuevoRequerimientoEnviado: React.FC = () => {
+  const apiBase = process.env.REACT_APP_API_URL || '/api';
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const editId = useMemo(() => {
@@ -86,6 +87,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
 
   const {
     datosLogin,
+    authFetch,
     selectedEmergenciaId,
     loadReceptores,
     receptores,
@@ -198,18 +200,35 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
 
     setDisponibilidadStatus('loading');
     try {
-      // TODO: Reemplazar por endpoint real de inventario por mesa + recurso.
-      const rows: DisponibilidadMesaRow[] = mesasUnicas.map((mesa, i) => {
-        const base = ((mesa.mesaId + selectedTipoId + i) % 9) + 1;
+      const coeId = Number(datosLogin?.coe_id ?? 0);
+      if (!coeId || mesasUnicas.length === 0) {
+        setDisponibilidadRows([]);
+        setDisponibilidadStatus('ready');
+        return;
+      }
+
+      const mesaParam = Number(datosLogin?.mesa_id ?? mesasUnicas[0]?.mesaId ?? 0);
+      const endpoint = `${apiBase}/recursos_inventario/coe/${coeId}/mesa/${mesaParam}/recurso_tipo/${selectedTipoId}/`;
+      const res = await authFetch(endpoint, { headers: { accept: 'application/json' } });
+      if (!res.ok) throw new Error('inventario_not_ok');
+
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : [];
+
+      const mesasById = new Map(mesasUnicas.map((m) => [m.mesaId, m]));
+      const rows: DisponibilidadMesaRow[] = list.map((it: any) => {
+        const mesaId = Number(it?.mesa_id ?? 0);
+        const mesaRef = mesasById.get(mesaId);
         return {
-          mesaId: mesa.mesaId,
-          mesaNombre: mesa.mesaNombre,
-          siglas: mesa.siglas,
-          usuarioId: mesa.usuarioId,
-          cantidadDisponible: base,
+          mesaId,
+          mesaNombre: String(it?.mesa_nombre ?? mesaRef?.mesaNombre ?? `Mesa ${mesaId}`),
+          siglas: String(mesaRef?.siglas ?? ''),
+          usuarioId: Number(mesaRef?.usuarioId ?? 0),
+          cantidadDisponible: Math.max(0, Number(it?.existencias ?? 0)),
           cantidadSolicitada: 0,
         };
       });
+
       setDisponibilidadRows(rows);
       setDisponibilidadStatus('ready');
     } catch (error) {
@@ -217,7 +236,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       setDisponibilidadRows([]);
       setDisponibilidadStatus('error');
     }
-  }, [selectedGrupoId, selectedTipoId, mesasUnicas]);
+  }, [selectedGrupoId, selectedTipoId, mesasUnicas, datosLogin?.coe_id, datosLogin?.mesa_id, apiBase, authFetch]);
 
   useEffect(() => {
     if (wizardStep === 2 && selectedGrupoId && selectedTipoId) {

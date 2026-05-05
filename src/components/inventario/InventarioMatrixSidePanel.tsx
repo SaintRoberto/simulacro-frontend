@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { InputNumber, Button, Typography, Space, Drawer, message, Spin, Select } from 'antd';
+import { InputNumber, Button, Typography, Space, Drawer, message, Spin, Select, Tabs, Table } from 'antd';
 import { useAuth } from '../../context/AuthContext';
 import InventarioMatrix, { Institucion, InventarioCellPayload, RecursoTipoRow, Mesa } from './InventarioMatrix';
 
@@ -26,6 +26,16 @@ type Canton = { id: number; nombre: string; provincia_id?: number };
 type Parroquia = { id: number; nombre: string; canton_id?: number; provincia_id?: number };
 type ParroquiaExistenciaDetalle = NonNullable<InventarioCellPayload['existencias_detalle']>[number];
 type ParroquiaExistenciaDetalleLocal = ParroquiaExistenciaDetalle & { recurso_inventario_id?: number };
+type DetalleExistenciaRow = {
+  id: number;
+  provincia_id: number;
+  canton_id: number;
+  parroquia_id: number;
+  provincia?: string;
+  canton?: string;
+  parroquia?: string;
+  existencias: number;
+};
 const resolveInventarioId = (value: { recurso_inventario_id?: unknown; id?: unknown }): number | undefined => {
   const parsed = Number(value?.recurso_inventario_id ?? value?.id ?? 0);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
@@ -112,6 +122,9 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
   >({});
   const [drawerHasUnsavedChanges, setDrawerHasUnsavedChanges] = useState(false);
   const [geoLoading, setGeoLoading] = useState(false);
+  const [drawerActiveTab, setDrawerActiveTab] = useState<'registro' | 'detalle'>('registro');
+  const [detalleExistenciasRows, setDetalleExistenciasRows] = useState<DetalleExistenciaRow[]>([]);
+  const [detalleExistenciasStatus, setDetalleExistenciasStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const confirmDiscardUnsavedChanges = useCallback(() => {
     if (!drawerHasUnsavedChanges) return true;
     return window.confirm('Tienes cambios sin guardar. Si sales, se perderán. ¿Deseas continuar?');
@@ -600,6 +613,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     setDrawerParroquiaMeta({});
     setParroquiasOptions([]);
     setDrawerHasUnsavedChanges(false);
+    setDrawerActiveTab('registro');
 
     if (isUsuarioNacional) {
       setDrawerProvinciaId(detalleProvinciaId > 0 ? detalleProvinciaId : undefined);
@@ -877,6 +891,36 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     setDrawerOpen(false);
   }, [confirmDiscardUnsavedChanges]);
 
+  const loadDetalleExistencias = useCallback(async () => {
+    if (!drawerOpen || !selectedRow || !selectedInstitucion || !coeId || !effectiveMesaId) {
+      setDetalleExistenciasRows([]);
+      setDetalleExistenciasStatus('idle');
+      return;
+    }
+    setDetalleExistenciasStatus('loading');
+    try {
+      const endpoint = `${apiBase}/recursos_inventario/coe_id/${coeId}/mesa_id/${effectiveMesaId}/recurso_tipo_id/${selectedRow.recurso_tipo_id}/institucion_duena_id/${selectedInstitucion.id}`;
+      const res = await withTimeout(authFetch(endpoint, { headers: { accept: 'application/json' } }), 4500);
+      if (!res.ok) throw new Error('detalle_not_ok');
+      const data = await res.json();
+      const rows: DetalleExistenciaRow[] = (Array.isArray(data) ? data : []).map((it: any, idx: number) => ({
+        id: Number(it?.id ?? idx + 1),
+        provincia_id: Number(it?.provincia_id ?? 0),
+        canton_id: Number(it?.canton_id ?? 0),
+        parroquia_id: Number(it?.parroquia_id ?? 0),
+        provincia: it?.provincia ? String(it.provincia) : undefined,
+        canton: it?.canton ? String(it.canton) : undefined,
+        parroquia: it?.parroquia ? String(it.parroquia) : undefined,
+        existencias: Math.max(0, Number(it?.existencias ?? 0)),
+      }));
+      setDetalleExistenciasRows(rows);
+      setDetalleExistenciasStatus('ready');
+    } catch {
+      setDetalleExistenciasRows([]);
+      setDetalleExistenciasStatus('error');
+    }
+  }, [apiBase, authFetch, coeId, drawerOpen, effectiveMesaId, selectedInstitucion, selectedRow]);
+
   useEffect(() => {
     if (!drawerOpen || !selectedRow || !selectedInstitucion) return;
     let mounted = true;
@@ -890,6 +934,31 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
       mounted = false;
     };
   }, [drawerOpen, fetchDrawerDetallesFromBd, selectedInstitucion, selectedRow]);
+
+  useEffect(() => {
+    loadDetalleExistencias();
+  }, [loadDetalleExistencias]);
+
+  const provinciaNameById = useMemo(() => {
+    const map = new Map<number, string>();
+    provincias.forEach((p) => map.set(p.id, p.nombre));
+    return map;
+  }, [provincias]);
+
+  const cantonNameById = useMemo(() => {
+    const map = new Map<number, string>();
+    cantones.forEach((c) => map.set(c.id, c.nombre));
+    return map;
+  }, [cantones]);
+
+  const parroquiaNameById = useMemo(() => {
+    const map = new Map<number, string>();
+    parroquiasOptions.forEach((p) => map.set(p.id, p.nombre));
+    drawerInitialDetalles.forEach((d) => {
+      if (d.parroquia_id > 0 && d.parroquia_nombre) map.set(d.parroquia_id, d.parroquia_nombre);
+    });
+    return map;
+  }, [drawerInitialDetalles, parroquiasOptions]);
 
   return (
     <div>
@@ -926,88 +995,174 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
       >
         {selectedRow && selectedInstitucion ? (
           <Space direction="vertical" size={12} style={{ width: '100%' }}>
-            <div style={{ border: '1px solid #0ea5e9', borderRadius: 10, padding: 12, background: '#e0f2fe', boxShadow: '0 0 0 1px #9ed2e9' }}>
-              <Text strong style={{ display: 'block', marginBottom: 8 }}>Registro de Inventario por Parroquia</Text>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
-                {isUsuarioNacional ? (
-                  <div>
-                    <Text style={{ fontSize: 12, color: '#6b7280' }}>Provincia</Text>
-                    <Select
-                      placeholder="Seleccione provincia"
-                      options={provincias.map((p) => ({ label: p.nombre, value: p.id }))}
-                      value={drawerProvinciaId}
-                      onChange={onDrawerProvinciaChange}
-                      style={{ width: '100%' }}
-                      loading={geoLoading}
-                    />
-                  </div>
-                ) : null}
-
-                {(isUsuarioNacional || isUsuarioProvincial) ? (
-                  <div>
-                    <Text style={{ fontSize: 12, color: '#6b7280' }}>Cantón</Text>
-                    <Select
-                      placeholder="Seleccione cantón"
-                      options={cantones.map((c) => ({ label: c.nombre, value: c.id }))}
-                      value={drawerCantonId}
-                      onChange={onDrawerCantonChange}
-                      style={{ width: '100%' }}
-                      loading={geoLoading}
-                      disabled={isUsuarioNacional && !drawerProvinciaId}
-                    />
-                  </div>
-                ) : null}
-
-                <div>
-                  <Text style={{ fontSize: 12, color: '#6b7280' }}>Existencias por Parroquia</Text>
-                  <Spin spinning={geoLoading}>
-                    <div style={{ maxHeight: 450, overflowY: 'auto', border: '1px solid #bfdbfe', borderRadius: 8, background: '#fff', padding: 8 }}>
-                      {(isUsuarioNacional && !drawerProvinciaId) ? (
-                        <Text type="secondary">Seleccione una provincia para continuar.</Text>
-                      ) : ((isUsuarioNacional || isUsuarioProvincial) && !drawerCantonId) ? (
-                        <Text type="secondary">Seleccione un cantón para listar parroquias.</Text>
-                      ) : parroquiasOptions.length === 0 ? (
-                        <Text type="secondary">No hay parroquias disponibles para el cantón seleccionado.</Text>
-                      ) : (
-                        parroquiasOptions.map((parroquia) => (
-                          <div
-                            key={parroquia.id}
-                            style={{
-                              display: 'grid',
-                              gridTemplateColumns: '1fr 110px',
-                              gap: 8,
-                              alignItems: 'center',
-                              padding: '6px 4px',
-                              borderBottom: '1px solid #f1f5f9',
-                            }}
-                          >
-                            <Text>{parroquia.nombre}</Text>
-                            <InputNumber
-                              min={0}
-                              precision={0}
-                              value={drawerParroquiaValues[parroquia.id] ?? 0}
-                              onChange={(value) => handleParroquiaExistenciaChange(parroquia, typeof value === 'number' ? value : 0)}
+            <Tabs
+              activeKey={drawerActiveTab}
+              onChange={(key) => setDrawerActiveTab(key as 'registro' | 'detalle')}
+              items={[
+                {
+                  key: 'registro',
+                  label: 'Registro',
+                  children: (
+                    <div style={{ border: '1px solid #0ea5e9', borderRadius: 10, padding: 12, background: '#e0f2fe', boxShadow: '0 0 0 1px #9ed2e9' }}>
+                      <Text strong style={{ display: 'block', marginBottom: 8 }}>Registro de Inventario por Parroquia</Text>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+                        {isUsuarioNacional ? (
+                          <div>
+                            <Text style={{ fontSize: 12, color: '#6b7280' }}>Provincia</Text>
+                            <Select
+                              placeholder="Seleccione provincia"
+                              options={provincias.map((p) => ({ label: p.nombre, value: p.id }))}
+                              value={drawerProvinciaId}
+                              onChange={onDrawerProvinciaChange}
                               style={{ width: '100%' }}
+                              loading={geoLoading}
                             />
                           </div>
-                        ))
-                      )}
-                    </div>
-                  </Spin>
-                </div>
+                        ) : null}
 
-                <div>
-                  <Text style={{ fontSize: 12, color: '#6b7280' }}>Existencias (Total Calculado)</Text>
-                  <InputNumber
-                    type="number"
-                    min={0}
-                    value={drawerTotalExistencias}
-                    style={{ width: '100%' }}
-                    disabled
-                  />
-                </div>
-              </div>
-            </div>
+                        {(isUsuarioNacional || isUsuarioProvincial) ? (
+                          <div>
+                            <Text style={{ fontSize: 12, color: '#6b7280' }}>Cantón</Text>
+                            <Select
+                              placeholder="Seleccione cantón"
+                              options={cantones.map((c) => ({ label: c.nombre, value: c.id }))}
+                              value={drawerCantonId}
+                              onChange={onDrawerCantonChange}
+                              style={{ width: '100%' }}
+                              loading={geoLoading}
+                              disabled={isUsuarioNacional && !drawerProvinciaId}
+                            />
+                          </div>
+                        ) : null}
+
+                        <div>
+                          <Text style={{ fontSize: 12, color: '#6b7280' }}>Existencias por Parroquia</Text>
+                          <Spin spinning={geoLoading}>
+                            <div style={{ maxHeight: 450, overflowY: 'auto', border: '1px solid #bfdbfe', borderRadius: 8, background: '#fff', padding: 8 }}>
+                              {(isUsuarioNacional && !drawerProvinciaId) ? (
+                                <Text type="secondary">Seleccione una provincia para continuar.</Text>
+                              ) : ((isUsuarioNacional || isUsuarioProvincial) && !drawerCantonId) ? (
+                                <Text type="secondary">Seleccione un cantón para listar parroquias.</Text>
+                              ) : parroquiasOptions.length === 0 ? (
+                                <Text type="secondary">No hay parroquias disponibles para el cantón seleccionado.</Text>
+                              ) : (
+                                parroquiasOptions.map((parroquia) => (
+                                  <div
+                                    key={parroquia.id}
+                                    style={{
+                                      display: 'grid',
+                                      gridTemplateColumns: '1fr 110px',
+                                      gap: 8,
+                                      alignItems: 'center',
+                                      padding: '6px 4px',
+                                      borderBottom: '1px solid #f1f5f9',
+                                    }}
+                                  >
+                                    <Text>{parroquia.nombre}</Text>
+                                    <InputNumber
+                                      min={0}
+                                      precision={0}
+                                      value={drawerParroquiaValues[parroquia.id] ?? 0}
+                                      onChange={(value) => handleParroquiaExistenciaChange(parroquia, typeof value === 'number' ? value : 0)}
+                                      style={{ width: '100%' }}
+                                    />
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </Spin>
+                        </div>
+
+                        <div>
+                          <Text style={{ fontSize: 12, color: '#6b7280' }}>Existencias (Total Calculado)</Text>
+                          <InputNumber
+                            type="number"
+                            min={0}
+                            value={drawerTotalExistencias}
+                            style={{ width: '100%' }}
+                            disabled
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ),
+                },
+                {
+                  key: 'detalle',
+                  label: 'Detalle de Existencias',
+                  children: (
+                    <div style={{ border: '1px solid #bfdbfe', borderRadius: 10, background: '#f8fbff', padding: 10 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <Text strong>Existencias Registradas</Text>
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          {detalleExistenciasRows.length} fila(s)
+                        </Text>
+                      </div>
+                      <Table<DetalleExistenciaRow>
+                        rowKey={(r) => `${r.id}_${r.parroquia_id}`}
+                        dataSource={detalleExistenciasRows}
+                        loading={detalleExistenciasStatus === 'loading'}
+                        pagination={{ pageSize: 20, size: 'small', hideOnSinglePage: true }}
+                        size="small"
+                        bordered
+                        sticky
+                        scroll={{ y: 400 }}
+                        style={{ fontSize: 6 }}
+                        tableLayout="fixed"
+                        onRow={() => ({ style: { whiteSpace: 'nowrap' } })}
+                        locale={{
+                          emptyText:
+                            detalleExistenciasStatus === 'error'
+                              ? 'No se pudo cargar el detalle de existencias.'
+                              : 'Sin existencias registradas.',
+                        }}
+                        columns={[
+                          {
+                            title: 'Provincia',
+                            dataIndex: 'provincia_id',
+                            key: 'provincia',
+                            ellipsis: true,
+                            onHeaderCell: () => ({ style: { fontSize: 11, padding: '6px 8px' } }),
+                            onCell: () => ({ style: { fontSize: 11, padding: '6px 8px', whiteSpace: 'nowrap' } }),
+                            render: (_: number, row: DetalleExistenciaRow) =>
+                              row.provincia || provinciaNameById.get(Number(row.provincia_id)) || `${row.provincia_id}`,
+                          },
+                          {
+                            title: 'Canton',
+                            dataIndex: 'canton_id',
+                            key: 'canton',
+                            ellipsis: true,
+                            onHeaderCell: () => ({ style: { fontSize: 11, padding: '6px 8px' } }),
+                            onCell: () => ({ style: { fontSize: 11, padding: '6px 8px', whiteSpace: 'nowrap' } }),
+                            render: (_: number, row: DetalleExistenciaRow) =>
+                              row.canton || cantonNameById.get(Number(row.canton_id)) || `${row.canton_id}`,
+                          },
+                          {
+                            title: 'Parroquia',
+                            dataIndex: 'parroquia_id',
+                            key: 'parroquia',
+                            ellipsis: true,
+                            onHeaderCell: () => ({ style: { fontSize: 11, padding: '6px 8px' } }),
+                            onCell: () => ({ style: { fontSize: 11, padding: '6px 8px', whiteSpace: 'nowrap' } }),
+                            render: (_: number, row: DetalleExistenciaRow) =>
+                              row.parroquia || parroquiaNameById.get(Number(row.parroquia_id)) || `${row.parroquia_id}`,
+                          },
+                          {
+                            title: 'Existencias',
+                            dataIndex: 'existencias',
+                            key: 'existencias',
+                            align: 'right',
+                            onHeaderCell: () => ({ style: { fontSize: 11, padding: '6px 8px' } }),
+                            onCell: () => ({ style: { fontSize: 11, padding: '6px 8px', whiteSpace: 'nowrap' } }),
+                            render: (value: number) => <Text strong style={{ fontSize: 11 }}>{value}</Text>,
+                          },
+                        ]}
+                      />
+                    </div>
+                  ),
+                },
+              ]}
+            />
             <Space>
               <Button onClick={closeDrawer}>Cerrar</Button>
               <Button type="primary" onClick={saveParroquia} loading={savingParroquia}>
