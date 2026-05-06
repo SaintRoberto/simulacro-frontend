@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card } from 'primereact/card';
 import { InputText } from 'primereact/inputtext';
 import { Dropdown } from 'primereact/dropdown';
@@ -80,9 +80,10 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
   const [selectedGrupoId, setSelectedGrupoId] = useState<number | null>(null);
   const [selectedTipoId, setSelectedTipoId] = useState<number | null>(null);
   const [disponibilidadRows, setDisponibilidadRows] = useState<DisponibilidadMesaRow[]>([]);
+  const [cantidadSolicitadaByKey, setCantidadSolicitadaByKey] = useState<Record<string, number>>({});
+  const cantidadSolicitadaByKeyRef = useRef<Record<string, number>>({});
   const [disponibilidadStatus, setDisponibilidadStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
 
-  const [mesaAsignadaId, setMesaAsignadaId] = useState<number | null>(null);
   const [recursos, setRecursos] = useState<RecursoSeleccionado[]>([]);
 
   const {
@@ -131,12 +132,28 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     return Array.from(map.values());
   }, [receptores]);
 
-  const mesaAsignada = useMemo(() => {
-    if (!mesaAsignadaId) return null;
-    return mesasUnicas.find((m) => m.mesaId === mesaAsignadaId) || null;
-  }, [mesaAsignadaId, mesasUnicas]);
+  const mesasAsignadas = useMemo(() => {
+    const map = new Map<number, { mesaId: number; mesaNombre: string; siglas: string; usuarioId: number }>();
+    recursos.forEach((r) => {
+      if (!map.has(r.mesaId)) {
+        map.set(r.mesaId, {
+          mesaId: r.mesaId,
+          mesaNombre: r.mesaNombre,
+          siglas: r.mesaSiglas,
+          usuarioId: r.mesaUsuarioId,
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [recursos]);
+
+  const mesaAsignada = useMemo(() => mesasAsignadas[0] || null, [mesasAsignadas]);
 
   const totalItems = useMemo(() => recursos.reduce((acc, r) => acc + (r.cantidad || 0), 0), [recursos]);
+
+  useEffect(() => {
+    cantidadSolicitadaByKeyRef.current = cantidadSolicitadaByKey;
+  }, [cantidadSolicitadaByKey]);
 
   useEffect(() => {
     if (datosLogin && receptoresStatus === 'idle') {
@@ -219,13 +236,14 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       const rows: DisponibilidadMesaRow[] = list.map((it: any) => {
         const mesaId = Number(it?.mesa_id ?? 0);
         const mesaRef = mesasById.get(mesaId);
+        const key = `${selectedGrupoId}-${selectedTipoId}-${mesaId}`;
         return {
           mesaId,
           mesaNombre: String(it?.mesa_nombre ?? mesaRef?.mesaNombre ?? `Mesa ${mesaId}`),
           siglas: String(mesaRef?.siglas ?? ''),
           usuarioId: Number(mesaRef?.usuarioId ?? 0),
           cantidadDisponible: Math.max(0, Number(it?.existencias ?? 0)),
-          cantidadSolicitada: 0,
+          cantidadSolicitada: Number(cantidadSolicitadaByKeyRef.current[key] ?? 0),
         };
       });
 
@@ -236,7 +254,15 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       setDisponibilidadRows([]);
       setDisponibilidadStatus('error');
     }
-  }, [selectedGrupoId, selectedTipoId, mesasUnicas, datosLogin?.coe_id, datosLogin?.mesa_id, apiBase, authFetch]);
+  }, [
+    selectedGrupoId,
+    selectedTipoId,
+    mesasUnicas,
+    datosLogin?.coe_id,
+    datosLogin?.mesa_id,
+    apiBase,
+    authFetch,
+  ]);
 
   useEffect(() => {
     if (wizardStep === 2 && selectedGrupoId && selectedTipoId) {
@@ -252,11 +278,14 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
   };
 
   const handleCantidadSolicitadaChange = (mesaId: number, rawValue: number | null) => {
+    const value = typeof rawValue === 'number' ? rawValue : 0;
+    const bounded = Math.max(0, value);
+    const key = `${selectedGrupoId ?? 0}-${selectedTipoId ?? 0}-${mesaId}`;
+    setCantidadSolicitadaByKey((prev) => ({ ...prev, [key]: bounded }));
+
     setDisponibilidadRows((prev) =>
       prev.map((row) => {
         if (row.mesaId !== mesaId) return row;
-        const value = typeof rawValue === 'number' ? rawValue : 0;
-        const bounded = Math.max(0, Math.min(value, row.cantidadDisponible));
         return { ...row, cantidadSolicitada: bounded };
       })
     );
@@ -275,29 +304,22 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       alert('No puede solicitar mas de la cantidad disponible.');
       return;
     }
-    // if (mesaAsignadaId && mesaAsignadaId !== row.mesaId) {
+    // if (mesasAsignadas.length > 0 && !mesasAsignadas.some((m) => m.mesaId === row.mesaId)) {
     //   alert('Todos los recursos del requerimiento deben asignarse a una sola mesa.');
     //   return;
     // }
 
     const grupo = recursoGrupos.find((g) => g.id === selectedGrupoId);
     const tipo = recursoTipos.find((t) => t.id === selectedTipoId);
+    const yaAgregado = recursos.some(
+      (x) => x.grupoId === selectedGrupoId && x.tipoId === selectedTipoId && x.mesaId === row.mesaId
+    );
+    if (yaAgregado) {
+      alert('Este recurso ya fue agregado en la grilla de resumen.');
+      return;
+    }
 
-    setMesaAsignadaId(row.mesaId);
     setRecursos((prev) => {
-      const existingIndex = prev.findIndex(
-        (x) => x.grupoId === selectedGrupoId && x.tipoId === selectedTipoId && x.mesaId === row.mesaId
-      );
-
-      if (existingIndex >= 0) {
-        const clone = [...prev];
-        const current = clone[existingIndex];
-        const nuevaCantidad = current.cantidad + row.cantidadSolicitada;
-        const bounded = Math.min(nuevaCantidad, row.cantidadDisponible);
-        clone[existingIndex] = { ...current, cantidad: bounded };
-        return clone;
-      }
-
       const newId = Math.max(0, ...prev.map((r) => r.id)) + 1;
       return [
         ...prev,
@@ -317,19 +339,19 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         },
       ];
     });
-
-    setDisponibilidadRows((prev) =>
-      prev.map((x) => (x.mesaId === row.mesaId ? { ...x, cantidadSolicitada: 0 } : x))
-    );
   };
 
   const removeRecurso = (id: number) => {
     setRecursos((prev) => {
-      const next = prev.filter((x) => x.id !== id);
-      if (next.length === 0) {
-        setMesaAsignadaId(null);
+      const recursoEliminado = prev.find((x) => x.id === id);
+      if (recursoEliminado) {
+        const key = `${recursoEliminado.grupoId}-${recursoEliminado.tipoId}-${recursoEliminado.mesaId}`;
+        setCantidadSolicitadaByKey((state) => ({ ...state, [key]: 0 }));
+        setDisponibilidadRows((rows) =>
+          rows.map((row) => (row.mesaId === recursoEliminado.mesaId ? { ...row, cantidadSolicitada: 0 } : row))
+        );
       }
-      return next;
+      return prev.filter((x) => x.id !== id);
     });
   };
 
@@ -340,12 +362,13 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       setWizardStep(targetStep);
       return;
     }
-    if (wizardStep === 1 && !fechaSolicitud) {
-      alert('Complete los datos del requerimiento.');
+    if (wizardStep === 1 && (!fechaSolicitud || !fechaInicio || !fechaFin)) {
+      alert('Debe completar fecha de solicitud, fecha inicio y fecha fin.');
       return;
     }
-    if (targetStep === 3 && (recursos.length === 0 || !mesaAsignadaId)) {
-      alert('Debe seleccionar recursos y una mesa asignada en el paso 2.');
+    const recursosValidos = recursos.filter((r) => r.cantidad > 0);
+    if (targetStep === 3 && recursosValidos.length === 0) {
+      alert('Debe seleccionar al menos un recurso valido en el paso 2.');
       return;
     }
     setWizardStep(targetStep);
@@ -353,16 +376,17 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
 
   const handleNextStep = () => {
     if (wizardStep === 1) {
-      if (!fechaSolicitud) {
-        alert('Complete los datos del requerimiento.');
+      if (!fechaSolicitud || !fechaInicio || !fechaFin) {
+        alert('Debe completar fecha de solicitud, fecha inicio y fecha fin.');
         return;
       }
       setWizardStep(2);
       return;
     }
     if (wizardStep === 2) {
-      if (recursos.length === 0 || !mesaAsignadaId) {
-        alert('Debe seleccionar recursos y una mesa asignada.');
+      const recursosValidos = recursos.filter((r) => r.cantidad > 0);
+      if (recursosValidos.length === 0) {
+        alert('Debe seleccionar al menos un recurso valido.');
         return;
       }
       setWizardStep(3);
@@ -462,12 +486,10 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                     <label className="label-uniform">Num. Requerimiento</label>
                     <InputText value={numero} onChange={(e) => setNumero(e.target.value)} className="w-full m-1" disabled={isReadOnly} />
                   </div>
-                  <div className="col-lg-4 col-md-6 col-sm-12">
+                  <div className="col-lg-4 col-md-6 col-sm-12" style={{ display: 'none' }}>
                     <label className="label-uniform">Fecha de Solicitud</label>
                     <Calendar value={fechaSolicitud} onChange={(e) => setFechaSolicitud(e.value as Date)} showIcon showTime dateFormat="dd/mm/yy" className="w-full m-1" disabled={isReadOnly} />
                   </div>
-                </div>
-                <div className="row col-12">
                   <div className="col-lg-4 col-md-6 col-sm-12">
                     <label className="label-uniform">Fecha Inicio solicitud</label>
                     <Calendar value={fechaInicio} onChange={(e) => setFechaInicio(e.value as Date)} showIcon showTime dateFormat="dd/mm/yy" className="w-full m-1" disabled={isReadOnly} />
@@ -512,53 +534,62 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                     className="w-full m-1"
                   />
                 </div>
-                <div className="col-lg-4 col-md-6 col-sm-12 d-flex align-items-end">
-                  <Button label="Consultar Disponibilidad" icon="pi pi-search" onClick={loadDisponibilidadByTipo} className="m-1" disabled={!selectedGrupoId || !selectedTipoId || isReadOnly} />
-                </div>
+                
               </div>
 
               <div className="mb-2">
-                {mesaAsignada ? (
-                  <Tag color="blue">{`Mesa asignada: ${mesaAsignada.siglas} - ${mesaAsignada.mesaNombre}`}</Tag>
+                {mesasAsignadas.length > 0 ? (
+                  mesasAsignadas.map((mesa) => (
+                    <Tag key={mesa.mesaId} color="blue">{`Mesa asignada: ${mesa.siglas} - ${mesa.mesaNombre}`}</Tag>
+                  ))
                 ) : (
-                  <Tag color="default">Mesa asignada: No seleccionada</Tag>
+                  <Tag color="default">Mesas asignadas: No seleccionadas</Tag>
                 )}
               </div>
 
               <DataTable value={disponibilidadRows} emptyMessage={disponibilidadStatus === 'loading' ? 'Cargando disponibilidad...' : 'Seleccione grupo y tipo para visualizar inventario por mesa'} responsiveLayout="scroll">
                 <Column
                   header="Mesa"
-                  body={(row: DisponibilidadMesaRow) => `${row.siglas} - ${row.mesaNombre}`}
+                  body={(row: DisponibilidadMesaRow) => `${row.mesaNombre}`}
                 />
                 <Column field="cantidadDisponible" header="Cantidad disponible" />
                 <Column
                   header="Cantidad solicitada"
                   body={(row: DisponibilidadMesaRow) => (
-                    <InputNumber
-                      value={row.cantidadSolicitada}
-                      onValueChange={(e: InputNumberValueChangeEvent) =>
-                        handleCantidadSolicitadaChange(row.mesaId, typeof e.value === 'number' ? e.value : 0)
-                      }
-                      mode="decimal"
-                      min={0}
-                      max={row.cantidadDisponible}
-                      useGrouping={false}
-                      className="w-full"
-                      disabled={isReadOnly}
-                    />
+                    <div>
+                      <InputNumber
+                        value={row.cantidadSolicitada}
+                        onValueChange={(e: InputNumberValueChangeEvent) =>
+                          handleCantidadSolicitadaChange(row.mesaId, typeof e.value === 'number' ? e.value : 0)
+                        }
+                        mode="decimal"
+                        min={0}
+                        useGrouping={false}
+                        className="w-full"
+                        disabled={isReadOnly}
+                      />
+                      {row.cantidadSolicitada > row.cantidadDisponible && (
+                        <small className="p-error">La cantidad solicitada supera la disponible.</small>
+                      )}
+                    </div>
                   )}
                 />
                 <Column
                   header="Acciones"
-                  body={(row: DisponibilidadMesaRow) => (
-                    <Button
-                      label="Agregar Recurso"
-                      icon="pi pi-plus"
-                      className="p-button-sm"
-                      onClick={() => addRecursoDesdeMesa(row)}
-                      disabled={isReadOnly}
-                    />
-                  )}
+                  body={(row: DisponibilidadMesaRow) => {
+                    const recursoYaAgregado = recursos.some(
+                      (x) => x.grupoId === selectedGrupoId && x.tipoId === selectedTipoId && x.mesaId === row.mesaId
+                    );
+                    return (
+                      <Button
+                        label={recursoYaAgregado ? 'Recurso agregado' : 'Agregar Recurso'}
+                        icon={recursoYaAgregado ? 'pi pi-check' : 'pi pi-plus'}
+                        className="p-button-sm"
+                        onClick={() => addRecursoDesdeMesa(row)}
+                        disabled={isReadOnly || recursoYaAgregado}
+                      />
+                    );
+                  }}
                 />
               </DataTable>
             </>
@@ -574,10 +605,9 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                 <Column field="grupo" header="Grupo Recurso" sortable />
                 <Column field="tipo" header="Tipo Recurso" sortable />
                 <Column field="cantidad" header="Cantidad" sortable />
-                <Column field="costoEstimado" header="Costo" sortable />
                 <Column
                   header="Mesa Asignada"
-                  body={(row: RecursoSeleccionado) => `${row.mesaSiglas} - ${row.mesaNombre}`}
+                  body={(row: RecursoSeleccionado) => `${row.mesaNombre}`}
                 />
                 {!isReadOnly && (
                   <Column
@@ -597,8 +627,10 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                 <div><strong>Fecha inicio:</strong> {formatDateTime(fechaInicio)}</div>
                 <div><strong>Fecha fin:</strong> {formatDateTime(fechaFin)}</div>
                 <div>
-                  <strong>Mesa asignada:</strong>{' '}
-                  {mesaAsignada ? `${mesaAsignada.siglas} - ${mesaAsignada.mesaNombre}` : 'No seleccionada'}
+                  <strong>Mesas asignadas:</strong>{' '}
+                  {mesasAsignadas.length > 0
+                    ? mesasAsignadas.map((m) => `${m.siglas} - ${m.mesaNombre}`).join(' | ')
+                    : 'No seleccionadas'}
                 </div>
                 <div><strong>Total recursos:</strong> {recursos.length}</div>
                 <div><strong>Total items:</strong> {totalItems}</div>
