@@ -59,6 +59,7 @@ export interface RecursoTipo {
 export interface RequerimientoRequest {
   activo: boolean;
   creador: string;
+  descripcion?: string;
   emergencia_id: number;
   fecha_fin: string;
   fecha_inicio: string;
@@ -153,6 +154,7 @@ export interface RequerimientoByIdResponse {
   activo: boolean;
   creacion: string;
   creador: string;
+  descripcion?: string | null;
   emergencia_id: number;
   fecha_fin: string;
   fecha_inicio: string;

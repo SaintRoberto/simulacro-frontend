@@ -7,13 +7,14 @@ import { Button } from 'primereact/button';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { InputNumber } from 'primereact/inputnumber';
+import { InputTextarea } from 'primereact/inputtextarea';
 import type { InputNumberValueChangeEvent } from 'primereact/inputnumber';
 import { Steps } from 'primereact/steps';
 import type { MenuItem } from 'primereact/menuitem';
 import { useAuth } from '../../../context/AuthContext';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { RequerimientoRequest, RequerimientoRecursoRequest } from '../../../context/AuthContext';
-import { Breadcrumb, Tag } from 'antd';
+import { Breadcrumb, Tag, Progress } from 'antd';
 
 type WizardStep = 1 | 2 | 3;
 
@@ -24,6 +25,8 @@ interface RecursoSeleccionado {
   tipo: string;
   tipoId: number;
   cantidad: number;
+  detalleSolicitudRecurso: string;
+  porcentajeAvance: number;
   costoEstimado: number;
   mesaId: number;
   mesaNombre: string;
@@ -39,6 +42,7 @@ interface DisponibilidadMesaRow {
   usuarioId: number;
   cantidadDisponible: number;
   cantidadSolicitada: number;
+  detalleSolicitudRecurso: string;
 }
 
 const parseCostoToNumber = (value: unknown): number => {
@@ -76,12 +80,15 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
   const [fechaSolicitud, setFechaSolicitud] = useState<Date | null>(new Date());
   const [fechaInicio, setFechaInicio] = useState<Date | null>(null);
   const [fechaFin, setFechaFin] = useState<Date | null>(null);
+  const [detalleRequerimiento, setDetalleRequerimiento] = useState<string>('');
 
   const [selectedGrupoId, setSelectedGrupoId] = useState<number | null>(null);
   const [selectedTipoId, setSelectedTipoId] = useState<number | null>(null);
   const [disponibilidadRows, setDisponibilidadRows] = useState<DisponibilidadMesaRow[]>([]);
   const [cantidadSolicitadaByKey, setCantidadSolicitadaByKey] = useState<Record<string, number>>({});
   const cantidadSolicitadaByKeyRef = useRef<Record<string, number>>({});
+  const [detalleSolicitudByKey, setDetalleSolicitudByKey] = useState<Record<string, string>>({});
+  const detalleSolicitudByKeyRef = useRef<Record<string, string>>({});
   const [disponibilidadStatus, setDisponibilidadStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
 
   const [recursos, setRecursos] = useState<RecursoSeleccionado[]>([]);
@@ -156,6 +163,10 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
   }, [cantidadSolicitadaByKey]);
 
   useEffect(() => {
+    detalleSolicitudByKeyRef.current = detalleSolicitudByKey;
+  }, [detalleSolicitudByKey]);
+
+  useEffect(() => {
     if (datosLogin && receptoresStatus === 'idle') {
       loadReceptores();
     }
@@ -174,6 +185,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         setFechaSolicitud(new Date(req.creacion));
         setFechaInicio(req.fecha_inicio ? new Date(req.fecha_inicio) : null);
         setFechaFin(req.fecha_fin ? new Date(req.fecha_fin) : null);
+        setDetalleRequerimiento((req as any).descripcion ?? '');
       }
 
       const recursosApi = await getRequerimientoRecursos(editId);
@@ -193,6 +205,8 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
           tipo: tipo?.nombre || `Tipo ${r.recurso_tipo_id}`,
           tipoId: r.recurso_tipo_id,
           cantidad: r.cantidad,
+          detalleSolicitudRecurso: (r as any).especificaciones ?? '',
+          porcentajeAvance: Number((r as any).porcentaje_avance ?? 0),
           costoEstimado: parseCostoToNumber((r as any).costo ?? tipo?.costo),
           mesaId: req?.usuario_receptor_id || 0,
           mesaNombre: '-',
@@ -244,6 +258,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
           usuarioId: Number(mesaRef?.usuarioId ?? 0),
           cantidadDisponible: Math.max(0, Number(it?.existencias ?? 0)),
           cantidadSolicitada: Number(cantidadSolicitadaByKeyRef.current[key] ?? 0),
+          detalleSolicitudRecurso: String(detalleSolicitudByKeyRef.current[key] ?? ''),
         };
       });
 
@@ -291,6 +306,18 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     );
   };
 
+  const handleDetalleSolicitudRecursoChange = (mesaId: number, value: string) => {
+    const key = `${selectedGrupoId ?? 0}-${selectedTipoId ?? 0}-${mesaId}`;
+    setDetalleSolicitudByKey((prev) => ({ ...prev, [key]: value }));
+
+    setDisponibilidadRows((prev) =>
+      prev.map((row) => {
+        if (row.mesaId !== mesaId) return row;
+        return { ...row, detalleSolicitudRecurso: value };
+      })
+    );
+  };
+
   const addRecursoDesdeMesa = (row: DisponibilidadMesaRow) => {
     if (!selectedGrupoId || !selectedTipoId) {
       alert('Seleccione grupo y tipo de recurso.');
@@ -304,10 +331,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       alert('No puede solicitar mas de la cantidad disponible.');
       return;
     }
-    // if (mesasAsignadas.length > 0 && !mesasAsignadas.some((m) => m.mesaId === row.mesaId)) {
-    //   alert('Todos los recursos del requerimiento deben asignarse a una sola mesa.');
-    //   return;
-    // }
+
 
     const grupo = recursoGrupos.find((g) => g.id === selectedGrupoId);
     const tipo = recursoTipos.find((t) => t.id === selectedTipoId);
@@ -330,6 +354,8 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
           tipo: tipo?.nombre || `Tipo ${selectedTipoId}`,
           tipoId: selectedTipoId,
           cantidad: row.cantidadSolicitada,
+          detalleSolicitudRecurso: (row.detalleSolicitudRecurso || '').trim(),
+          porcentajeAvance: 0,
           costoEstimado: parseCostoToNumber(tipo?.costo),
           mesaId: row.mesaId,
           mesaNombre: row.mesaNombre,
@@ -347,12 +373,23 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       if (recursoEliminado) {
         const key = `${recursoEliminado.grupoId}-${recursoEliminado.tipoId}-${recursoEliminado.mesaId}`;
         setCantidadSolicitadaByKey((state) => ({ ...state, [key]: 0 }));
+        setDetalleSolicitudByKey((state) => ({ ...state, [key]: '' }));
         setDisponibilidadRows((rows) =>
-          rows.map((row) => (row.mesaId === recursoEliminado.mesaId ? { ...row, cantidadSolicitada: 0 } : row))
+          rows.map((row) =>
+            row.mesaId === recursoEliminado.mesaId
+              ? { ...row, cantidadSolicitada: 0, detalleSolicitudRecurso: '' }
+              : row
+          )
         );
       }
       return prev.filter((x) => x.id !== id);
     });
+  };
+
+  const handleEnviarABrecha = (recurso: RecursoSeleccionado) => {
+    alert(
+      `Enviar a brecha pendiente de implementacion (sin endpoint).\nRecurso: ${recurso.tipo}\nMesa: ${recurso.mesaNombre}`
+    );
   };
 
   const handleWizardSelect = (targetIndex: number) => {
@@ -413,6 +450,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       const requerimientoData: RequerimientoRequest = {
         activo: true,
         creador: datosLogin.usuario_login,
+        descripcion: detalleRequerimiento,
         emergencia_id: effectiveEmergenciaId,
         fecha_fin: fechaFin ? fechaFin.toISOString() : new Date().toISOString(),
         fecha_inicio: fechaInicio ? fechaInicio.toISOString() : new Date().toISOString(),
@@ -433,7 +471,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
           costo: parseCostoToNumber(recurso.costoEstimado),
           creador: datosLogin.usuario_login,
           destino: '',
-          especificaciones: '',
+          especificaciones: (recurso.detalleSolicitudRecurso || '').trim(),
           recurso_grupo_id: recurso.grupoId,
           recurso_tipo_id: recurso.tipoId,
           requerimiento_id: requerimiento.id,
@@ -498,6 +536,16 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                     <label className="label-uniform">Fecha Fin solicitud</label>
                     <Calendar value={fechaFin} onChange={(e) => setFechaFin(e.value as Date)} showIcon showTime dateFormat="dd/mm/yy" className="w-full m-1" disabled={isReadOnly} />
                   </div>
+                  <div className="col-lg-12 col-md-6 col-sm-12 pt-2">
+                    <label className="label-uniform">Detalle de requerimiento</label>
+                    <InputTextarea
+                      value={detalleRequerimiento}
+                      onChange={(e) => setDetalleRequerimiento(e.target.value)}
+                      className="w-full m-1"
+                      rows={3}
+                      disabled={isReadOnly}
+                    />
+                  </div>
                 </div>
               </div>
             </>
@@ -534,7 +582,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                     className="w-full m-1"
                   />
                 </div>
-                
+
               </div>
 
               <div className="mb-2">
@@ -569,7 +617,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                           mode="decimal"
                           min={0}
                           useGrouping={false}
-                          className="w-full"
+                          className="w-20 m-1"
                           disabled={isReadOnly || recursoYaAgregado}
                         />
                         {row.cantidadSolicitada > row.cantidadDisponible && (
@@ -580,22 +628,45 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                   }}
                 />
                 <Column
+                  header="Detalle de solicitud recurso"
+                  body={(row: DisponibilidadMesaRow) => {
+                    const recursoYaAgregado = recursos.some(
+                      (x) => x.grupoId === selectedGrupoId && x.tipoId === selectedTipoId && x.mesaId === row.mesaId
+                    );
+                    return (<div>
+                      <InputText
+                        className="w-full"
+                        value={row.detalleSolicitudRecurso}
+                        onChange={(e) => handleDetalleSolicitudRecursoChange(row.mesaId, e.target.value)}
+                        placeholder="Detalle adicional (opcional)"
+                        disabled={isReadOnly || recursoYaAgregado}
+
+                      />
+                    </div>);
+                  }}
+                />
+                <Column
                   header="Acciones"
                   body={(row: DisponibilidadMesaRow) => {
                     const recursoYaAgregado = recursos.some(
                       (x) => x.grupoId === selectedGrupoId && x.tipoId === selectedTipoId && x.mesaId === row.mesaId
                     );
                     return (
-                      <Button
-                        label={recursoYaAgregado ? 'Recurso agregado' : 'Agregar Recurso'}
-                        icon={recursoYaAgregado ? 'pi pi-check' : 'pi pi-plus'}
-                        className="p-button-sm"
-                        onClick={() => addRecursoDesdeMesa(row)}
+                      <div>
+                        <Button
+                          label={recursoYaAgregado ? 'Recurso agregado' : 'Agregar Recurso'}
+                          icon={recursoYaAgregado ? 'pi pi-check' : 'pi pi-plus'}
+                          className="p-button-sm"
+                          onClick={() => addRecursoDesdeMesa(row)}
                         disabled={isReadOnly || recursoYaAgregado}
                       />
+                      </div>
+
                     );
                   }}
                 />
+
+
               </DataTable>
             </>
           )}
@@ -610,19 +681,47 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                 <Column field="grupo" header="Grupo Recurso" sortable />
                 <Column field="tipo" header="Tipo Recurso" sortable />
                 <Column field="cantidad" header="Cantidad" sortable />
+                <Column field="detalleSolicitudRecurso" header="Detalle de solicitud recurso" />
+                <Column
+                  header="% avance"
+                  body={(row: RecursoSeleccionado) => (
+                    <div style={{ minWidth: 120 }}>
+                      <Progress percent={Math.max(0, Math.min(100, Number(row.porcentajeAvance || 0)))} size="small" />
+                    </div>
+                  )}
+                />
                 <Column
                   header="Mesa Asignada"
                   body={(row: RecursoSeleccionado) => `${row.mesaNombre}`}
                 />
-                {!isReadOnly && (
-                  <Column
-                    header="Acciones"
-                    body={(row: RecursoSeleccionado) => (
-                      <Button icon="pi pi-trash" severity="danger" text onClick={() => removeRecurso(row.id)} />
-                    )}
-                    style={{ width: '8rem' }}
-                  />
-                )}
+                <Column
+                  header="Acciones"
+                  body={(row: RecursoSeleccionado) => (
+                    <div className="flex gap-2">
+                      <Button
+                        label=""
+                        icon="pi pi-send"
+                        severity="help"
+                        text
+                        onClick={() => handleEnviarABrecha(row)}
+                        tooltip="Enviar a brecha"
+                        tooltipOptions={{ position: 'top' }}
+
+                      />
+                      {!isReadOnly && (
+                        <Button
+                          icon="pi pi-trash"
+                          severity="danger"
+                          text
+                          onClick={() => removeRecurso(row.id)}
+                          tooltip="Eliminar recurso"
+                          tooltipOptions={{ position: 'top' }}
+                        />
+                      )}
+                    </div>
+                  )}
+                  style={{ width: '14rem' }}
+                />
               </DataTable>
 
               <div className="mt-3 p-3 surface-100 border-round">
@@ -631,6 +730,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                 <div><strong>Fecha solicitud:</strong> {formatDateTime(fechaSolicitud)}</div>
                 <div><strong>Fecha inicio:</strong> {formatDateTime(fechaInicio)}</div>
                 <div><strong>Fecha fin:</strong> {formatDateTime(fechaFin)}</div>
+                <div><strong>Detalle requerimiento:</strong> {detalleRequerimiento || '-'}</div>
                 <div>
                   <strong>Mesas asignadas:</strong>{' '}
                   {mesasAsignadas.length > 0
