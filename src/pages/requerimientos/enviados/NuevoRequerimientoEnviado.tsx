@@ -555,24 +555,29 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                 <Column field="cantidadDisponible" header="Cantidad disponible" />
                 <Column
                   header="Cantidad solicitada"
-                  body={(row: DisponibilidadMesaRow) => (
-                    <div>
-                      <InputNumber
-                        value={row.cantidadSolicitada}
-                        onValueChange={(e: InputNumberValueChangeEvent) =>
-                          handleCantidadSolicitadaChange(row.mesaId, typeof e.value === 'number' ? e.value : 0)
-                        }
-                        mode="decimal"
-                        min={0}
-                        useGrouping={false}
-                        className="w-full"
-                        disabled={isReadOnly}
-                      />
-                      {row.cantidadSolicitada > row.cantidadDisponible && (
-                        <small className="p-error">La cantidad solicitada supera la disponible.</small>
-                      )}
-                    </div>
-                  )}
+                  body={(row: DisponibilidadMesaRow) => {
+                    const recursoYaAgregado = recursos.some(
+                      (x) => x.grupoId === selectedGrupoId && x.tipoId === selectedTipoId && x.mesaId === row.mesaId
+                    );
+                    return (
+                      <div>
+                        <InputNumber
+                          value={row.cantidadSolicitada}
+                          onValueChange={(e: InputNumberValueChangeEvent) =>
+                            handleCantidadSolicitadaChange(row.mesaId, typeof e.value === 'number' ? e.value : 0)
+                          }
+                          mode="decimal"
+                          min={0}
+                          useGrouping={false}
+                          className="w-full"
+                          disabled={isReadOnly || recursoYaAgregado}
+                        />
+                        {row.cantidadSolicitada > row.cantidadDisponible && (
+                          <small className="p-error">La cantidad solicitada supera la disponible.</small>
+                        )}
+                      </div>
+                    );
+                  }}
                 />
                 <Column
                   header="Acciones"
