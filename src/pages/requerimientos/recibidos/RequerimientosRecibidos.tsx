@@ -7,10 +7,14 @@ import { useAuth } from '../../../context/AuthContext';
  
 
 interface RequerimientoRecibido {
-  id: number;
+  id: number; // requerimiento_recurso.id
+  requerimientoId: number; // requerimiento.id
   codigo: string;
   solicitante: string; // emisor
   destinatario: string; // receptor
+  grupoRequerimiento: string;
+  tipoRequerimiento: string;
+  cantidadSolicitada: number;
   fechaSolicitud: Date; // inicio
   fechaCumplimiento: Date | null; // fin
   porcentajeAvance: number; // 0|25|50|75|100
@@ -20,6 +24,7 @@ interface RequerimientoRecibido {
 // API response shape for requerimientos Recibidos endpoint
 interface RequerimientoRecibidoAPI {
   activo: boolean;
+  creador?: string;
   emergencia_id: number;
   fecha_fin: string | null;
   fecha_inicio: string;
@@ -50,12 +55,13 @@ interface RequerimientoDetalle {
 
 interface RecursoSolicitado {
   activo: boolean;
-  cantidad: number;
+  cantidad_solicitada: number;
   costoEstimado?: number;
   costo?: number;
   creacion: string;
   creador: string;
   destino: string;
+  detalle?: string;
   especificaciones: string;
   id: number;
   modificacion: string;
@@ -73,39 +79,154 @@ export const RequerimientosRecibidos: React.FC = () => {
   const [requerimientoDetalle, setRequerimientoDetalle] = useState<RequerimientoDetalle | null>(null);
   const [recursosSolicitados, setRecursosSolicitados] = useState<RecursoSolicitado[]>([]);
   const [loadingDetalle, setLoadingDetalle] = useState(false);
+  const apiBase = process.env.REACT_APP_API_URL || '/api';
   const navigate = useNavigate();
   const { 
     getRequerimientosRecibidos, 
     getRequerimientoEstados, 
     getRequerimientoById, 
-    getRequerimientoRecursos,
+    authFetch,
+    datosLogin,
     getRecursoTiposByGrupo,
     recursoGrupos
   } = useAuth();
 
   const loadRequerimientos = useCallback(async () => {
     try {
-      const [data, estadosList] = await Promise.all([
+      const usuarioReceptorId = Number(datosLogin?.usuario_id ?? 0);
+      if (!usuarioReceptorId) {
+        setRequerimientos([]);
+        return;
+      }
+
+      // 1) Obtener requerimiento_ids desde recursos por usuario receptor
+      const recursosRes = await authFetch(`${apiBase}/requerimiento-recursos/usuario-receptor/${usuarioReceptorId}`, {
+        headers: { accept: 'application/json' },
+      });
+      if (!recursosRes.ok) {
+        setRequerimientos([]);
+        return;
+      }
+      const recursosData = await recursosRes.json();
+      const recursosLista = Array.isArray(recursosData) ? recursosData : [];
+      const requerimientoIds = new Set<number>(
+        recursosLista
+          .map((r: any) => Number(r?.requerimiento_id ?? 0))
+          .filter((id: number) => id > 0)
+      );
+
+      if (requerimientoIds.size === 0) {
+        setRequerimientos([]);
+        return;
+      }
+
+      const recursosPorRequerimiento = new Map<number, any[]>();
+      for (const recurso of recursosLista) {
+        const rid = Number(recurso?.requerimiento_id ?? 0);
+        if (!rid) continue;
+        const current = recursosPorRequerimiento.get(rid) || [];
+        current.push(recurso);
+        recursosPorRequerimiento.set(rid, current);
+      }
+
+      const uniqueGrupoIds = Array.from(
+        new Set(
+          recursosLista
+            .map((r: any) => Number(r?.recurso_grupo_id ?? 0))
+            .filter((gid: number) => gid > 0)
+        )
+      );
+      const tiposByGrupo = new Map<number, Array<{ id: number; nombre: string }>>();
+      await Promise.all(
+        uniqueGrupoIds.map(async (grupoId) => {
+          const tipos = await getRecursoTiposByGrupo(grupoId);
+          tiposByGrupo.set(grupoId, tipos || []);
+        })
+      );
+
+      // 2) Cargar lista general y estados (si falla, seguimos con fallback por ID)
+      const [dataResult, estadosResult] = await Promise.allSettled([
         getRequerimientosRecibidos(),
         getRequerimientoEstados(),
       ]);
+      const data =
+        dataResult.status === 'fulfilled'
+          ? (dataResult.value as unknown as RequerimientoRecibidoAPI[])
+          : [];
+      const estadosList =
+        estadosResult.status === 'fulfilled'
+          ? estadosResult.value
+          : [];
       const estadosMap = new Map<number, string>((estadosList || []).map((e: any) => [e.id, e.nombre]));
-      // Transform API data to local format
-      const transformedData: RequerimientoRecibido[] = (data as unknown as RequerimientoRecibidoAPI[]).map((req) => ({
-        id: req.requerimiento_id,
-        codigo: `REQ-${req.requerimiento_id}`,
-        solicitante: req.usuario_emisor,
-        destinatario: req.usuario_receptor,
-        fechaSolicitud: new Date(req.fecha_inicio),
-        fechaCumplimiento: req.fecha_fin ? new Date(req.fecha_fin) : null,
-        porcentajeAvance: typeof req.porcentaje_avance === 'number' ? req.porcentaje_avance : 0,
-        estado: estadosMap.get(req.requerimiento_estado_id ?? -1) || 'Solicitado',
-      }));
+
+      const byId = new Map<number, RequerimientoRecibidoAPI>();
+      for (const req of data || []) {
+        const rid = Number((req as any).requerimiento_id ?? (req as any).id ?? 0);
+        if (rid > 0) byId.set(rid, req as RequerimientoRecibidoAPI);
+      }
+
+      const transformedData: RequerimientoRecibido[] = [];
+      for (const rid of Array.from(requerimientoIds)) {
+        const recursosReq = recursosPorRequerimiento.get(rid) || [];
+        const requerimientoRecursoId = Number(recursosReq[0]?.id ?? 0);
+        const gruposSet = new Set<string>();
+        const tiposSet = new Set<string>();
+        let cantidadSolicitada = 0;
+        for (const recurso of recursosReq) {
+          const grupoId = Number(recurso?.recurso_grupo_id ?? 0);
+          const tipoId = Number(recurso?.recurso_tipo_id ?? 0);
+          const cantidad = Number(recurso?.cantidad_solicitada ?? recurso?.cantidad ?? 0);
+          const grupoNombre = recursoGrupos.find((g) => g.id === grupoId)?.nombre || `Grupo ${grupoId}`;
+          const tipoNombre = tiposByGrupo.get(grupoId)?.find((t) => t.id === tipoId)?.nombre || `Tipo ${tipoId}`;
+          if (grupoId > 0) gruposSet.add(grupoNombre);
+          if (tipoId > 0) tiposSet.add(tipoNombre);
+          if (Number.isFinite(cantidad)) cantidadSolicitada += Math.max(0, cantidad);
+        }
+        const gruposResumen = Array.from(gruposSet).join(' / ') || '-';
+        const tiposResumen = Array.from(tiposSet).join(' / ') || '-';
+
+        const req = byId.get(rid);
+        if (req) {
+          transformedData.push({
+            id: requerimientoRecursoId,
+            requerimientoId: rid,
+            codigo: `REQ-${rid}`,
+            solicitante: req.creador || '-',
+            destinatario: req.usuario_receptor,
+            grupoRequerimiento: gruposResumen,
+            tipoRequerimiento: tiposResumen,
+            cantidadSolicitada,
+            fechaSolicitud: new Date(req.fecha_inicio),
+            fechaCumplimiento: req.fecha_fin ? new Date(req.fecha_fin) : null,
+            porcentajeAvance: typeof req.porcentaje_avance === 'number' ? req.porcentaje_avance : 0,
+            estado: estadosMap.get(req.requerimiento_estado_id ?? -1) || 'Solicitado',
+          });
+          continue;
+        }
+
+        // Fallback: cargar detalle por ID cuando el endpoint de lista no incluya el requerimiento
+        const detalle = await getRequerimientoById(rid);
+        transformedData.push({
+          id: requerimientoRecursoId,
+          requerimientoId: rid,
+          codigo: `REQ-${rid}`,
+          solicitante: (detalle as any)?.creador || '-',
+          destinatario: '-',
+          grupoRequerimiento: gruposResumen,
+          tipoRequerimiento: tiposResumen,
+          cantidadSolicitada,
+          fechaSolicitud: detalle?.fecha_inicio ? new Date(detalle.fecha_inicio) : new Date(),
+          fechaCumplimiento: detalle?.fecha_fin ? new Date(detalle.fecha_fin) : null,
+          porcentajeAvance: Number((detalle as any)?.porcentaje_avance ?? 0),
+          estado: estadosMap.get(Number((detalle as any)?.requerimiento_estado_id ?? -1)) || 'Solicitado',
+        });
+      }
+
       setRequerimientos(transformedData);
     } catch (error) {
       console.error('Error loading requerimientos:', error);
     }
-  }, [getRequerimientosRecibidos, getRequerimientoEstados]);
+  }, [authFetch, apiBase, datosLogin?.usuario_id, getRequerimientosRecibidos, getRequerimientoEstados, getRequerimientoById, getRecursoTiposByGrupo, recursoGrupos]);
 
   useEffect(() => {
     loadRequerimientos();
@@ -118,9 +239,13 @@ export const RequerimientosRecibidos: React.FC = () => {
       const newId = Math.max(...requerimientos.map((r) => r.id), 0) + 1;
       const nuevo: RequerimientoRecibido = {
         id: newId,
+        requerimientoId: 0,
         codigo: `REQ-ENV-${new Date().getFullYear()}-${String(newId).padStart(5, '0')}`,
         solicitante: requerimiento.solicitante || '',
         destinatario: requerimiento.destinatario || '',
+        grupoRequerimiento: requerimiento.grupoRequerimiento || '',
+        tipoRequerimiento: requerimiento.tipoRequerimiento || '',
+        cantidadSolicitada: Number(requerimiento.cantidadSolicitada ?? 0),
         fechaSolicitud: requerimiento.fechaSolicitud || new Date(),
         fechaCumplimiento: requerimiento.fechaCumplimiento ?? null,
         porcentajeAvance: typeof requerimiento.porcentajeAvance === 'number' ? requerimiento.porcentajeAvance : 0,
@@ -142,13 +267,27 @@ export const RequerimientosRecibidos: React.FC = () => {
       setRecursosSolicitados([]);
 
       // Cargar detalle del requerimiento
-      const detalle = await getRequerimientoById(item.id);
+      const detalle = await getRequerimientoById(item.requerimientoId);
       if (detalle) {
         setRequerimientoDetalle(detalle as any);
       }
 
-      // Cargar recursos solicitados
-      const recursosApi = await getRequerimientoRecursos(item.id);
+      // Cargar recursos solicitados por usuario receptor
+      const usuarioReceptorId = Number(datosLogin?.usuario_id ?? 0);
+      if (!usuarioReceptorId) {
+        setRecursosSolicitados([]);
+        return;
+      }
+      const resRecursos = await authFetch(`${apiBase}/requerimiento-recursos/usuario-receptor/${usuarioReceptorId}`, {
+        headers: { accept: 'application/json' },
+      });
+      if (!resRecursos.ok) {
+        setRecursosSolicitados([]);
+        return;
+      }
+      const recursosApiAll = await resRecursos.json();
+      const recursosApi = (Array.isArray(recursosApiAll) ? recursosApiAll : [])
+        .filter((r: any) => Number(r?.requerimiento_id ?? 0) === item.requerimientoId);
       
       // Resolver nombres de grupo y tipo para cada recurso
       const recursosConNombres: RecursoSolicitado[] = [];
@@ -165,6 +304,7 @@ export const RequerimientosRecibidos: React.FC = () => {
 
         recursosConNombres.push({
           ...recurso,
+          cantidad_solicitada: Number((recurso as any).cantidad_solicitada ?? 0),
           costoEstimado: Number((recurso as any).costo ?? (recurso as any).costoEstimado ?? 0),
           grupo_nombre: grupoNombre,
           tipo_nombre: tipoNombre
@@ -177,7 +317,7 @@ export const RequerimientosRecibidos: React.FC = () => {
     } finally {
       setLoadingDetalle(false);
     }
-  }, [getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, recursoGrupos]);
+  }, [getRequerimientoById, authFetch, apiBase, datosLogin?.usuario_id, getRecursoTiposByGrupo, recursoGrupos]);
 
   const fechaTemplate = (rowData: RequerimientoRecibido, field: keyof RequerimientoRecibido) => {
     const date = rowData[field] as Date | null | undefined;
@@ -207,7 +347,9 @@ export const RequerimientosRecibidos: React.FC = () => {
   const columns = [
     { field: 'id', header: 'Req ID', sortable: true },
     { field: 'solicitante', header: 'Emisor', sortable: true },
-    { field: 'destinatario', header: 'Receptor', sortable: true },
+    { field: 'grupoRequerimiento', header: 'Grupo recurso', sortable: true },
+    { field: 'tipoRequerimiento', header: 'Tipo recurso', sortable: true },
+    { field: 'cantidadSolicitada', header: 'Cantidad Solicitada', sortable: true },
     {
       field: 'fechaSolicitud',
       header: 'Fecha Inicio',
@@ -259,7 +401,16 @@ export const RequerimientosRecibidos: React.FC = () => {
           title=""
           items={requerimientos}
           columns={columns}
-          onEdit={(row) => navigate(`/requerimientos/Recibidos/nuevo?id=${row.id}`)}
+          onEdit={(row) => {
+            const params = new URLSearchParams({
+              id: String(row.requerimientoId),
+              requerimientoRecursoId: String(row.id),
+              cantidadSolicitada: String(Number(row.cantidadSolicitada ?? 0)),
+              grupoRequerimiento: row.grupoRequerimiento || '',
+              tipoRequerimiento: row.tipoRequerimiento || '',
+            });
+            navigate(`/requerimientos/Recibidos/nuevo?${params.toString()}`);
+          }}
           onRead={handleRead}
           showCreateButton={false}
           showDeleteButton={false}
@@ -268,9 +419,13 @@ export const RequerimientosRecibidos: React.FC = () => {
           onDelete={handleDelete}
           initialItem={{
             id: 0,
+            requerimientoId: 0,
             codigo: '',
             solicitante: '',
             destinatario: '',
+            grupoRequerimiento: '',
+            tipoRequerimiento: '',
+            cantidadSolicitada: 0,
             fechaSolicitud: new Date(),
             fechaCumplimiento: null,
             porcentajeAvance: 0,
@@ -338,7 +493,7 @@ export const RequerimientosRecibidos: React.FC = () => {
                         <tr key={recurso.id}>
                           <td>{recurso.grupo_nombre || '-'}</td>
                           <td>{recurso.tipo_nombre || '-'}</td>
-                          <td>{recurso.cantidad}</td>
+                          <td>{recurso.cantidad_solicitada}</td>
                           <td>${recurso.costoEstimado?.toFixed(2) || 0}</td>
                           <td>{recurso.destino || '-'}</td>
                         </tr>

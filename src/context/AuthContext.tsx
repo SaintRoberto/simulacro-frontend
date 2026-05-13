@@ -59,12 +59,13 @@ export interface RecursoTipo {
 export interface RequerimientoRequest {
   activo: boolean;
   creador: string;
-  descripcion?: string;
+  detalle: string;
   emergencia_id: number;
   fecha_fin: string;
   fecha_inicio: string;
+  porcentaje_avance: number;
+  requerimiento_estado_id: number;
   usuario_emisor_id: number;
-  usuario_receptor_id: number;
 }
 
 export interface RequerimientoResponse {
@@ -87,10 +88,12 @@ export interface RequerimientoRecursoRequest {
   costo: number;
   creador: string;
   destino: string;
+  detalle: string;
   especificaciones: string;
   recurso_grupo_id: number;
   recurso_tipo_id: number;
   requerimiento_id: number;
+  usuario_receptor_id: number;
 }
 
 export interface RequerimientoEnviado {
@@ -154,7 +157,7 @@ export interface RequerimientoByIdResponse {
   activo: boolean;
   creacion: string;
   creador: string;
-  descripcion?: string | null;
+  detalle?: string | null;
   emergencia_id: number;
   fecha_fin: string;
   fecha_inicio: string;

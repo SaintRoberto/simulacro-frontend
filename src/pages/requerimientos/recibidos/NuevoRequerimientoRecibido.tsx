@@ -8,10 +8,10 @@ import { Button } from 'primereact/button';
 import { Dialog } from 'primereact/dialog';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
+import { InputNumber } from 'primereact/inputnumber';
 import { useAuth } from '../../../context/AuthContext';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
-import { RequerimientoRequest, RequerimientoRecursoRequest } from '../../../context/AuthContext';
-import { Tag, Breadcrumb, Progress } from 'antd';
+import { Tag, Breadcrumb, Progress, message } from 'antd';
 
 interface Recurso {
   id: number;
@@ -55,15 +55,40 @@ interface RequerimientoRecibido {
   usuario_receptor_id: number
 }
 
+interface InventarioAsignacionRow {
+  id: number;
+  provincia: string;
+  canton: string;
+  parroquia: string;
+  existencias: number;
+  cantidadAsignada: number;
+  recurso_tipo_id: number;
+  mesa_id: number;
+  coe_id: number;
+  institucion_duena_id: number;
+}
+
 
 export const NuevoRequerimientoRecibido: React.FC = () => {
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
+  const _navigate = useNavigate();
   const editId = useMemo(() => {
     const idStr = searchParams.get('id');
     const n = idStr ? Number(idStr) : NaN;
     return isNaN(n) ? null : n;
   }, [searchParams]);
+  const cantidadSolicitadaParam = useMemo(() => {
+    const raw = searchParams.get('cantidadSolicitada');
+    const n = raw ? Number(raw) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }, [searchParams]);
+  const requerimientoRecursoIdParam = useMemo(() => {
+    const raw = searchParams.get('requerimientoRecursoId');
+    const n = raw ? Number(raw) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }, [searchParams]);
+  const grupoRequerimientoParam = useMemo(() => searchParams.get('grupoRequerimiento') || '', [searchParams]);
+  const tipoRequerimientoParam = useMemo(() => searchParams.get('tipoRequerimiento') || '', [searchParams]);
   // Datos del requerimiento
   const [numero, setNumero] = useState<string>('REQ-0000');
   const [fechaSolicitud, setFechaSolicitud] = useState<Date | null>(new Date());
@@ -77,21 +102,24 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
   const [showRecursoDialog, setShowRecursoDialog] = useState(false);
   const [recursoDraft, setRecursoDraft] = useState<Partial<Recurso>>({ cantidad: 1 });
   const [showDetalleDialog, setShowDetalleDialog] = useState<boolean>(false);
+  const [showHistorialDialog, setShowHistorialDialog] = useState<boolean>(false);
 
   const { datosLogin, authFetch, loadReceptores, receptores, receptoresStatus, recursoGrupos, recursoGruposStatus, recursoTipos, recursoTiposStatus, loadRecursoGrupos, loadRecursoTipos, createRequerimiento, createRequerimientoRecurso, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, getRequerimientoEstados } = useAuth();
   const isReadOnly = false; // En respuestas, permitimos edición
-  const apiBase = process.env.REACT_APP_API_URL;
+  const apiBase = process.env.REACT_APP_API_URL || '/api';
 
 
   // Respuesta actual (formulario)
   const [fechaRespuesta, setFechaRespuesta] = useState<Date>(new Date());
   const [responsable, setResponsable] = useState<string>('');
-  const [estadoId, setEstadoId] = useState<number | null>(null);
   const [avance, setAvance] = useState<number>(0);
   const [situacion, setSituacion] = useState<string>('');
 
-  // Estados del requerimiento para el selector
+  // Estados del requerimiento para resolver ID automatico
   const [estados, setEstados] = useState<Array<{ id: number; nombre: string }>>([]);
+  const [inventarioRows, setInventarioRows] = useState<InventarioAsignacionRow[]>([]);
+  const [inventarioStatus, setInventarioStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [messageApi, messageContextHolder] = message.useMessage();
 
   // Historial
   const [historial, setHistorial] = useState<RespuestaHistorialItem[]>([]);
@@ -113,12 +141,89 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
     (async () => {
       const ests = await getRequerimientoEstados();
       setEstados(ests || []);
-      if (ests && ests.length > 0 && estadoId == null) {
-        setEstadoId(ests[0].id);
-      }
       if (datosLogin && !responsable) setResponsable(datosLogin.usuario_login);
     })();
-  }, [getRequerimientoEstados, datosLogin, estadoId, responsable]);
+  }, [getRequerimientoEstados, datosLogin, responsable]);
+
+  const resolveEstadoIdByAvance = useCallback((porcentaje: number): number => {
+    const targetName = porcentaje >= 100 ? 'completado' : 'en proceso';
+    const found = estados.find((e) => (e.nombre || '').toLowerCase().includes(targetName));
+    if (found) return found.id;
+    // fallback defensivo si catalogo no coincide literalmente
+    return porcentaje >= 100
+      ? (estados[estados.length - 1]?.id ?? 0)
+      : (estados[0]?.id ?? 0);
+  }, [estados]);
+
+  const handleCantidadAsignadaChange = (rowId: number, value: number | null) => {
+    const parsed = Math.floor(Number(value ?? 0));
+    const saneValue = Number.isFinite(parsed) ? parsed : 0;
+    const bounded = Math.max(0, saneValue);
+    const row = inventarioRows.find((it) => it.id === rowId);
+    if (row && bounded > row.existencias) {
+      messageApi.error(`Cantidad asignada no puede superar existencias (${row.existencias}).`);
+    }
+    setInventarioRows((prev) =>
+      prev.map((row) => {
+        if (row.id !== rowId) return row;
+        return { ...row, cantidadAsignada: bounded };
+      })
+    );
+  };
+
+  const totalCantidadAsignada = useMemo(
+    () => inventarioRows.reduce((acc, row) => acc + Math.max(0, Number(row.cantidadAsignada || 0)), 0),
+    [inventarioRows]
+  );
+
+  const recursoInventarioSeleccionado = useMemo(() => {
+    if (recursos.length === 0) return null;
+    const recursoTipoIdActual = inventarioRows[0]?.recurso_tipo_id;
+    if (!recursoTipoIdActual) return recursos[0];
+    return recursos.find((r) => r.tipoId === recursoTipoIdActual) || recursos[0];
+  }, [recursos, inventarioRows]);
+
+  const cantidadSolicitada = useMemo(() => {
+    const cantidadRecurso = Math.max(0, Number(recursoInventarioSeleccionado?.cantidad ?? 0));
+    if (cantidadRecurso > 0) return cantidadRecurso;
+    return cantidadSolicitadaParam;
+  }, [recursoInventarioSeleccionado, cantidadSolicitadaParam]);
+
+  const diferenciaCantidad = useMemo(() => cantidadSolicitada - totalCantidadAsignada, [cantidadSolicitada, totalCantidadAsignada]);
+
+  const loadInventarioAsignacion = useCallback(async (recursoTipoId: number) => {
+    if (!recursoTipoId || !datosLogin?.coe_id || !datosLogin?.mesa_id) {
+      setInventarioRows([]);
+      setInventarioStatus('idle');
+      return;
+    }
+
+    setInventarioStatus('loading');
+    try {
+      const endpoint = `${apiBase}/recursos_inventario/coe_id/${datosLogin.coe_id}/mesa_id/${datosLogin.mesa_id}/recurso_tipo_id/${recursoTipoId}/institucion_duena_id/10`;
+      const res = await authFetch(endpoint, { headers: { accept: 'application/json' } });
+      if (!res.ok) throw new Error('inventario_not_ok');
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : [];
+      const rows: InventarioAsignacionRow[] = list.map((it: any) => ({
+        id: Number(it?.id ?? 0),
+        provincia: String(it?.provincia ?? ''),
+        canton: String(it?.canton ?? ''),
+        parroquia: String(it?.parroquia ?? ''),
+        existencias: Math.max(0, Number(it?.existencias ?? 0)),
+        cantidadAsignada: 0,
+        recurso_tipo_id: Number(it?.recurso_tipo_id ?? recursoTipoId),
+        mesa_id: Number(it?.mesa_id ?? datosLogin.mesa_id),
+        coe_id: Number(it?.coe_id ?? datosLogin.coe_id),
+        institucion_duena_id: Number(it?.institucion_duena_id ?? 10),
+      }));
+      setInventarioRows(rows);
+      setInventarioStatus('ready');
+    } catch (e) {
+      setInventarioRows([]);
+      setInventarioStatus('error');
+    }
+  }, [apiBase, authFetch, datosLogin?.coe_id, datosLogin?.mesa_id]);
 
   const loadRequerimiento = useCallback(async (rid: number) => {
     try {
@@ -224,7 +329,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
           tipoId: r.recurso_tipo_id,
           recursosComplementarios: tipo?.complemento,
           caracteristicasTecnicas: tipo?.descripcion,
-          cantidad: r.cantidad,
+          cantidad: Number((r as any).cantidad_solicitada ?? r.cantidad ?? 0),
           costo: r.costo,
           especificacionesAdicionales: r.especificaciones,
           destinoUbicacion: r.destino,
@@ -233,12 +338,15 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
       }
 
       if (recursosRows.length) setRecursos(recursosRows);
+      if (recursosRows.length > 0) {
+        await loadInventarioAsignacion(recursosRows[0].tipoId);
+      }
       await loadHistorial(editId);
     };
 
     loadForEdit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editId, getRequerimientoById, getRequerimientoRecursos, recursoGrupos, recursoTipos, loadHistorial]);
+  }, [editId, getRequerimientoById, getRequerimientoRecursos, recursoGrupos, recursoTipos, loadHistorial, loadInventarioAsignacion]);
 
   // const nivelOptions = [
   //   { label: 'Parroquial', value: 'Parroquial' },
@@ -273,64 +381,90 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
 
   const handleGuardarRespuesta = async () => {
     if (!editId) {
-      alert('No hay un requerimiento seleccionado');
+      messageApi.error('No hay un requerimiento seleccionado.');
       return;
     }
-    if (!responsable || estadoId == null) {
-      alert('Complete los campos obligatorios');
+    if (!responsable) {
+      messageApi.error('Complete los campos obligatorios.');
+      return;
+    }
+    const filasConExceso = inventarioRows.filter((r) => Number(r.cantidadAsignada) > Number(r.existencias));
+    if (filasConExceso.length > 0) {
+      messageApi.error('Existen cantidades asignadas mayores a existencias. Corrija manualmente antes de guardar.');
       return;
     }
     try {
       const nowIso = (fechaRespuesta || new Date()).toISOString();
       const usuarioActual = datosLogin?.usuario_login || responsable || '';
-      const payload = {
-        activo: true,
-        creacion: nowIso,
-        creador: usuarioActual,
-        modificacion: nowIso,
-        modificador: usuarioActual,
-        porcentaje_avance: avance,
-        requerimiento_id: editId,
-        responsable,
-        respuesta_estado_id: estadoId,
-        respuesta_fecha: nowIso,
-        situacion_actual: situacion,
-      };
-      // 1) Crear respuesta (historial)
-      const res = await authFetch(`${apiBase}/requerimiento-respuestas`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        alert('No se pudo registrar la respuesta');
+      const estadoIdAuto = resolveEstadoIdByAvance(avance);
+
+      const rowsToSave = inventarioRows.filter((r) => Number(r.cantidadAsignada) > 0);
+      if (rowsToSave.length === 0) {
+        messageApi.error('Debe ingresar al menos una cantidad asignada mayor a cero.');
         return;
       }
-      const created = await res.json();
+
+      for (const row of rowsToSave) {
+        const recursoRelacion = recursos.find((r) => r.tipoId === row.recurso_tipo_id);
+        const requerimientoRecursoId = requerimientoRecursoIdParam || Number(recursoRelacion?.id ?? 0);
+        const recursoInventarioId = Number(row.id ?? 0);
+        if (!requerimientoRecursoId) {
+          messageApi.error(`No se pudo resolver requerimiento_recurso_id para tipo ${row.recurso_tipo_id}.`);
+          return;
+        }
+
+        const payload = {
+          activo: true,
+          cantidad_asignada: Number(row.cantidadAsignada),
+          creador: usuarioActual,
+          en_uso: 1,
+          modificacion: nowIso,
+          modificador: usuarioActual,
+          porcentaje_avance: avance,
+          recurso_inventario_id: recursoInventarioId,
+          requerimiento_recurso_id: requerimientoRecursoId,
+          responsable,
+          respuesta_estado_id: estadoIdAuto,
+          respuesta_fecha: nowIso,
+          situacion_actual: situacion,
+        };
+
+        const res = await authFetch(`${apiBase}/requerimiento-respuestas`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+          messageApi.error('No se pudo registrar una o más respuestas del inventario.');
+          return;
+        }
+      }
 
       // 2) Actualizar estado del requerimiento
       const resUpd = await authFetch(`${apiBase}/requerimientos/${editId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ porcentaje_avance: avance, requerimiento_estado_id: estadoId }),
+        body: JSON.stringify({ porcentaje_avance: avance, requerimiento_estado_id: estadoIdAuto }),
       });
       if (!resUpd.ok) {
-        alert('Respuesta guardada, pero no se pudo actualizar el estado del requerimiento');
+        messageApi.warning('Respuestas guardadas, pero no se pudo actualizar el estado del requerimiento.');
       }
 
       // 3) Refrescar historial y UI
       setFechaRespuesta(new Date());
       setSituacion('');
       await loadHistorial(editId);
-      alert('Respuesta guardada');
+      messageApi.success('Respuesta guardada.');
     } catch (e) {
-      alert('Error al guardar la respuesta');
+      messageApi.error('Error al guardar la respuesta.');
       console.error(e);
     }
   };
 
   return (
     <div className="container-fluid">
+      {messageContextHolder}
       <div className="mb-2">
         <Breadcrumb
           items={[
@@ -358,7 +492,11 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
               </div>
               <div className="col-lg-3 col-md-6 col-sm-12">
                 <label className="label-uniform">Estado del Requerimiento</label>
-                <Dropdown value={estadoId} options={estados.map(e => ({ label: e.nombre, value: e.id }))} onChange={(e) => setEstadoId(e.value)} placeholder="Seleccionar" className="w-full m-1" filter />
+                <InputText
+                  value={avance >= 100 ? 'Completado' : 'En Proceso'}
+                  className="w-full m-1"
+                  disabled
+                />
               </div>
               <div className="col-lg-3 col-md-6 col-sm-12">
                 <label className="label-uniform">Porcentaje de Avance *</label>
@@ -379,16 +517,9 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
             <div className="row col-12">
               <div className="col-12">
                 <label className="label-uniform">Situación actual del requerimiento</label>
-                </div>
-              <div className="col-12">
-                <InputTextarea value={situacion} onChange={(e) => setSituacion(e.target.value)} className="w-full m-1" placeholder="Describir la situación actual, avances, dificultades, próximos pasos..." rows={5} autoResize />
               </div>
-            </div>
-
-            <div className="row mt-3">
-              <div className="col-12 text-end">
-                <Button label="Ver Requerimiento" icon="pi pi-info-circle" className="m-1" onClick={() => setShowDetalleDialog(true)} />
-                <Button label="Guardar" icon="pi pi-lock" className="m-1" severity="secondary" onClick={handleGuardarRespuesta} />
+              <div className="col-12">
+                <InputTextarea value={situacion} onChange={(e) => setSituacion(e.target.value)} className="w-full m-1" placeholder="Describir la situación actual, avances, dificultades, próximos pasos..." rows={3} autoResize />
               </div>
             </div>
           </div>
@@ -397,39 +528,98 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
 
       <div className="col-12">
         <Card>
-          <div className="mb-3 flex align-items-center justify-content-between"></div>
-          <div className="row mt-2">
-            <h3 className="m-0">Historial de Respuestas</h3>
+          <div className="row">
+            <div className="col-12">
+              <h3 className="m-0">Inventario para Asignación</h3>
+            </div>
+            <div className="col-12 mt-2">
+              <span><strong>Grupo Recurso:</strong> {recursoInventarioSeleccionado?.grupo || grupoRequerimientoParam || '-'}</span>
+              <span className="mx-3"><strong>Tipo Recurso:</strong> {recursoInventarioSeleccionado?.tipo || tipoRequerimientoParam || '-'}</span>
+            </div>
           </div>
-
-          <DataTable value={historial} emptyMessage="Sin respuestas registradas" responsiveLayout="scroll">
-            <Column header="#" body={(row: RespuestaHistorialItem, { rowIndex }) => `#${historial.length - rowIndex}`} style={{ width: '6rem' }} />
-            <Column header="Fecha y Hora" body={(row: RespuestaHistorialItem) => (
-              <div>
-                {new Date(row.fecha_respuesta).toLocaleDateString()}<br />
-                <small>{new Date(row.fecha_respuesta).toLocaleTimeString()}</small>
-              </div>
-            )} />
-            <Column header="Responsable" field="responsable" />
-            <Column header="Estado del Requerimiento" body={(row: RespuestaHistorialItem) => (
-              <Tag color="blue">{row.requerimiento_estado_nombre || (estados.find(e => e.id === row.requerimiento_estado_id)?.nombre || row.requerimiento_estado_id)}</Tag>
-            )} />
-            <Column header="Progreso" body={(row: RespuestaHistorialItem) => (
-              <div style={{ minWidth: 120 }}>
-                <Progress percent={row.porcentaje_avance} showInfo size="small" />
-              </div>
-            )} />
-            <Column header="Situación Actual" field="situacion_actual" />
-            {/* <Column header="Acciones" body={() => (
-              <Button icon="pi pi-trash" severity="danger" text disabled />
-            )} style={{ width: '8rem' }} /> */}
+          <DataTable
+            value={inventarioRows}
+            emptyMessage={
+              inventarioStatus === 'loading'
+                ? 'Cargando inventario...'
+                : 'Sin inventario disponible para el tipo de recurso.'
+            }
+            responsiveLayout="scroll"
+            size="small"
+            style={{ fontSize: '13px' }}
+          >
+            <Column field="provincia" header="Provincia" />
+            <Column field="canton" header="Cantón" />
+            <Column field="parroquia" header="Parroquia" />
+            <Column field="existencias" header="Existencias" />
+            <Column
+              header="Cantidad Asignada"
+              body={(row: InventarioAsignacionRow) => (
+                <div>
+                  <InputNumber
+                    value={row.cantidadAsignada}
+                    onValueChange={(e) => handleCantidadAsignadaChange(row.id, typeof e.value === 'number' ? e.value : 0)}
+                    mode="decimal"
+                    useGrouping={false}
+                    min={0}
+                    minFractionDigits={0}
+                    maxFractionDigits={0}
+                    className="w-full"
+                  />
+                  {row.cantidadAsignada > row.existencias && (
+                    <small className="p-error">No puede ser mayor a existencias.</small>
+                  )}
+                </div>
+              )}
+            />
           </DataTable>
 
+          <div className="row mt-3">
+            <div className="col-md-4"><strong>Total Cantidad Asignada:</strong> {totalCantidadAsignada}</div>
+            <div className="col-md-4"><strong>Cantidad Solicitada:</strong> {cantidadSolicitada}</div>
+            <div className="col-md-4">
+              <strong>Diferencia/Faltante:</strong> {diferenciaCantidad}
+              {diferenciaCantidad > 0 ? ' (faltante)' : diferenciaCantidad < 0 ? ' (sobreasignado)' : ''}
+            </div>
+          </div>
 
+          <div className="row mt-3">
+            <div className="col-12 text-end">
+              <Button label="Ver Requerimiento" icon="pi pi-info-circle" className="m-1" onClick={() => setShowDetalleDialog(true)} />
+              <Button label="Ver Historial" icon="pi pi-history" className="m-1" severity="secondary" onClick={() => setShowHistorialDialog(true)} />
+              <Button label="Guardar" icon="pi pi-lock" className="m-1" severity="secondary" onClick={handleGuardarRespuesta} />
+            </div>
+          </div>
         </Card>
       </div>
 
-
+      <Dialog
+        visible={showHistorialDialog}
+        header="Historial de Respuestas"
+        onHide={() => setShowHistorialDialog(false)}
+        style={{ width: '80vw', maxWidth: '1100px' }}
+        modal
+      >
+        <DataTable value={historial} emptyMessage="Sin respuestas registradas" responsiveLayout="scroll" size="small">
+          <Column header="#" body={(row: RespuestaHistorialItem, { rowIndex }) => `#${historial.length - rowIndex}`} style={{ width: '6rem' }} />
+          <Column header="Fecha y Hora" body={(row: RespuestaHistorialItem) => (
+            <div>
+              {new Date(row.fecha_respuesta).toLocaleDateString()}<br />
+              <small>{new Date(row.fecha_respuesta).toLocaleTimeString()}</small>
+            </div>
+          )} />
+          <Column header="Responsable" field="responsable" />
+          <Column header="Estado del Requerimiento" body={(row: RespuestaHistorialItem) => (
+            <Tag color="blue">{row.requerimiento_estado_nombre || (estados.find(e => e.id === row.requerimiento_estado_id)?.nombre || row.requerimiento_estado_id)}</Tag>
+          )} />
+          <Column header="Progreso" body={(row: RespuestaHistorialItem) => (
+            <div style={{ minWidth: 120 }}>
+              <Progress percent={row.porcentaje_avance} showInfo size="small" />
+            </div>
+          )} />
+          <Column header="Situación Actual" field="situacion_actual" />
+        </DataTable>
+      </Dialog>
 
       {/* Dialogo: Detalle del Requerimiento */}
       <Dialog
@@ -452,10 +642,10 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
             <Column field="tipo" header="Tipo" />
             <Column field="cantidad" header="Cantidad" />
             <Column
-                    field="costo"
-                    header="Costo"
-                    body={(row) => `$${Number(row.costo ?? 0).toFixed(2)}`}
-                  />
+              field="costo"
+              header="Costo"
+              body={(row) => `$${Number(row.costo ?? 0).toFixed(2)}`}
+            />
             <Column field="destinoUbicacion" header="Destino" />
             <Column field="especificacionesAdicionales" header="Especificaciones" />
           </DataTable>

@@ -154,8 +154,6 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     return Array.from(map.values());
   }, [recursos]);
 
-  const mesaAsignada = useMemo(() => mesasAsignadas[0] || null, [mesasAsignadas]);
-
   const totalItems = useMemo(() => recursos.reduce((acc, r) => acc + (r.cantidad || 0), 0), [recursos]);
 
   useEffect(() => {
@@ -185,7 +183,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         setFechaSolicitud(new Date(req.creacion));
         setFechaInicio(req.fecha_inicio ? new Date(req.fecha_inicio) : null);
         setFechaFin(req.fecha_fin ? new Date(req.fecha_fin) : null);
-        setDetalleRequerimiento((req as any).descripcion ?? '');
+        setDetalleRequerimiento((req as any).detalle ?? '');
       }
 
       const recursosApi = await getRequerimientoRecursos(editId);
@@ -245,8 +243,33 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
 
       const data = await res.json();
       const list = Array.isArray(data) ? data : [];
+      const provinciaId = Number(datosLogin?.provincia_id ?? 0);
+      const cantonId = Number(datosLogin?.canton_id ?? 0);
 
       const mesasById = new Map(mesasUnicas.map((m) => [m.mesaId, m]));
+      const mesaIds = Array.from(new Set(list.map((it: any) => Number(it?.mesa_id ?? 0)).filter((id: number) => id > 0)));
+
+      // Resolver usuario_id real por mesa usando endpoint de acta_coe_resolucion_mesas
+      const usuarioByMesaId = new Map<number, number>();
+      await Promise.all(
+        mesaIds.map(async (mesaId) => {
+          try {
+            const usuarioRes = await authFetch(
+              `${apiBase}/acta_coe_resolucion_mesas/coe/${coeId}/provincia/${provinciaId}/canton/${cantonId}/mesa/${mesaId}`,
+              { headers: { accept: 'application/json' } }
+            );
+            if (!usuarioRes.ok) return;
+            const usuarioData = await usuarioRes.json();
+            const usuarioId = Number(usuarioData?.usuario_id ?? 0);
+            if (usuarioId > 0) {
+              usuarioByMesaId.set(mesaId, usuarioId);
+            }
+          } catch (e) {
+            // Si falla, se usa fallback con los datos ya disponibles en memoria.
+          }
+        })
+      );
+
       const rows: DisponibilidadMesaRow[] = list.map((it: any) => {
         const mesaId = Number(it?.mesa_id ?? 0);
         const mesaRef = mesasById.get(mesaId);
@@ -255,7 +278,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
           mesaId,
           mesaNombre: String(it?.mesa_nombre ?? mesaRef?.mesaNombre ?? `Mesa ${mesaId}`),
           siglas: String(mesaRef?.siglas ?? ''),
-          usuarioId: Number(mesaRef?.usuarioId ?? 0),
+          usuarioId: Number(usuarioByMesaId.get(mesaId) ?? it?.usuario_id ?? mesaRef?.usuarioId ?? 0),
           cantidadDisponible: Math.max(0, Number(it?.existencias ?? 0)),
           cantidadSolicitada: Number(cantidadSolicitadaByKeyRef.current[key] ?? 0),
           detalleSolicitudRecurso: String(detalleSolicitudByKeyRef.current[key] ?? ''),
@@ -275,6 +298,8 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     mesasUnicas,
     datosLogin?.coe_id,
     datosLogin?.mesa_id,
+    datosLogin?.provincia_id,
+    datosLogin?.canton_id,
     apiBase,
     authFetch,
   ]);
@@ -436,7 +461,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
   };
 
   const handleRegistrarRequerimiento = async () => {
-    if (!datosLogin || !mesaAsignada || recursos.length === 0) {
+    if (!datosLogin || recursos.length === 0) {
       alert('Complete el wizard antes de registrar.');
       return;
     }
@@ -450,12 +475,13 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       const requerimientoData: RequerimientoRequest = {
         activo: true,
         creador: datosLogin.usuario_login,
-        descripcion: detalleRequerimiento,
+        detalle: detalleRequerimiento,
         emergencia_id: effectiveEmergenciaId,
         fecha_fin: fechaFin ? fechaFin.toISOString() : new Date().toISOString(),
         fecha_inicio: fechaInicio ? fechaInicio.toISOString() : new Date().toISOString(),
+        porcentaje_avance: 0,
+        requerimiento_estado_id: 1,
         usuario_emisor_id: datosLogin.usuario_id,
-        usuario_receptor_id: mesaAsignada.usuarioId,
       };
 
       const requerimiento = await createRequerimiento(requerimientoData);
@@ -465,16 +491,24 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       }
 
       for (const recurso of recursos) {
+        const usuarioReceptorId = Number(recurso.mesaUsuarioId ?? 0);
+        if (!usuarioReceptorId) {
+          alert(`No se encontro usuario receptor para la mesa ${recurso.mesaNombre}.`);
+          continue;
+        }
+
         const recursoData: RequerimientoRecursoRequest = {
           activo: true,
           cantidad: recurso.cantidad,
           costo: parseCostoToNumber(recurso.costoEstimado),
           creador: datosLogin.usuario_login,
           destino: '',
+          detalle: detalleRequerimiento,
           especificaciones: (recurso.detalleSolicitudRecurso || '').trim(),
           recurso_grupo_id: recurso.grupoId,
           recurso_tipo_id: recurso.tipoId,
           requerimiento_id: requerimiento.id,
+          usuario_receptor_id: usuarioReceptorId,
         };
         const success = await createRequerimientoRecurso(recursoData);
         if (!success) {
