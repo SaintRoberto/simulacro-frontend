@@ -61,11 +61,30 @@ interface InventarioAsignacionRow {
   canton: string;
   parroquia: string;
   existencias: number;
+  disponible: number;
+  total_asignado_en_uso: number;
+  requerimiento_respuesta_id: number;
   cantidadAsignada: number;
   recurso_tipo_id: number;
   mesa_id: number;
   coe_id: number;
   institucion_duena_id: number;
+}
+
+interface RequerimientoRespuestaRecord {
+  id: number;
+  activo: boolean;
+  cantidad_asignada: number;
+  factor: number;
+  modificacion: string;
+  modificador: string;
+  porcentaje_avance: number;
+  recurso_inventario_id: number;
+  requerimiento_recurso_id: number;
+  responsable: string;
+  respuesta_estado_id: number;
+  respuesta_fecha: string;
+  situacion_actual: string;
 }
 
 
@@ -123,6 +142,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
 
   // Historial
   const [historial, setHistorial] = useState<RespuestaHistorialItem[]>([]);
+  const [respuestasPreviasByInventarioId, setRespuestasPreviasByInventarioId] = useState<Record<number, RequerimientoRespuestaRecord>>({});
 
   //requerimiento
   const [requerimiento, setRequerimiento] = useState<RequerimientoRecibido[]>([]);
@@ -211,7 +231,12 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
         canton: String(it?.canton ?? ''),
         parroquia: String(it?.parroquia ?? ''),
         existencias: Math.max(0, Number(it?.existencias ?? 0)),
-        cantidadAsignada: 0,
+        disponible: Math.max(0, Number(it?.disponible ?? 0)),
+        total_asignado_en_uso: Math.max(0, Number(it?.total_asignado_en_uso ?? 0)),
+        requerimiento_respuesta_id: Math.max(0, Number(it?.requerimiento_respuesta_id ?? 0)),
+        cantidadAsignada: Math.max(0, Number(it?.disponible ?? 0)) > 0
+          ? Math.max(0, Number(it?.total_asignado_en_uso ?? 0))
+          : 0,
         recurso_tipo_id: Number(it?.recurso_tipo_id ?? recursoTipoId),
         mesa_id: Number(it?.mesa_id ?? datosLogin.mesa_id),
         coe_id: Number(it?.coe_id ?? datosLogin.coe_id),
@@ -256,6 +281,41 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
     }
   }, [apiBase]);
 
+  const mapRespuestasPreviasByInventarioId = useCallback((records: any[] | Record<string, any>): Record<number, RequerimientoRespuestaRecord> => {
+    const nextByInventarioId: Record<number, RequerimientoRespuestaRecord> = {};
+    const normalizedRecords = Array.isArray(records)
+      ? records
+      : (records && typeof records === 'object' ? [records] : []);
+    for (const d of normalizedRecords) {
+      const inventarioId = Number(
+        d?.recurso_inventario_id
+        ?? d?.inventario_id
+        ?? d?.recursoInventarioId
+        ?? 0
+      );
+      if (!inventarioId) continue;
+      const currentId = Number(d?.id ?? 0);
+      const prevId = Number(nextByInventarioId[inventarioId]?.id ?? 0);
+      if (prevId > currentId) continue;
+      nextByInventarioId[inventarioId] = {
+        id: currentId,
+        activo: Boolean(d?.activo ?? true),
+        cantidad_asignada: Number(d?.cantidad_asignada ?? 0),
+        factor: Number(d?.factor ?? 0),
+        modificacion: String(d?.modificacion ?? d?.creacion ?? new Date().toISOString()),
+        modificador: String(d?.modificador ?? d?.creador ?? ''),
+        porcentaje_avance: Number(d?.porcentaje_avance ?? 0),
+        recurso_inventario_id: inventarioId,
+        requerimiento_recurso_id: Number(d?.requerimiento_recurso_id ?? 0),
+        responsable: String(d?.responsable ?? d?.creador ?? ''),
+        respuesta_estado_id: Number(d?.respuesta_estado_id ?? 0),
+        respuesta_fecha: String(d?.respuesta_fecha ?? d?.fecha_respuesta ?? d?.creacion ?? new Date().toISOString()),
+        situacion_actual: String(d?.situacion_actual ?? d?.descripcion ?? ''),
+      };
+    }
+    return nextByInventarioId;
+  }, []);
+
   const loadHistorial = useCallback(async (rid: number) => {
     try {
       // Nuevo endpoint: trae historial por requerimiento_id
@@ -266,7 +326,8 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
         setHistorial([]);
         return;
       }
-      const data = (await res.json()) as any[];
+      const raw = await res.json();
+      const data = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' ? [raw] : []);
       const mapped: RespuestaHistorialItem[] = data.map((d: any) => ({
         id: d.id,
         requerimiento_id: d.requerimiento_id ?? rid,
@@ -277,11 +338,14 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
         porcentaje_avance: typeof d.porcentaje_avance === 'number' ? d.porcentaje_avance : 0,
         situacion_actual: d.situacion_actual || d.descripcion || '',
       }));
+      const nextByInventarioId = mapRespuestasPreviasByInventarioId(data);
       setHistorial(mapped);
+      setRespuestasPreviasByInventarioId(nextByInventarioId);
     } catch (e) {
       setHistorial([]);
+      setRespuestasPreviasByInventarioId({});
     }
-  }, [apiBase]);
+  }, [apiBase, mapRespuestasPreviasByInventarioId]);
 
   // Load existing requerimiento (detalle), recursos, historial cuando hay id
   useEffect(() => {
@@ -393,18 +457,70 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
       messageApi.error('Existen cantidades asignadas mayores a existencias. Corrija manualmente antes de guardar.');
       return;
     }
+    if (diferenciaCantidad <= 0) {
+      messageApi.error('No se puede guardar porque la diferencia/faltante debe ser mayor a 0.');
+      return;
+    }
     try {
       const nowIso = (fechaRespuesta || new Date()).toISOString();
       const usuarioActual = datosLogin?.usuario_login || responsable || '';
       const estadoIdAuto = resolveEstadoIdByAvance(avance);
+      let respuestasMap = respuestasPreviasByInventarioId;
+      const resPrevias = await authFetch(`${apiBase}/requerimiento-respuestas/${editId}`, {
+        headers: { accept: 'application/json' },
+      });
+      if (resPrevias.ok) {
+        const rawPrevias = await resPrevias.json();
+        const dataPrevias = Array.isArray(rawPrevias)
+          ? rawPrevias
+          : (rawPrevias && typeof rawPrevias === 'object' ? [rawPrevias] : []);
+        respuestasMap = mapRespuestasPreviasByInventarioId(dataPrevias);
+        setRespuestasPreviasByInventarioId(respuestasMap);
+      }
 
-      const rowsToSave = inventarioRows.filter((r) => Number(r.cantidadAsignada) > 0);
-      if (rowsToSave.length === 0) {
+      const rowsToUpdate = inventarioRows.filter((r) => Number(r.requerimiento_respuesta_id) > 0);
+      const rowsToCreate = inventarioRows.filter((r) => Number(r.requerimiento_respuesta_id) <= 0 && Number(r.cantidadAsignada) > 0);
+      if (rowsToUpdate.length === 0 && rowsToCreate.length === 0) {
         messageApi.error('Debe ingresar al menos una cantidad asignada mayor a cero.');
         return;
       }
 
-      for (const row of rowsToSave) {
+      for (const row of rowsToUpdate) {
+        const existente = respuestasMap[row.id];
+        const respuestaId = Number(row.requerimiento_respuesta_id ?? existente?.id ?? 0);
+        if (!respuestaId) {
+          messageApi.error('No se pudo resolver la respuesta previa para actualizar.');
+          return;
+        }
+
+        const payload = {
+          activo: existente?.activo ?? true,
+          cantidad_asignada: Number(row.cantidadAsignada),
+          factor: Number(existente?.factor ?? 1),
+          modificacion: nowIso,
+          modificador: usuarioActual,
+          porcentaje_avance: Number(existente?.porcentaje_avance ?? avance),
+          recurso_inventario_id: Number(row.id ?? 0),
+          requerimiento_recurso_id: Number(existente?.requerimiento_recurso_id ?? requerimientoRecursoIdParam ?? 0),
+          responsable: existente?.responsable || responsable,
+          respuesta_estado_id: Number(existente?.respuesta_estado_id ?? estadoIdAuto),
+          respuesta_fecha: existente?.respuesta_fecha || nowIso,
+          situacion_actual: existente?.situacion_actual || situacion,
+        };
+
+        const res = await authFetch(`${apiBase}/requerimiento-respuestas/${respuestaId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+          messageApi.error('No se pudo actualizar una o mas respuestas del inventario.');
+          return;
+        }
+      }
+
+      for (const row of rowsToCreate) {
         const recursoRelacion = recursos.find((r) => r.tipoId === row.recurso_tipo_id);
         const requerimientoRecursoId = requerimientoRecursoIdParam || Number(recursoRelacion?.id ?? 0);
         const recursoInventarioId = Number(row.id ?? 0);
@@ -417,7 +533,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
           activo: true,
           cantidad_asignada: Number(row.cantidadAsignada),
           creador: usuarioActual,
-          en_uso: 1,
+          factor: 1,
           modificacion: nowIso,
           modificador: usuarioActual,
           porcentaje_avance: avance,
@@ -552,6 +668,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
             <Column field="canton" header="Cantón" />
             <Column field="parroquia" header="Parroquia" />
             <Column field="existencias" header="Existencias" />
+            <Column field="disponible" header="Disponible" />
             <Column
               header="Cantidad Asignada"
               body={(row: InventarioAsignacionRow) => (
@@ -657,3 +774,5 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
 };
 
 export default NuevoRequerimientoRecibido;
+
+
