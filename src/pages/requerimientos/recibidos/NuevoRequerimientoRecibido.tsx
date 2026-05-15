@@ -94,7 +94,11 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
   const editId = useMemo(() => {
     const idStr = searchParams.get('id');
     const n = idStr ? Number(idStr) : NaN;
-    return isNaN(n) ? null : n;
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }, [searchParams]);
+  const editNumero = useMemo(() => {
+    const raw = searchParams.get('requerimiento_numero') || searchParams.get('numero') || '';
+    return String(raw).trim() || null;
   }, [searchParams]);
   const cantidadSolicitadaParam = useMemo(() => {
     const raw = searchParams.get('cantidadSolicitada');
@@ -220,7 +224,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
 
     setInventarioStatus('loading');
     try {
-      const endpoint = `${apiBase}/recursos_inventario/coe_id/${datosLogin.coe_id}/mesa_id/${datosLogin.mesa_id}/recurso_tipo_id/${recursoTipoId}/institucion_duena_id/10`;
+      const endpoint = `${apiBase}/recursos_inventario/coe_id/${datosLogin.coe_id}/mesa_id/${datosLogin.mesa_id}/recurso_tipo_id/${recursoTipoId}/institucion_duena_id/10/recurso_requerimiento_id/${requerimientoRecursoIdParam}`;
       const res = await authFetch(endpoint, { headers: { accept: 'application/json' } });
       if (!res.ok) throw new Error('inventario_not_ok');
       const data = await res.json();
@@ -350,6 +354,82 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
   // Load existing requerimiento (detalle), recursos, historial cuando hay id
   useEffect(() => {
     const loadForEdit = async () => {
+      if (!editId && !editNumero) return;
+
+      if (editNumero) {
+        const encodedNumero = encodeURIComponent(editNumero);
+        const endpoints = [
+          `${apiBase}/requerimiento-recursos/requeramiento_numero/${encodedNumero}`,
+          `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}`,
+        ];
+
+        let recursosApi: any[] = [];
+        for (const url of endpoints) {
+          const res = await authFetch(url, { headers: { accept: 'application/json' } });
+          if (!res.ok) continue;
+          const parsed = await res.json();
+          recursosApi = Array.isArray(parsed) ? parsed : [];
+          break;
+        }
+
+        if (!recursosApi.length) return;
+
+        const first = recursosApi[0];
+        const fechaCreacion = first?.creacion ? new Date(first.creacion) : null;
+        const fechaModificacion = first?.modificacion ? new Date(first.modificacion) : null;
+        setNumero(String(first?.requerimiento_numero || editNumero));
+        setFechaSolicitud(fechaCreacion);
+        setFechaInicio(fechaCreacion);
+        setFechaFin(fechaModificacion);
+
+        if (receptores && receptores.length > 0) {
+          const rec = receptores.find((r) => Number(r.usuario_id) === Number(first?.usuario_receptor_id ?? 0));
+          if (rec) {
+            setMtt(`${rec.mesa_id}-${rec.siglas}-${rec.usuario_id}`);
+          }
+        }
+
+        const recursosRows: Recurso[] = [];
+        for (const r of recursosApi) {
+          const grupoId = Number(r?.recurso_grupo_id ?? 0);
+          const tipoId = Number(r?.recurso_tipo_id ?? 0);
+          const grupo = recursoGrupos.find((g) => g.id === grupoId);
+          let tipo = recursoTipos.find((t) => t.id === tipoId);
+          if (!tipo && grupoId > 0) {
+            const tipos = await getRecursoTiposByGrupo(grupoId);
+            tipo = tipos.find((t) => t.id === tipoId);
+          }
+
+          recursosRows.push({
+            id: Number(r?.id ?? 0),
+            grupo: String(r?.recurso_grupo_nombre ?? grupo?.nombre ?? `Grupo ${grupoId}`),
+            grupoId,
+            grupoDescripcion: grupo?.descripcion,
+            tipo: String(r?.recurso_tipo_nombre ?? tipo?.nombre ?? `Tipo ${tipoId}`),
+            tipoId,
+            recursosComplementarios: tipo?.complemento,
+            caracteristicasTecnicas: tipo?.descripcion,
+            cantidad: Number(r?.cantidad_solicitada ?? r?.cantidad ?? 0),
+            costo: Number(r?.costo ?? 0),
+            especificacionesAdicionales: String(r?.especificaciones ?? ''),
+            destinoUbicacion: String(r?.destino ?? ''),
+            activo: Boolean(r?.activo ?? true),
+          });
+        }
+
+        if (recursosRows.length) {
+          setRecursos(recursosRows);
+          await loadInventarioAsignacion(recursosRows[0].tipoId);
+        }
+
+        if (editId) {
+          await loadHistorial(editId);
+        } else {
+          setHistorial([]);
+        }
+        return;
+      }
+
       if (!editId) return;
       // Load requerimiento details
       const req = await getRequerimientoById(editId);
@@ -410,7 +490,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
 
     loadForEdit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editId, getRequerimientoById, getRequerimientoRecursos, recursoGrupos, recursoTipos, loadHistorial, loadInventarioAsignacion]);
+  }, [apiBase, authFetch, editId, editNumero, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, recursoGrupos, recursoTipos, loadHistorial, loadInventarioAsignacion, receptores]);
 
   // const nivelOptions = [
   //   { label: 'Parroquial', value: 'Parroquial' },
@@ -444,10 +524,10 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
   };
 
   const handleGuardarRespuesta = async () => {
-    if (!editId) {
-      messageApi.error('No hay un requerimiento seleccionado.');
-      return;
-    }
+    // if (!editId) {
+    //   messageApi.error('No hay un requerimiento seleccionado.');
+    //   return;
+    // }
     if (!responsable) {
       messageApi.error('Complete los campos obligatorios.');
       return;
@@ -586,7 +666,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
           items={[
             { title: <Link to="/">Inicio</Link> },
             { title: <Link to="/requerimientos/recibidos">Requerimientos Recibidos</Link> },
-            { title: editId ? `Ver REQ-${editId}` : 'Nuevo Requerimiento' },
+            { title: editId ? `Ver REQ-${editId}` : (editNumero ? `Ver ${editNumero}` : 'Nuevo Requerimiento') },
           ]}
         />
       </div>

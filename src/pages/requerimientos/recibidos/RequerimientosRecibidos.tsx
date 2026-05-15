@@ -9,6 +9,7 @@ import { useAuth } from '../../../context/AuthContext';
 interface RequerimientoRecibido {
   id: number; // requerimiento_recurso.id
   requerimientoId: number; // requerimiento.id
+  requerimientoNumero?: string | null;
   codigo: string;
   solicitante: string; // emisor
   destinatario: string; // receptor
@@ -109,24 +110,24 @@ export const RequerimientosRecibidos: React.FC = () => {
       }
       const recursosData = await recursosRes.json();
       const recursosLista = Array.isArray(recursosData) ? recursosData : [];
-      const requerimientoIds = new Set<number>(
-        recursosLista
-          .map((r: any) => Number(r?.requerimiento_id ?? 0))
-          .filter((id: number) => id > 0)
-      );
 
-      if (requerimientoIds.size === 0) {
+      if (recursosLista.length === 0) {
         setRequerimientos([]);
         return;
       }
 
-      const recursosPorRequerimiento = new Map<number, any[]>();
+      const recursosPorClave = new Map<string, any[]>();
       for (const recurso of recursosLista) {
+        const numero = String(recurso?.requerimiento_numero ?? '').trim();
         const rid = Number(recurso?.requerimiento_id ?? 0);
-        if (!rid) continue;
-        const current = recursosPorRequerimiento.get(rid) || [];
+        const clave = numero
+          ? `NUM:${numero}`
+          : rid > 0
+            ? `RID:${rid}`
+            : `ROW:${Number(recurso?.id ?? 0)}`;
+        const current = recursosPorClave.get(clave) || [];
         current.push(recurso);
-        recursosPorRequerimiento.set(rid, current);
+        recursosPorClave.set(clave, current);
       }
 
       const uniqueGrupoIds = Array.from(
@@ -166,8 +167,10 @@ export const RequerimientosRecibidos: React.FC = () => {
       }
 
       const transformedData: RequerimientoRecibido[] = [];
-      for (const rid of Array.from(requerimientoIds)) {
-        const recursosReq = recursosPorRequerimiento.get(rid) || [];
+      for (const recursosReq of Array.from(recursosPorClave.values())) {
+        const first = recursosReq[0] || {};
+        const rid = Number(first?.requerimiento_id ?? 0);
+        const requerimientoNumero = String(first?.requerimiento_numero ?? '').trim() || null;
         const requerimientoRecursoId = Number(recursosReq[0]?.id ?? 0);
         const gruposSet = new Set<string>();
         const tiposSet = new Set<string>();
@@ -185,44 +188,51 @@ export const RequerimientosRecibidos: React.FC = () => {
         const gruposResumen = Array.from(gruposSet).join(' / ') || '-';
         const tiposResumen = Array.from(tiposSet).join(' / ') || '-';
 
-        const req = byId.get(rid);
+        const req = rid > 0 ? byId.get(rid) : undefined;
         if (req) {
           transformedData.push({
             id: requerimientoRecursoId,
             requerimientoId: rid,
-            codigo: `REQ-${rid}`,
-            solicitante: req.creador || '-',
-            destinatario: req.usuario_receptor,
+            requerimientoNumero,
+            codigo: requerimientoNumero || `REQ-${rid}`,
+            solicitante: req.usuario_emisor || req.creador || '-',
+            destinatario: req.usuario_receptor || '-',
             grupoRequerimiento: gruposResumen,
             tipoRequerimiento: tiposResumen,
             cantidadSolicitada,
             fechaSolicitud: new Date(req.fecha_inicio),
             fechaCumplimiento: req.fecha_fin ? new Date(req.fecha_fin) : null,
             porcentajeAvance: typeof req.porcentaje_avance === 'number' ? req.porcentaje_avance : 0,
-            estado: estadosMap.get(req.requerimiento_estado_id ?? -1) || 'Solicitado',
+            estado: estadosMap.get(req.requerimiento_estado_id ?? -1) || estadosMap.get(Number(first?.requerimiento_estado_id ?? -1)) || 'Solicitado',
           });
           continue;
         }
 
-        // Fallback: cargar detalle por ID cuando el endpoint de lista no incluya el requerimiento
-        const detalle = await getRequerimientoById(rid);
+        // Fallback: si no existe cabecera de requerimiento, armar fila desde requerimiento_recursos
+        let detalle: any = null;
+        if (rid > 0) {
+          detalle = await getRequerimientoById(rid);
+        }
         transformedData.push({
           id: requerimientoRecursoId,
           requerimientoId: rid,
-          codigo: `REQ-${rid}`,
-          solicitante: (detalle as any)?.creador || '-',
-          destinatario: '-',
+          requerimientoNumero,
+          codigo: requerimientoNumero || (rid > 0 ? `REQ-${rid}` : `RR-${requerimientoRecursoId}`),
+          solicitante: String(first?.usuario_emisor ?? first?.creador ?? (detalle as any)?.creador ?? '-'),
+          destinatario: String(first?.usuario_receptor ?? '-'),
           grupoRequerimiento: gruposResumen,
           tipoRequerimiento: tiposResumen,
           cantidadSolicitada,
-          fechaSolicitud: detalle?.fecha_inicio ? new Date(detalle.fecha_inicio) : new Date(),
-          fechaCumplimiento: detalle?.fecha_fin ? new Date(detalle.fecha_fin) : null,
+          fechaSolicitud: first?.creacion ? new Date(first.creacion) : (detalle?.fecha_inicio ? new Date(detalle.fecha_inicio) : new Date()),
+          fechaCumplimiento: first?.modificacion ? new Date(first.modificacion) : (detalle?.fecha_fin ? new Date(detalle.fecha_fin) : null),
           porcentajeAvance: Number((detalle as any)?.porcentaje_avance ?? 0),
-          estado: estadosMap.get(Number((detalle as any)?.requerimiento_estado_id ?? -1)) || 'Solicitado',
+          estado: estadosMap.get(Number(first?.requerimiento_estado_id ?? (detalle as any)?.requerimiento_estado_id ?? -1)) || 'Solicitado',
         });
       }
 
-      setRequerimientos(transformedData);
+      setRequerimientos(
+        transformedData.sort((a, b) => b.fechaSolicitud.getTime() - a.fechaSolicitud.getTime())
+      );
     } catch (error) {
       console.error('Error loading requerimientos:', error);
     }
@@ -267,9 +277,27 @@ export const RequerimientosRecibidos: React.FC = () => {
       setRecursosSolicitados([]);
 
       // Cargar detalle del requerimiento
-      const detalle = await getRequerimientoById(item.requerimientoId);
-      if (detalle) {
-        setRequerimientoDetalle(detalle as any);
+      if (item.requerimientoId > 0) {
+        const detalle = await getRequerimientoById(item.requerimientoId);
+        if (detalle) {
+          setRequerimientoDetalle(detalle as any);
+        }
+      } else {
+        setRequerimientoDetalle({
+          activo: true,
+          creacion: item.fechaSolicitud.toISOString(),
+          creador: item.solicitante || '-',
+          emergencia_id: 0,
+          fecha_fin: item.fechaCumplimiento ? item.fechaCumplimiento.toISOString() : '',
+          fecha_inicio: item.fechaSolicitud.toISOString(),
+          id: 0,
+          modificacion: '',
+          modificador: '',
+          porcentaje_avance: item.porcentajeAvance || 0,
+          requerimiento_estado_id: 0,
+          usuario_emisor_id: 0,
+          usuario_receptor_id: 0,
+        } as any);
       }
 
       // Cargar recursos solicitados por usuario receptor
@@ -287,7 +315,12 @@ export const RequerimientosRecibidos: React.FC = () => {
       }
       const recursosApiAll = await resRecursos.json();
       const recursosApi = (Array.isArray(recursosApiAll) ? recursosApiAll : [])
-        .filter((r: any) => Number(r?.requerimiento_id ?? 0) === item.requerimientoId);
+        .filter((r: any) => {
+          if (item.requerimientoNumero) {
+            return String(r?.requerimiento_numero ?? '').trim() === String(item.requerimientoNumero).trim();
+          }
+          return Number(r?.requerimiento_id ?? 0) === item.requerimientoId;
+        });
       
       // Resolver nombres de grupo y tipo para cada recurso
       const recursosConNombres: RecursoSolicitado[] = [];
@@ -403,7 +436,9 @@ export const RequerimientosRecibidos: React.FC = () => {
           columns={columns}
           onEdit={(row) => {
             const params = new URLSearchParams({
-              id: String(row.requerimientoId),
+              id: String(row.id),
+              requerimiento_id: String(row.requerimientoId),
+              requerimiento_numero: String(row.requerimientoNumero || ''),
               requerimientoRecursoId: String(row.id),
               cantidadSolicitada: String(Number(row.cantidadSolicitada ?? 0)),
               grupoRequerimiento: row.grupoRequerimiento || '',
