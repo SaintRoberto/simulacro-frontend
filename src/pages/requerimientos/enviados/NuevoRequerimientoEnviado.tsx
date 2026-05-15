@@ -64,6 +64,17 @@ const formatDateTime = (date: Date | null): string => {
   });
 };
 
+const generateUuid = (): string => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.floor(Math.random() * 16);
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
 export const NuevoRequerimientoEnviado: React.FC = () => {
   const apiBase = process.env.REACT_APP_API_URL || '/api';
   const [searchParams] = useSearchParams();
@@ -72,6 +83,10 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     const idStr = searchParams.get('id');
     const n = idStr ? Number(idStr) : NaN;
     return Number.isNaN(n) ? null : n;
+  }, [searchParams]);
+  const editNumero = useMemo(() => {
+    const raw = searchParams.get('requerimiento_numero') || searchParams.get('numero') || '';
+    return String(raw).trim() || null;
   }, [searchParams]);
 
   const [wizardStep, setWizardStep] = useState<WizardStep>(1);
@@ -113,7 +128,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     getRecursoTiposByGrupo,
   } = useAuth();
 
-  const isReadOnly = !!editId;
+  const isReadOnly = !!editId || !!editNumero;
 
   const steps = useMemo<MenuItem[]>(
     () => [
@@ -175,6 +190,63 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
 
   useEffect(() => {
     const loadForEdit = async () => {
+      if (editNumero) {
+        const encodedNumero = encodeURIComponent(editNumero);
+        const endpoints = [
+          `${apiBase}/requerimiento-recursos/requeramiento_numero/${encodedNumero}`,
+          `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}`,
+        ];
+
+        let recursosApi: any[] = [];
+        for (const url of endpoints) {
+          const res = await authFetch(url, { headers: { accept: 'application/json' } });
+          if (!res.ok) continue;
+          const parsed = await res.json();
+          recursosApi = Array.isArray(parsed) ? parsed : [];
+          break;
+        }
+
+        if (!recursosApi.length) return;
+
+        const first = recursosApi[0];
+        setNumero(String(first?.requerimiento_numero || editNumero));
+        const creacionDate = first?.creacion ? new Date(first.creacion) : null;
+        setFechaSolicitud(creacionDate);
+        setFechaInicio(creacionDate);
+        setFechaFin(first?.modificacion ? new Date(first.modificacion) : null);
+        setDetalleRequerimiento(String(first?.detalle ?? ''));
+
+        const parsed: RecursoSeleccionado[] = recursosApi.map((row: any) => {
+          const grupoId = Number(row?.recurso_grupo_id ?? 0);
+          const tipoId = Number(row?.recurso_tipo_id ?? 0);
+          const usuarioReceptorId = Number(row?.usuario_receptor_id ?? 0);
+          const receptorRef = receptores.find((r) => Number(r.usuario_id) === usuarioReceptorId);
+          const grupoFallback = recursoGrupos.find((g) => g.id === grupoId)?.nombre;
+          const tipoFallback = recursoTipos.find((t) => t.id === tipoId)?.nombre;
+
+          return {
+            id: Number(row?.id ?? 0),
+            grupo: String(row?.recurso_grupo_nombre || grupoFallback || `Grupo ${grupoId}`),
+            grupoId,
+            tipo: String(row?.recurso_tipo_nombre || tipoFallback || `Tipo ${tipoId}`),
+            tipoId,
+            cantidad: Number(row?.cantidad_solicitada ?? row?.cantidad ?? 0),
+            detalleSolicitudRecurso: String(row?.especificaciones ?? ''),
+            porcentajeAvance: Number(row?.porcentaje_avance ?? 0),
+            costoEstimado: parseCostoToNumber(row?.costo),
+            mesaId: Number(receptorRef?.mesa_id ?? usuarioReceptorId ?? 0),
+            mesaNombre: String(receptorRef?.mesa_nombre ?? row?.usuario_receptor ?? '-'),
+            mesaSiglas: String(receptorRef?.siglas ?? '-'),
+            mesaUsuarioId: usuarioReceptorId,
+            activo: Boolean(row?.activo ?? true),
+          };
+        });
+
+        setRecursos(parsed);
+        setWizardStep(3);
+        return;
+      }
+
       if (!editId) return;
 
       const req = await getRequerimientoById(editId);
@@ -218,7 +290,18 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     };
 
     loadForEdit();
-  }, [editId, getRequerimientoById, getRequerimientoRecursos, recursoGrupos, recursoTipos, getRecursoTiposByGrupo]);
+  }, [
+    apiBase,
+    authFetch,
+    editId,
+    editNumero,
+    getRequerimientoById,
+    getRequerimientoRecursos,
+    getRecursoTiposByGrupo,
+    receptores,
+    recursoGrupos,
+    recursoTipos,
+  ]);
 
   const loadDisponibilidadByTipo = useCallback(async () => {
     if (!selectedGrupoId || !selectedTipoId) {
@@ -471,6 +554,13 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       const effectiveEmergenciaId =
         selectedEmergenciaId ??
         (Number.isNaN(emergenciaFromStorage) ? (datosLogin?.emergencia_id ?? 0) : emergenciaFromStorage);
+      const usuarioEmisorId = Number(datosLogin?.usuario_id ?? 0);
+      if (!usuarioEmisorId) {
+        alert('No se pudo identificar el usuario emisor logeado.');
+        return;
+      }
+      const requerimientoNumeroUuid = generateUuid();
+      setNumero(requerimientoNumeroUuid);
 
       const requerimientoData: RequerimientoRequest = {
         activo: true,
@@ -481,14 +571,14 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         fecha_inicio: fechaInicio ? fechaInicio.toISOString() : new Date().toISOString(),
         porcentaje_avance: 0,
         requerimiento_estado_id: 1,
-        usuario_emisor_id: datosLogin.usuario_id,
+        usuario_emisor_id: usuarioEmisorId,
       };
 
-      const requerimiento = await createRequerimiento(requerimientoData);
-      if (!requerimiento) {
-        alert('Error al crear el requerimiento');
-        return;
-      }
+      // const requerimiento = await createRequerimiento(requerimientoData);
+      // if (!requerimiento) {
+      //   alert('Error al crear el requerimiento');
+      //   return;
+      // }
 
       for (const recurso of recursos) {
         const usuarioReceptorId = Number(recurso.mesaUsuarioId ?? 0);
@@ -505,10 +595,14 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
           destino: '',
           detalle: detalleRequerimiento,
           especificaciones: (recurso.detalleSolicitudRecurso || '').trim(),
+          requerimiento_numero: requerimientoNumeroUuid,
           recurso_grupo_id: recurso.grupoId,
           recurso_tipo_id: recurso.tipoId,
-          requerimiento_id: requerimiento.id,
+          requerimiento_id: 0,
           usuario_receptor_id: usuarioReceptorId,
+          requerimiento_estado_id: 1,
+          usuario_emisor_id: usuarioEmisorId,
+
         };
         const success = await createRequerimientoRecurso(recursoData);
         if (!success) {
@@ -531,7 +625,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
           items={[
             { title: <Link to="/">Inicio</Link> },
             { title: <Link to="/requerimientos/enviados">Requerimientos Enviados</Link> },
-            { title: editId ? `Ver REQ-${editId}` : 'Nuevo Requerimiento' },
+            { title: (editId || editNumero) ? `Ver ${editNumero || `REQ-${editId}`}` : 'Nuevo Requerimiento' },
           ]}
         />
       </div>

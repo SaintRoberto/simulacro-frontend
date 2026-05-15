@@ -90,10 +90,13 @@ export interface RequerimientoRecursoRequest {
   destino: string;
   detalle: string;
   especificaciones: string;
+  requerimiento_numero: string;
   recurso_grupo_id: number;
   recurso_tipo_id: number;
   requerimiento_id: number;
   usuario_receptor_id: number;
+  requerimiento_estado_id: number;
+  usuario_emisor_id: number;
 }
 
 export interface RequerimientoEnviado {
