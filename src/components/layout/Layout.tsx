@@ -119,7 +119,10 @@ export const Layout: React.FC = () => {
           selectedKeys={[location.pathname]}
           onClick={(e) => {
             const key = String(e.key);
-            if (key && key !== "#") navigate(key);
+            if (key && key !== "#") {
+              const route = key.startsWith('/') ? key : `/${key}`;
+              navigate(route);
+            }
           }}
           items={(() => {
             const isAdminUser = loginResponse?.usuario === "Admin";
