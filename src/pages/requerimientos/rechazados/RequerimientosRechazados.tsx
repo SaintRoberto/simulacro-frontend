@@ -127,6 +127,8 @@ export const RequerimientosRechazados: React.FC = () => {
 
   const goToReasignar = (row: RequerimientoRechazado) => {
     const params = new URLSearchParams({
+      req_id: String(row.id || 0),
+      cantidad_solicitada: String(row.cantidadSolicitada || 0),
       flow: 'rechazado',
       requerimiento_id: String(row.requerimientoId || 0),
       requerimiento_numero: String(row.requerimientoNumero || ''),

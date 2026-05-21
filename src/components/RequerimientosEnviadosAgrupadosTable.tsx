@@ -18,6 +18,7 @@ export interface RequerimientoEnviadoDetalleRow {
   especificaciones: string;
   detalle: string;
   requerimiento_id?: number;
+  creacion: string;
 }
 
 interface RequerimientosEnviadosAgrupadosTableProps {
@@ -140,10 +141,8 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
           <thead className="table-light">
             <tr>
               <th>Nro. Req</th>
-              <th>Detalle</th>
               <th>Cantidad Total</th>
               <th>Estado</th>              
-              <th>Creacion</th>
               <th>Acciones</th>
             </tr>
           </thead>
@@ -179,10 +178,8 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
                         </button>
                         <span title={numero}>{numero}</span>
                       </td>
-                      <td>{(item.detalle || '').trim() || '-'}</td>
                       <td>{Number(item.cantidad_solicitada ?? 0)}</td>
                       <td>{item.estado || 'Iniciada'}</td>                      
-                      <td>{formatDate(item.creacion)}</td>
                       <td>
                         <div className="d-flex gap-2">
                           <button
@@ -243,6 +240,7 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
                                     <th>Tipo</th>
                                     <th>Cantidad</th>
                                     <th>Especificaciones</th>
+                                    <th>Creacion</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -254,6 +252,7 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
                                       <td>{detalle.recurso_tipo_nombre || '-'}</td>
                                       <td>{Number(detalle.cantidad_solicitada ?? 0)}</td>
                                       <td>{detalle.especificaciones || '-'}</td>
+                                      <td>{formatDate(detalle.creacion)}</td>
                                     </tr>
                                   ))}
                                 </tbody>

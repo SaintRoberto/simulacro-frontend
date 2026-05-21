@@ -98,6 +98,13 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
     () => String(searchParams.get('requerimiento_numero') || '').trim() || null,
     [searchParams]
   );
+  const prefilledRequerimientoId = useMemo(() => {
+    const rawReqId = Number(searchParams.get('req_id') || 0);
+    if (Number.isFinite(rawReqId) && rawReqId > 0) return rawReqId;
+
+    const rawLegacy = Number(searchParams.get('requerimiento_id') || 0);
+    return Number.isFinite(rawLegacy) && rawLegacy > 0 ? rawLegacy : null;
+  }, [searchParams]);
   const prefilledDetalle = useMemo(
     () => String(searchParams.get('detalle') || '').trim(),
     [searchParams]
@@ -110,6 +117,10 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
     () => String(searchParams.get('tipoRequerimiento') || '').trim(),
     [searchParams]
   );
+  const prefilledCantidadSolicitada = useMemo(() => {
+    const raw = Number(searchParams.get('cantidad_solicitada') || 0);
+    return Number.isFinite(raw) && raw > 0 ? raw : 0;
+  }, [searchParams]);
 
   const [wizardStep, setWizardStep] = useState<WizardStep>(2);
   const [numero, setNumero] = useState<string>(prefilledRequerimientoNumero || 'REQ-0000');
@@ -225,17 +236,21 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
       const data = await res.json();
       const list = Array.isArray(data) ? data : [];
 
-      const rows: InventarioNoRechazadoRow[] = list.map((it: any) => {
+      const rows: InventarioNoRechazadoRow[] = list.map((it: any, index: number) => {
         const rowMesaId = Number(it?.mesa_id ?? mesaId);
         const receptorRef = (receptores || []).find((r) => Number(r.mesa_id) === rowMesaId);
         const key = `${selectedGrupoId ?? 0}-${selectedTipoId}-${rowMesaId}`;
+        const hasSavedCantidad = Object.prototype.hasOwnProperty.call(cantidadSolicitadaByKeyRef.current, key);
+        const initialCantidad = hasSavedCantidad
+          ? Number(cantidadSolicitadaByKeyRef.current[key] ?? 0)
+          : (index === 0 ? prefilledCantidadSolicitada : 0);
         return {
           mesaId: rowMesaId,
           mesaNombre: String(it?.mesa_nombre ?? receptorRef?.mesa_nombre ?? `Mesa ${rowMesaId}`),
           siglas: String(receptorRef?.siglas ?? receptorRef?.mesa_siglas ?? ''),
           usuarioId: Number(receptorRef?.usuario_id ?? usuarioId),
           cantidadDisponible: Math.max(0, Number(it?.existencias ?? 0)),
-          cantidadSolicitada: Number(cantidadSolicitadaByKeyRef.current[key] ?? 0),
+          cantidadSolicitada: initialCantidad,
           detalleSolicitudRecurso: String(detalleSolicitudByKeyRef.current[key] ?? ''),
         };
       });
@@ -247,7 +262,7 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
       setInventarioRows([]);
       setInventarioStatus('error');
     }
-  }, [selectedTipoId, searchParams, datosLogin?.coe_id, datosLogin?.mesa_id, datosLogin?.usuario_id, prefilledEstadoId, apiBase, authFetch, receptores, selectedGrupoId]);
+  }, [selectedTipoId, searchParams, datosLogin?.coe_id, datosLogin?.mesa_id, datosLogin?.usuario_id, prefilledEstadoId, prefilledCantidadSolicitada, apiBase, authFetch, receptores, selectedGrupoId]);
 
   useEffect(() => {
     if (wizardStep === 2 && selectedTipoId) {
@@ -391,6 +406,40 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
 
       if (!usuarioEmisorId) {
         alert('No se pudo identificar el usuario emisor.');
+        return;
+      }
+
+      if (!prefilledRequerimientoId) {
+        alert('No se pudo identificar el requerimiento rechazado a deshabilitar.');
+        return;
+      }
+
+      const endpointDeshabilitar = `${apiBase}/requerimiento-recursos/deshabilitar-requerimiento/${prefilledRequerimientoId}`;
+      let deshabilitacionOk = false;
+      let ultimoStatus = 0;
+
+      for (const method of ['PATCH'] as const) {
+        const resDeshabilitar = await authFetch(endpointDeshabilitar, {
+          method,
+          headers: { accept: 'application/json' },
+        });
+
+        ultimoStatus = resDeshabilitar.status;
+        if (resDeshabilitar.ok) {
+          deshabilitacionOk = true;
+          break;
+        }
+
+        if (resDeshabilitar.status !== 404 && resDeshabilitar.status !== 405) {
+          break;
+        }
+      }
+
+      if (!deshabilitacionOk) {
+        alert(`No se pudo deshabilitar el requerimiento anterior (ID ${prefilledRequerimientoId}).`);
+        console.error(
+          `Error al deshabilitar requerimiento ${prefilledRequerimientoId}. Estado HTTP: ${ultimoStatus}`
+        );
         return;
       }
 

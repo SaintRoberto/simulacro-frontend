@@ -90,6 +90,7 @@ export const RequerimientosEnviados: React.FC = () => {
           especificaciones: String(row?.especificaciones ?? ''),
           detalle: String(row?.detalle ?? ''),
           requerimiento_id: Number(row?.requerimiento_id ?? 0),
+          creacion: String(row?.creacion ?? ''),
         }));
 
         setDetalleCache((prev) => ({ ...prev, [requerimientoNumero]: mapped }));
