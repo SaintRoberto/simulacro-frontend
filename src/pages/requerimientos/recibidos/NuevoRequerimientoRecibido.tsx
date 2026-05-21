@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { Card } from 'primereact/card';
 import { InputText } from 'primereact/inputtext';
 import { Dropdown } from 'primereact/dropdown';
@@ -20,6 +20,7 @@ interface Recurso {
   grupoDescripcion?: string;
   tipo: string;
   tipoId: number;
+  institucionDuenaId?: number;
   recursosComplementarios?: string;
   caracteristicasTecnicas?: string;
   cantidad: number;
@@ -57,6 +58,7 @@ interface RequerimientoRecibido {
 
 interface InventarioAsignacionRow {
   id: number;
+  nombre_institucion: string;
   provincia: string;
   canton: string;
   parroquia: string;
@@ -147,6 +149,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
   // Historial
   const [historial, setHistorial] = useState<RespuestaHistorialItem[]>([]);
   const [respuestasPreviasByInventarioId, setRespuestasPreviasByInventarioId] = useState<Record<number, RequerimientoRespuestaRecord>>({});
+  const editLoadKeyRef = useRef<string>('');
 
   //requerimiento
   const [requerimiento, setRequerimiento] = useState<RequerimientoRecibido[]>([]);
@@ -224,13 +227,14 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
 
     setInventarioStatus('loading');
     try {
-      const endpoint = `${apiBase}/recursos_inventario/coe_id/${datosLogin.coe_id}/mesa_id/${datosLogin.mesa_id}/recurso_tipo_id/${recursoTipoId}/institucion_duena_id/10/recurso_requerimiento_id/${requerimientoRecursoIdParam}`;
+      const endpoint = `${apiBase}/recursos_inventario/coe_id/${datosLogin.coe_id}/mesa_id/${datosLogin.mesa_id}/recurso_tipo_id/${recursoTipoId}/recurso_requerimiento_id/${requerimientoRecursoIdParam}`;
       const res = await authFetch(endpoint, { headers: { accept: 'application/json' } });
       if (!res.ok) throw new Error('inventario_not_ok');
       const data = await res.json();
       const list = Array.isArray(data) ? data : [];
       const rows: InventarioAsignacionRow[] = list.map((it: any) => ({
         id: Number(it?.id ?? 0),
+        nombre_institucion: String(it?.nombre_institucion ?? ''),
         provincia: String(it?.provincia ?? ''),
         canton: String(it?.canton ?? ''),
         parroquia: String(it?.parroquia ?? ''),
@@ -244,7 +248,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
         recurso_tipo_id: Number(it?.recurso_tipo_id ?? recursoTipoId),
         mesa_id: Number(it?.mesa_id ?? datosLogin.mesa_id),
         coe_id: Number(it?.coe_id ?? datosLogin.coe_id),
-        institucion_duena_id: Number(it?.institucion_duena_id ?? 10),
+        institucion_duena_id: Number(it?.institucion_duena_id ?? 0),
       }));
       setInventarioRows(rows);
       setInventarioStatus('ready');
@@ -252,7 +256,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
       setInventarioRows([]);
       setInventarioStatus('error');
     }
-  }, [apiBase, authFetch, datosLogin?.coe_id, datosLogin?.mesa_id]);
+  }, [apiBase, authFetch, datosLogin, requerimientoRecursoIdParam]);
 
   const loadRequerimiento = useCallback(async (rid: number) => {
     try {
@@ -407,6 +411,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
             grupoDescripcion: grupo?.descripcion,
             tipo: String(r?.recurso_tipo_nombre ?? tipo?.nombre ?? `Tipo ${tipoId}`),
             tipoId,
+            institucionDuenaId: Number(r?.institucion_duena_id ?? r?.institucion_id ?? 0),
             recursosComplementarios: tipo?.complemento,
             caracteristicasTecnicas: tipo?.descripcion,
             cantidad: Number(r?.cantidad_solicitada ?? r?.cantidad ?? 0),
@@ -471,6 +476,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
           grupoDescripcion: grupo?.descripcion,
           tipo: tipoNombre,
           tipoId: r.recurso_tipo_id,
+          institucionDuenaId: Number((r as any)?.institucion_duena_id ?? (r as any)?.institucion_id ?? 0),
           recursosComplementarios: tipo?.complemento,
           caracteristicasTecnicas: tipo?.descripcion,
           cantidad: Number((r as any).cantidad_solicitada ?? r.cantidad ?? 0),
@@ -488,7 +494,13 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
       await loadHistorial(editId);
     };
 
-    loadForEdit();
+    const currentLoadKey = editNumero ? `numero:${editNumero}` : `id:${editId}`;
+    if (editLoadKeyRef.current === currentLoadKey) return;
+    editLoadKeyRef.current = currentLoadKey;
+    loadForEdit().catch((e) => {
+      console.error(e);
+      editLoadKeyRef.current = '';
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiBase, authFetch, editId, editNumero, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, recursoGrupos, recursoTipos, loadHistorial, loadInventarioAsignacion, receptores]);
 
@@ -744,6 +756,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
             size="small"
             style={{ fontSize: '13px' }}
           >
+            <Column field="nombre_institucion" header="Institución" />
             <Column field="provincia" header="Provincia" />
             <Column field="canton" header="Cantón" />
             <Column field="parroquia" header="Parroquia" />

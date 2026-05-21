@@ -105,6 +105,8 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
   const [detalleSolicitudByKey, setDetalleSolicitudByKey] = useState<Record<string, string>>({});
   const detalleSolicitudByKeyRef = useRef<Record<string, string>>({});
   const [disponibilidadStatus, setDisponibilidadStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [isEndosoMode, setIsEndosoMode] = useState<boolean>(false);
+  const [isSendingEndoso, setIsSendingEndoso] = useState<boolean>(false);
 
   const [recursos, setRecursos] = useState<RecursoSeleccionado[]>([]);
 
@@ -393,6 +395,26 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     }
   }, [wizardStep, selectedGrupoId, selectedTipoId, loadDisponibilidadByTipo]);
 
+  const disponibilidadRowsForStep2 = useMemo<DisponibilidadMesaRow[]>(() => {
+    if (!isEndosoMode) return disponibilidadRows;
+    if (!selectedGrupoId || !selectedTipoId) return disponibilidadRows;
+    if (disponibilidadRows.length > 0) return disponibilidadRows;
+
+    const fallbackMesaId = 0;
+    const key = `${selectedGrupoId}-${selectedTipoId}-${fallbackMesaId}`;
+    return [
+      {
+        mesaId: fallbackMesaId,
+        mesaNombre: 'Sin mesa disponible',
+        siglas: '',
+        usuarioId: Number(datosLogin?.usuario_id ?? 0),
+        cantidadDisponible: 0,
+        cantidadSolicitada: Number(cantidadSolicitadaByKey[key] ?? 0),
+        detalleSolicitudRecurso: String(detalleSolicitudByKey[key] ?? ''),
+      },
+    ];
+  }, [isEndosoMode, selectedGrupoId, selectedTipoId, disponibilidadRows, datosLogin?.usuario_id, cantidadSolicitadaByKey, detalleSolicitudByKey]);
+
   const handleGrupoChange = (grupoId: number) => {
     setSelectedGrupoId(grupoId);
     setSelectedTipoId(null);
@@ -475,6 +497,89 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     });
   };
 
+  const handleEnviarNivelSuperiorDesdeMesa = useCallback(async (row: DisponibilidadMesaRow) => {
+    if (!selectedGrupoId || !selectedTipoId) {
+      alert('Seleccione grupo y tipo de recurso.');
+      return;
+    }
+    if (!row.cantidadSolicitada || row.cantidadSolicitada <= 0) {
+      alert('La cantidad solicitada debe ser mayor a 0.');
+      return;
+    }
+    const detalle = String(row.detalleSolicitudRecurso || '').trim();
+    if (!detalle) {
+      alert('El detalle de solicitud es obligatorio para Endoso.');
+      return;
+    }
+    if (!datosLogin) {
+      alert('No se pudo identificar el usuario logeado.');
+      return;
+    }
+
+    setIsSendingEndoso(true);
+    try {
+      const usuarioEmisorId = Number(datosLogin?.usuario_id ?? 0);
+      if (!usuarioEmisorId) {
+        alert('No se pudo identificar el usuario emisor.');
+        return;
+      }
+
+      const usuarioReceptorId = Number(row.usuarioId || datosLogin?.usuario_id || 0);
+      const requerimientoNumero = generateUuid();
+      const grupo = recursoGrupos.find((g) => g.id === selectedGrupoId);
+      const tipo = recursoTipos.find((t) => t.id === selectedTipoId);
+
+      const recursoData: RequerimientoRecursoRequest = {
+        activo: true,
+        cantidad: row.cantidadSolicitada,
+        costo: parseCostoToNumber(tipo?.costo),
+        creador: datosLogin.usuario_login,
+        destino: '',
+        detalle: detalleRequerimiento,
+        especificaciones: detalle,
+        requerimiento_numero: requerimientoNumero,
+        recurso_grupo_id: selectedGrupoId,
+        recurso_tipo_id: selectedTipoId,
+        requerimiento_id: 0,
+        usuario_receptor_id: usuarioReceptorId,
+        requerimiento_estado_id: 1,
+        usuario_emisor_id: usuarioEmisorId,
+      };
+
+      const success = await createRequerimientoRecurso(recursoData);
+      if (!success) {
+        alert('No se pudo enviar a nivel superior.');
+        return;
+      }
+
+      setRecursos((prev) => [
+        ...prev,
+        {
+          id: Math.max(0, ...prev.map((r) => r.id)) + 1,
+          grupo: grupo?.nombre || `Grupo ${selectedGrupoId}`,
+          grupoId: selectedGrupoId,
+          tipo: tipo?.nombre || `Tipo ${selectedTipoId}`,
+          tipoId: selectedTipoId,
+          cantidad: row.cantidadSolicitada,
+          detalleSolicitudRecurso: detalle,
+          porcentajeAvance: 0,
+          costoEstimado: parseCostoToNumber(tipo?.costo),
+          mesaId: row.mesaId,
+          mesaNombre: row.mesaNombre,
+          mesaSiglas: row.siglas,
+          mesaUsuarioId: usuarioReceptorId,
+          activo: true,
+        },
+      ]);
+      alert('Solicitud enviada a nivel superior correctamente.');
+    } catch (error) {
+      console.error(error);
+      alert('Error al enviar a nivel superior.');
+    } finally {
+      setIsSendingEndoso(false);
+    }
+  }, [selectedGrupoId, selectedTipoId, datosLogin, recursoGrupos, recursoTipos, detalleRequerimiento, createRequerimientoRecurso]);
+
   const removeRecurso = (id: number) => {
     setRecursos((prev) => {
       const recursoEliminado = prev.find((x) => x.id === id);
@@ -507,6 +612,9 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       setWizardStep(targetStep);
       return;
     }
+    if (wizardStep === 2 && isEndosoMode && targetStep === 3) {
+      return;
+    }
     if (wizardStep === 1 && (!fechaSolicitud || !fechaInicio || !fechaFin)) {
       alert('Debe completar fecha de solicitud, fecha inicio y fecha fin.');
       return;
@@ -529,6 +637,9 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       return;
     }
     if (wizardStep === 2) {
+      if (isEndosoMode) {
+        return;
+      }
       const recursosValidos = recursos.filter((r) => r.cantidad > 0);
       if (recursosValidos.length === 0) {
         alert('Debe seleccionar al menos un recurso valido.');
@@ -634,6 +745,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         <Card>
           <div className="mb-3">
             <Steps
+              className="wizard-steps"
               model={steps}
               activeIndex={wizardStep - 1}
               onSelect={(e) => handleWizardSelect(e.index)}
@@ -710,6 +822,16 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                     className="w-full m-1"
                   />
                 </div>
+                <div className="col-lg-4 col-md-12 col-sm-12 d-flex align-items-end">
+                  <Button
+                    label={isEndosoMode ? 'Deshabilitar Endoso' : 'Habilitar Endoso'}
+                    severity={isEndosoMode ? 'warning' : 'help'}
+                    outlined={!isEndosoMode}
+                    className="m-1"
+                    onClick={() => setIsEndosoMode((prev) => !prev)}
+                    disabled={isReadOnly || !selectedGrupoId || !selectedTipoId}
+                  />
+                </div>
 
               </div>
 
@@ -723,7 +845,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                 )}
               </div>
 
-              <DataTable value={disponibilidadRows} emptyMessage={disponibilidadStatus === 'loading' ? 'Cargando disponibilidad...' : 'Seleccione grupo y tipo para visualizar inventario por mesa'} responsiveLayout="scroll">
+              <DataTable value={disponibilidadRowsForStep2} emptyMessage={disponibilidadStatus === 'loading' ? 'Cargando disponibilidad...' : 'Seleccione grupo y tipo para visualizar inventario por mesa'} responsiveLayout="scroll">
                 <Column
                   header="Mesa"
                   body={(row: DisponibilidadMesaRow) => `${row.mesaNombre}`}
@@ -748,7 +870,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                           className="w-20 m-1"
                           disabled={isReadOnly || recursoYaAgregado}
                         />
-                        {row.cantidadSolicitada > row.cantidadDisponible && (
+                        {!isEndosoMode && row.cantidadSolicitada > row.cantidadDisponible && (
                           <small className="p-error">La cantidad solicitada supera la disponible.</small>
                         )}
                       </div>
@@ -766,7 +888,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                         className="w-full"
                         value={row.detalleSolicitudRecurso}
                         onChange={(e) => handleDetalleSolicitudRecursoChange(row.mesaId, e.target.value)}
-                        placeholder="Detalle adicional (opcional)"
+                        placeholder={isEndosoMode ? 'Detalle obligatorio para Endoso' : 'Detalle adicional (opcional)'}
                         disabled={isReadOnly || recursoYaAgregado}
 
                       />
@@ -781,13 +903,24 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                     );
                     return (
                       <div>
-                        <Button
-                          label={recursoYaAgregado ? 'Recurso agregado' : 'Agregar Recurso'}
-                          icon={recursoYaAgregado ? 'pi pi-check' : 'pi pi-plus'}
-                          className="p-button-sm"
-                          onClick={() => addRecursoDesdeMesa(row)}
-                        disabled={isReadOnly || recursoYaAgregado}
-                      />
+                        {!isEndosoMode ? (
+                          <Button
+                            label={recursoYaAgregado ? 'Recurso agregado' : 'Agregar Recurso'}
+                            icon={recursoYaAgregado ? 'pi pi-check' : 'pi pi-plus'}
+                            className="p-button-sm"
+                            onClick={() => addRecursoDesdeMesa(row)}
+                            disabled={isReadOnly || recursoYaAgregado}
+                          />
+                        ) : (
+                          <Button
+                            label="Enviar a nivel superior"
+                            icon="pi pi-send"
+                            severity="help"
+                            className="p-button-sm"
+                            onClick={() => handleEnviarNivelSuperiorDesdeMesa(row)}
+                            disabled={isReadOnly || isSendingEndoso}
+                          />
+                        )}
                       </div>
 
                     );
@@ -877,7 +1010,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                 {wizardStep > 1 && (
                   <Button label="Anterior" icon="pi pi-arrow-left" outlined className="m-1" onClick={handlePrevStep} />
                 )}
-                {wizardStep < 3 && (
+                {wizardStep < 3 && !(wizardStep === 2 && isEndosoMode) && (
                   <Button label="Siguiente" icon="pi pi-arrow-right" iconPos="right" className="m-1" onClick={handleNextStep} />
                 )}
                 {wizardStep === 3 && (

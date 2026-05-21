@@ -17,6 +17,8 @@ import { RequerimientosEnviados } from './pages/requerimientos/enviados/Requerim
 import { RequerimientosRecibidos } from './pages/requerimientos/recibidos/RequerimientosRecibidos';
 import { NuevoRequerimientoEnviado } from './pages/requerimientos/enviados/NuevoRequerimientoEnviado';
 import { NuevoRequerimientoRecibido } from './pages/requerimientos/recibidos/NuevoRequerimientoRecibido'; 
+import { RequerimientosRechazados } from './pages/requerimientos/rechazados/RequerimientosRechazados';
+import { NuevoRequerimientoRechazado } from './pages/requerimientos/rechazados/NuevoRequerimientoRechazado';
 import { NotificationsProvider } from './context/NotificationsContext';
 import { MenuProvider } from './context/MenuContext';
 import { AccionesRespuestas } from './pages/acciones/AccionesRespuestas';
@@ -24,6 +26,7 @@ import { NuevoAccionesRespuesta } from './pages/acciones/NuevoAccionesRespuesta'
 import EmergencySelection from './pages/EmergencySelection';
 import { Eventos } from './pages/eventos/Eventos';
 import { Inventario } from './pages/inventario/Inventario';
+import { SeccionEnConstruccion } from './pages/SeccionEnConstruccion';
 
 const App: React.FC = () => {
   return (
@@ -39,6 +42,7 @@ const App: React.FC = () => {
         <Route path="/emergencias" element={<EmergencySelection />} />
         <Route path="/" element={<Layout />}>
           <Route index element={<Dashboard />} />
+          <Route path="proximamente" element={<SeccionEnConstruccion />} />
           <Route path="afectaciones" element={<Afectaciones />} />
           <Route path="inventario" element={<Inventario />} />
           <Route path="eventos" element={<Eventos />} />
@@ -56,8 +60,12 @@ const App: React.FC = () => {
             <Route path="enviados/nuevo" element={<NuevoRequerimientoEnviado />} />
             <Route path="recibidos" element={<RequerimientosRecibidos />} />
             <Route path="recibidos/nuevo" element={<NuevoRequerimientoRecibido />} />
+            <Route path="rechazados" element={<RequerimientosRechazados />} />
+            <Route path="rechazados/nuevo" element={<NuevoRequerimientoRechazado />} />
           </Route>
+          <Route path="*" element={<Navigate to="/proximamente" replace />} />
         </Route>
+        <Route path="*" element={<Navigate to="/proximamente" replace />} />
       </Route>
 
       {/* Fallback: if unknown route, go to login (initial screen) */}

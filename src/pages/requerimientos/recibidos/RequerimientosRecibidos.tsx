@@ -74,12 +74,22 @@ interface RecursoSolicitado {
   tipo_nombre?: string;
 }
 
+const isRejectedStateName = (value: string): boolean => {
+  const normalized = String(value || '').toLowerCase();
+  return (
+    normalized.includes('rechaz') ||
+    normalized.includes('devuelt') ||
+    normalized.includes('no acept')
+  );
+};
+
 export const RequerimientosRecibidos: React.FC = () => {
   const [requerimientos, setRequerimientos] = useState<RequerimientoRecibido[]>([]);
   const [showConsultaModal, setShowConsultaModal] = useState(false);
   const [requerimientoDetalle, setRequerimientoDetalle] = useState<RequerimientoDetalle | null>(null);
   const [recursosSolicitados, setRecursosSolicitados] = useState<RecursoSolicitado[]>([]);
   const [loadingDetalle, setLoadingDetalle] = useState(false);
+  const [rechazadoEstadoId, setRechazadoEstadoId] = useState<number | null>(null);
   const apiBase = process.env.REACT_APP_API_URL || '/api';
   const navigate = useNavigate();
   const { 
@@ -159,6 +169,8 @@ export const RequerimientosRecibidos: React.FC = () => {
           ? estadosResult.value
           : [];
       const estadosMap = new Map<number, string>((estadosList || []).map((e: any) => [e.id, e.nombre]));
+      const rejectedEstado = (estadosList || []).find((e: any) => isRejectedStateName(String(e?.nombre ?? '')));
+      setRechazadoEstadoId(rejectedEstado ? Number((rejectedEstado as any).id) : null);
 
       const byId = new Map<number, RequerimientoRecibidoAPI>();
       for (const req of data || []) {
@@ -265,9 +277,31 @@ export const RequerimientosRecibidos: React.FC = () => {
     }
   };
 
-  const handleDelete = (requerimiento: RequerimientoRecibido) => {
-    setRequerimientos((prev) => prev.filter((r) => r.id !== requerimiento.id));
-  };
+  const handleDelete = useCallback(async (requerimiento: RequerimientoRecibido) => {
+    if (!rechazadoEstadoId) {
+      alert('No se encontro el estado de rechazo configurado.');
+      return;
+    }
+
+    try {
+      const patchRes = await authFetch(`${apiBase}/requerimiento-recursos/${requerimiento.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({ requerimiento_estado_id: Number(rechazadoEstadoId) }),
+      });
+
+      if (patchRes.ok) {
+        alert('Recurso rechazado correctamente.');
+        await loadRequerimientos();
+        return;
+      }
+
+      alert('No se pudo rechazar el requerimiento.');
+    } catch (error) {
+      console.error('Error al rechazar requerimiento:', error);
+      alert('Ocurrio un error al rechazar el requerimiento.');
+    }
+  }, [rechazadoEstadoId, authFetch, apiBase, loadRequerimientos]);
 
   const handleRead = useCallback(async (item: RequerimientoRecibido) => {
     try {
@@ -448,8 +482,15 @@ export const RequerimientosRecibidos: React.FC = () => {
           }}
           onRead={handleRead}
           showCreateButton={false}
-          showDeleteButton={false}
-          showDeleteAction={false}
+          showDeleteButton={true}
+          showDeleteAction={true}
+          deleteActionTitle="Rechazar requerimiento"
+          deleteActionIconClassName="pi pi-times"
+          deleteActionButtonClassName="btn btn-sm btn-link p-0 text-danger"
+          deleteDialogTitle="Confirmar rechazo"
+          deleteDialogMessage="¿Está seguro que desea rechazar este requerimiento?"
+          deleteDialogOkText="Rechazar"
+          forceDeleteAction={true}
           onSave={handleSave}
           onDelete={handleDelete}
           initialItem={{

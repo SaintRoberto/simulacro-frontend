@@ -99,3 +99,8 @@ code {
     min-width: 1200px;
   }
 }
+
+/* Wizard requerimientos: color del numero activo */
+.wizard-steps .p-steps-number:active {
+  background: #E3F2FD !important;
+}
