@@ -47,6 +47,14 @@ interface BaseCRUDProps<T> {
   showReadAction?: boolean;
   menuId?: number;
   resolveItemForEdit?: (item: T) => Promise<Partial<T>>;
+  deleteActionTitle?: string;
+  deleteActionIconClassName?: string;
+  deleteActionButtonClassName?: string;
+  deleteDialogTitle?: string;
+  deleteDialogMessage?: string;
+  deleteDialogOkText?: string;
+  forceDeleteAction?: boolean;
+  useMenuPermissions?: boolean;
 }
 
 export function BaseCRUD<T extends Record<string, any>>({
@@ -71,6 +79,14 @@ export function BaseCRUD<T extends Record<string, any>>({
   showReadAction = true,
   menuId,
   resolveItemForEdit,
+  deleteActionTitle = 'Eliminar',
+  deleteActionIconClassName = 'pi pi-trash',
+  deleteActionButtonClassName = 'btn btn-sm btn-link p-0 text-danger',
+  deleteDialogTitle = 'Confirmar',
+  deleteDialogMessage = '¿Está seguro que desea eliminar este registro?',
+  deleteDialogOkText = 'Sí',
+  forceDeleteAction = false,
+  useMenuPermissions = true,
 }: BaseCRUDProps<T>) {
   const { authFetch, datosLogin } = useAuth();
   const { getMenuIdByRoute } = useMenu();
@@ -136,9 +152,11 @@ export function BaseCRUD<T extends Record<string, any>>({
 
   // Si hay opciones cargadas, usar esas para controlar las acciones
   // Si no hay opciones (menuId no proporcionado o no hay opciones), usar los props por defecto
-  const tieneOpciones = opciones.length > 0;
+  const tieneOpciones = useMenuPermissions && opciones.length > 0;
   const canCreate = tieneOpciones ? opcionesActivas.puedeCrear : showCreateButton;
-  const canDelete = tieneOpciones ? opcionesActivas.puedeEliminar : showDeleteButton;
+  const canDelete = forceDeleteAction
+    ? true
+    : (tieneOpciones ? opcionesActivas.puedeEliminar : showDeleteButton);
   const canEdit = tieneOpciones ? opcionesActivas.puedeActualizar : showEditAction;
   const canRead = tieneOpciones ? opcionesActivas.puedeConsultar : showReadAction;
 
@@ -399,10 +417,10 @@ export function BaseCRUD<T extends Record<string, any>>({
               e.stopPropagation();
               confirmDelete(rowData);
             }} 
-            className="btn btn-sm btn-link p-0 text-danger"
-            title="Eliminar"
+            className={deleteActionButtonClassName}
+            title={deleteActionTitle}
           >
-            <i className="pi pi-trash" style={{ fontSize: '1.1rem' }}></i>
+            <i className={deleteActionIconClassName} style={{ fontSize: '1.1rem' }}></i>
           </button>
         )}
       </div>
@@ -576,15 +594,15 @@ export function BaseCRUD<T extends Record<string, any>>({
 
       <Modal
         open={deleteDialog}
-        title="Confirmar"
+        title={deleteDialogTitle}
         onCancel={hideDeleteDialog}
         onOk={deleteItem}
-        okText="Sí"
+        okText={deleteDialogOkText}
         cancelText="No"
       >
         <div className="d-flex align-items-center justify-content-center">
           {item && (
-            <span>¿Está seguro que desea eliminar este registro?</span>
+            <span>{deleteDialogMessage}</span>
           )}
         </div>
       </Modal>
