@@ -50,9 +50,11 @@ interface RequerimientoRechazadoAPI {
 }
 
 const RECHAZADO_ESTADO_ID = 4;
+const REASIGNADO_ESTADO_ID = 1;
 
 export const RequerimientosRechazados: React.FC = () => {
   const [requerimientos, setRequerimientos] = useState<RequerimientoRechazado[]>([]);
+  const [sendingToSuperiorReqId, setSendingToSuperiorReqId] = useState<number | null>(null);
   const navigate = useNavigate();
   const apiBase = process.env.REACT_APP_API_URL || '/api';
   const { authFetch, datosLogin } = useAuth();
@@ -143,18 +145,81 @@ export const RequerimientosRechazados: React.FC = () => {
     navigate(`/requerimientos/rechazados/nuevo?${params.toString()}`);
   };
 
-  const goToNivelSuperior = (row: RequerimientoRechazado) => {
-    const params = new URLSearchParams({
-      req_id: String(row.id || 0),
-      flow: 'superior',
-      usuario_id_origen: String(row.usuarioEmisorId || 0),
-      requerimiento_id: String(row.requerimientoId || 0),
-      requerimiento_numero: String(row.requerimientoNumero || ''),
-      grupo_id: String(row.grupoId || 0),
-      tipo_id: String(row.tipoId || 0),
-      detalle: `Escalamiento de requerimiento rechazado ${row.requerimientoNumero || ''}`.trim(),
-    });
-    navigate(`/requerimientos/enviados/nuevo?${params.toString()}`);
+  const goToNivelSuperior = async (row: RequerimientoRechazado) => {
+    const reqRecursoId = Number(row.id ?? 0);
+    if (!reqRecursoId) {
+      alert('No se pudo identificar el requerimiento rechazado.');
+      return;
+    }
+
+    const usuarioOrigenId = Number(row.usuarioEmisorId || datosLogin?.usuario_id || 0);
+    if (!usuarioOrigenId) {
+      alert('No se pudo identificar el usuario origen.');
+      return;
+    }
+
+    setSendingToSuperiorReqId(reqRecursoId);
+    try {
+      const getSuperiorEndpoint = `${apiBase}/usuarios/get_usuario_nivel_superior/${usuarioOrigenId}`;
+      const superiorRes = await authFetch(getSuperiorEndpoint, {
+        method: 'GET',
+        headers: { accept: 'application/json' },
+      });
+
+      if (!superiorRes.ok) {
+        alert('No se pudo obtener el usuario de nivel superior.');
+        return;
+      }
+
+      const superiorData = await superiorRes.json();
+      const superiores = Array.isArray(superiorData) ? superiorData : [];
+      if (!superiores.length) {
+        alert('No se encontró usuario superior para el usuario origen.');
+        return;
+      }
+
+      const usuarioSuperiorId = Number(
+        superiores.find((it: any) => Number(it?.usuario_superior_id ?? 0) > 0)?.usuario_superior_id ?? 0
+      );
+      if (!usuarioSuperiorId) {
+        alert('No se encontró usuario_superior_id en la respuesta.');
+        return;
+      }
+
+      const patchEndpoint = `${apiBase}/requerimiento-recursos/${reqRecursoId}/asignar-mesa-superior/${usuarioSuperiorId}`;
+      const patchRes = await authFetch(patchEndpoint, {
+        method: 'PATCH',
+        headers: { accept: 'application/json' },
+      });
+
+      if (!patchRes.ok) {
+        alert('No se pudo actualizar el usuario emisor al nivel superior.');
+        return;
+      }
+
+      const estadoEndpoint = `${apiBase}/requerimiento-recursos/${reqRecursoId}`;
+      const estadoRes = await authFetch(estadoEndpoint, {
+        method: 'PATCH',
+        headers: {
+          accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ requerimiento_estado_id: Number(REASIGNADO_ESTADO_ID) }),
+      });
+
+      if (!estadoRes.ok) {
+        alert('El requerimiento fue reasignado al usuario superior, pero no se pudo actualizar su estado.');
+        return;
+      }
+
+      alert('Requerimiento enviado a nivel superior y estado actualizado correctamente.');
+      await loadRequerimientos();
+    } catch (error) {
+      console.error('Error enviando requerimiento a nivel superior:', error);
+      alert('Ocurrió un error al enviar a nivel superior.');
+    } finally {
+      setSendingToSuperiorReqId(null);
+    }
   };
 
   const columns = [
@@ -205,8 +270,9 @@ export const RequerimientosRechazados: React.FC = () => {
             type="button"
             className="btn btn-sm btn-outline-success"
             onClick={() => goToNivelSuperior(row)}
+            disabled={sendingToSuperiorReqId === row.id}
           >
-            Enviar a nivel superior
+            {sendingToSuperiorReqId === row.id ? 'Enviando...' : 'Enviar a nivel superior'}
           </button>
         </div>
       ),
@@ -225,6 +291,7 @@ export const RequerimientosRechazados: React.FC = () => {
           id: 0,
           requerimientoId: 0,
           requerimientoNumero: '',
+          usuarioEmisorId: 0,
           solicitante: '',
           destinatario: '',
           grupoRequerimiento: '',
