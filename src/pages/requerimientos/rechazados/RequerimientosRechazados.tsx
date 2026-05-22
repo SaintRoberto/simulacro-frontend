@@ -9,6 +9,7 @@ interface RequerimientoRechazado {
   id: number;
   requerimientoId: number;
   requerimientoNumero?: string | null;
+  usuarioEmisorId: number;
   solicitante: string;
   destinatario: string;
   grupoRequerimiento: string;
@@ -80,6 +81,7 @@ export const RequerimientosRechazados: React.FC = () => {
           id: Number(row.id ?? 0),
           requerimientoId: Number(row.requerimiento_id ?? 0),
           requerimientoNumero: String(row.requerimiento_numero ?? '').trim() || null,
+          usuarioEmisorId: Number(row.usuario_emisor_id ?? 0),
           solicitante: String(row.usuario_emisor ?? row.creador ?? '-'),
           destinatario: String(row.usuario_receptor ?? '-'),
           grupoRequerimiento: String(row.recurso_grupo_nombre ?? `Grupo ${Number(row.recurso_grupo_id ?? 0)}`),
@@ -143,7 +145,9 @@ export const RequerimientosRechazados: React.FC = () => {
 
   const goToNivelSuperior = (row: RequerimientoRechazado) => {
     const params = new URLSearchParams({
+      req_id: String(row.id || 0),
       flow: 'superior',
+      usuario_id_origen: String(row.usuarioEmisorId || 0),
       requerimiento_id: String(row.requerimientoId || 0),
       requerimiento_numero: String(row.requerimientoNumero || ''),
       grupo_id: String(row.grupoId || 0),

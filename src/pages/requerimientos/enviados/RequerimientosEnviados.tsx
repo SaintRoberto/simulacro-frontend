@@ -72,8 +72,8 @@ export const RequerimientosEnviados: React.FC = () => {
 
       const encodedNumero = encodeURIComponent(requerimientoNumero);
       const endpoints = [
-        `${apiBase}/requerimiento-recursos/requeramiento_numero/${encodedNumero}`,
-        `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}`,
+        `${apiBase}/requerimiento-recursos/requeramiento_numero/${encodedNumero}/usuario_emisor_id/${datosLogin?.usuario_id ?? 0}`,
+        `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}/usuario_emisor_id/${datosLogin?.usuario_id ?? 0}`,
       ];
 
       for (const url of endpoints) {
