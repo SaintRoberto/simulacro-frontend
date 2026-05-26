@@ -45,6 +45,15 @@ interface DisponibilidadMesaRow {
   detalleSolicitudRecurso: string;
 }
 
+interface EditRecursoContext {
+  requerimientoRecursoId: number;
+  grupoId: number;
+  tipoId: number;
+  usuarioReceptorId: number;
+  mesaId: number;
+  cantidadSolicitada: number;
+}
+
 const parseCostoToNumber = (value: unknown): number => {
   if (typeof value === 'number') return value;
   const raw = String(value || '');
@@ -88,6 +97,14 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     const raw = searchParams.get('requerimiento_numero') || searchParams.get('numero') || '';
     return String(raw).trim() || null;
   }, [searchParams]);
+  const reqIdParam = useMemo(() => {
+    const raw = Number(searchParams.get('req_id') || 0);
+    return Number.isFinite(raw) && raw > 0 ? raw : null;
+  }, [searchParams]);
+  const cantidadSolicitadaParam = useMemo(() => {
+    const raw = Number(searchParams.get('cantidad_solicitada') || 0);
+    return Number.isFinite(raw) && raw > 0 ? raw : 0;
+  }, [searchParams]);
 
   const [wizardStep, setWizardStep] = useState<WizardStep>(1);
 
@@ -104,9 +121,13 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
   const cantidadSolicitadaByKeyRef = useRef<Record<string, number>>({});
   const [detalleSolicitudByKey, setDetalleSolicitudByKey] = useState<Record<string, string>>({});
   const detalleSolicitudByKeyRef = useRef<Record<string, string>>({});
+  const editLoadKeyRef = useRef<string | null>(null);
   const [disponibilidadStatus, setDisponibilidadStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [isEndosoMode, setIsEndosoMode] = useState<boolean>(false);
   const [isSendingEndoso, setIsSendingEndoso] = useState<boolean>(false);
+  const [isRejecting, setIsRejecting] = useState<boolean>(false);
+  const [isSavingEdit, setIsSavingEdit] = useState<boolean>(false);
+  const [editContext, setEditContext] = useState<EditRecursoContext | null>(null);
 
   const [recursos, setRecursos] = useState<RecursoSeleccionado[]>([]);
 
@@ -130,7 +151,8 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     getRecursoTiposByGrupo,
   } = useAuth();
 
-  const isReadOnly = !!editId || !!editNumero;
+  const isEditMode = !!editId || !!editNumero;
+  const isUsuarioNacionalId13 = Number(datosLogin?.usuario_id ?? 0) === 13;
 
   const steps = useMemo<MenuItem[]>(
     () => [
@@ -172,6 +194,11 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
   }, [recursos]);
 
   const totalItems = useMemo(() => recursos.reduce((acc, r) => acc + (r.cantidad || 0), 0), [recursos]);
+  const cantidadSolicitadaReferencia = useMemo(() => {
+    const fromEdit = Number(editContext?.cantidadSolicitada ?? 0);
+    if (fromEdit > 0) return fromEdit;
+    return Number(cantidadSolicitadaParam ?? 0);
+  }, [editContext?.cantidadSolicitada, cantidadSolicitadaParam]);
 
   useEffect(() => {
     cantidadSolicitadaByKeyRef.current = cantidadSolicitadaByKey;
@@ -192,6 +219,17 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
 
   useEffect(() => {
     const loadForEdit = async () => {
+      if (!isEditMode) {
+        editLoadKeyRef.current = null;
+        return;
+      }
+
+      const editKey = `${editId ?? 0}-${editNumero ?? ''}-${datosLogin?.usuario_id ?? 0}`;
+      if (editLoadKeyRef.current === editKey) {
+        return;
+      }
+      editLoadKeyRef.current = editKey;
+
       if (editNumero) {
         const encodedNumero = encodeURIComponent(editNumero);
         const endpoints = [
@@ -244,8 +282,22 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
           };
         });
 
-        setRecursos(parsed);
-        setWizardStep(3);
+        setRecursos([]);
+        const recursoBase = parsed[0];
+        if (recursoBase) {
+          setSelectedGrupoId(recursoBase.grupoId);
+          setSelectedTipoId(recursoBase.tipoId);
+          setEditContext({
+            requerimientoRecursoId: Number(recursoBase.id ?? 0),
+            grupoId: recursoBase.grupoId,
+            tipoId: recursoBase.tipoId,
+            usuarioReceptorId: Number(recursoBase.mesaUsuarioId ?? 0),
+            mesaId: Number(recursoBase.mesaId ?? 0),
+            cantidadSolicitada: Number(recursoBase.cantidad ?? 0),
+          });
+          loadRecursoTipos(recursoBase.grupoId);
+        }
+        setWizardStep(2);
         return;
       }
 
@@ -287,22 +339,36 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
           activo: r.activo,
         });
       }
-      setRecursos(parsed);
-      setWizardStep(3);
+      setRecursos([]);
+      const recursoBase = parsed[0];
+      if (recursoBase) {
+        setSelectedGrupoId(recursoBase.grupoId);
+        setSelectedTipoId(recursoBase.tipoId);
+        setEditContext({
+          requerimientoRecursoId: Number(recursoBase.id ?? 0),
+          grupoId: recursoBase.grupoId,
+          tipoId: recursoBase.tipoId,
+          usuarioReceptorId: Number(recursoBase.mesaUsuarioId ?? 0),
+          mesaId: Number(recursoBase.mesaId ?? 0),
+          cantidadSolicitada: Number(recursoBase.cantidad ?? 0),
+        });
+        loadRecursoTipos(recursoBase.grupoId);
+      }
+      setWizardStep(2);
     };
 
     loadForEdit();
   }, [
+    isEditMode,
     apiBase,
     authFetch,
     editId,
     editNumero,
+    datosLogin?.usuario_id,
     getRequerimientoById,
     getRequerimientoRecursos,
     getRecursoTiposByGrupo,
-    receptores,
-    recursoGrupos,
-    recursoTipos,
+    loadRecursoTipos,
   ]);
 
   const loadDisponibilidadByTipo = useCallback(async () => {
@@ -448,18 +514,18 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     );
   };
 
-  const addRecursoDesdeMesa = (row: DisponibilidadMesaRow) => {
+  const addRecursoDesdeMesa = (row: DisponibilidadMesaRow): boolean => {
     if (!selectedGrupoId || !selectedTipoId) {
       alert('Seleccione grupo y tipo de recurso.');
-      return;
+      return false;
     }
     if (!row.cantidadSolicitada || row.cantidadSolicitada <= 0) {
       alert('Ingrese una cantidad solicitada valida.');
-      return;
+      return false;
     }
     if (row.cantidadSolicitada > row.cantidadDisponible) {
       alert('No puede solicitar mas de la cantidad disponible.');
-      return;
+      return false;
     }
 
 
@@ -470,7 +536,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     );
     if (yaAgregado) {
       alert('Este recurso ya fue agregado en la grilla de resumen.');
-      return;
+      return false;
     }
 
     setRecursos((prev) => {
@@ -495,6 +561,14 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         },
       ];
     });
+    return true;
+  };
+
+  const handleAsignarDesdeMesa = (row: DisponibilidadMesaRow) => {
+    const assigned = addRecursoDesdeMesa(row);
+    if (assigned) {
+      setWizardStep(3);
+    }
   };
 
   const handleEnviarNivelSuperiorDesdeMesa = useCallback(async (row: DisponibilidadMesaRow) => {
@@ -518,10 +592,41 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
 
     setIsSendingEndoso(true);
     try {
-      const usuarioEmisorId = Number(datosLogin?.usuario_id ?? 0);
-      if (!usuarioEmisorId) {
-        alert('No se pudo identificar el usuario emisor.');
+      const usuarioOrigenId = Number(datosLogin?.usuario_id ?? 0);
+      if (!usuarioOrigenId) {
+        alert('No se pudo identificar el usuario origen.');
         return;
+      }
+
+      let usuarioEmisorId = 0;
+      const esNacional = Number(datosLogin?.coe_id ?? 0) === 1;
+      if (esNacional) {
+        usuarioEmisorId = 13;
+      } else {
+        const getSuperiorEndpoint = `${apiBase}/usuarios/get_usuario_nivel_superior/${usuarioOrigenId}`;
+        const superiorRes = await authFetch(getSuperiorEndpoint, {
+          method: 'GET',
+          headers: { accept: 'application/json' },
+        });
+        if (!superiorRes.ok) {
+          alert('No se pudo obtener el usuario de nivel superior.');
+          return;
+        }
+
+        const superiorData = await superiorRes.json();
+        const superiores = Array.isArray(superiorData) ? superiorData : [];
+        if (!superiores.length) {
+          alert('No se encontró usuario superior para el usuario origen.');
+          return;
+        }
+
+        usuarioEmisorId = Number(
+          superiores.find((it: any) => Number(it?.usuario_superior_id ?? 0) > 0)?.usuario_superior_id ?? 0
+        );
+        if (!usuarioEmisorId) {
+          alert('No se encontró usuario_superior_id en la respuesta.');
+          return;
+        }
       }
 
       const usuarioReceptorId = Number(row.usuarioId || datosLogin?.usuario_id || 0);
@@ -578,7 +683,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     } finally {
       setIsSendingEndoso(false);
     }
-  }, [selectedGrupoId, selectedTipoId, datosLogin, recursoGrupos, recursoTipos, detalleRequerimiento, createRequerimientoRecurso]);
+  }, [selectedGrupoId, selectedTipoId, datosLogin, recursoGrupos, recursoTipos, detalleRequerimiento, createRequerimientoRecurso, apiBase, authFetch]);
 
   const removeRecurso = (id: number) => {
     setRecursos((prev) => {
@@ -604,6 +709,40 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       `Enviar a brecha pendiente de implementacion (sin endpoint).\nRecurso: ${recurso.tipo}\nMesa: ${recurso.mesaNombre}`
     );
   };
+
+  const handleRechazarDesdeNacional = useCallback(async () => {
+    const requerimientoRecursoId = Number(editContext?.requerimientoRecursoId ?? reqIdParam ?? 0);
+    if (!requerimientoRecursoId) {
+      alert('No se pudo identificar el requerimiento recurso a rechazar.');
+      return;
+    }
+
+    setIsRejecting(true);
+    try {
+      const endpoint = `${apiBase}/requerimiento-recursos/${requerimientoRecursoId}`;
+      const res = await authFetch(endpoint, {
+        method: 'PATCH',
+        headers: {
+          accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ requerimiento_estado_id: 3 }),
+      });
+
+      if (!res.ok) {
+        alert('No se pudo rechazar el requerimiento.');
+        return;
+      }
+
+      alert('Requerimiento rechazado correctamente.');
+      navigate('/requerimientos/enviados');
+    } catch (error) {
+      console.error(error);
+      alert('Error al rechazar el requerimiento.');
+    } finally {
+      setIsRejecting(false);
+    }
+  }, [editContext?.requerimientoRecursoId, reqIdParam, apiBase, authFetch, navigate]);
 
   const handleWizardSelect = (targetIndex: number) => {
     const targetStep = (targetIndex + 1) as WizardStep;
@@ -652,6 +791,56 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
   const handlePrevStep = () => {
     if (wizardStep === 2) setWizardStep(1);
     if (wizardStep === 3) setWizardStep(2);
+  };
+
+  const handleGuardarEdicion = async () => {
+    if (!isEditMode || !editContext) {
+      alert('No hay un requerimiento en modo edición.');
+      return;
+    }
+    if (!editContext.requerimientoRecursoId) {
+      alert('No se pudo resolver el ID del requerimiento recurso a editar.');
+      return;
+    }
+    const recursoEditado = recursos[0];
+    if (!recursoEditado) {
+      alert('Debe asignar un recurso antes de guardar.');
+      return;
+    }
+    const nuevaCantidad = Number(recursoEditado.cantidad ?? 0);
+    if (!nuevaCantidad || nuevaCantidad <= 0) {
+      alert('La cantidad solicitada debe ser mayor a 0.');
+      return;
+    }
+
+    setIsSavingEdit(true);
+    try {
+      const endpoint = `${apiBase}/requerimiento-recursos/${editContext.requerimientoRecursoId}`;
+      const res = await authFetch(endpoint, {
+        method: 'PATCH',
+        headers: {
+          accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cantidad_solicitada: nuevaCantidad,
+          especificaciones: String(recursoEditado.detalleSolicitudRecurso || '').trim(),
+        }),
+      });
+
+      if (!res.ok) {
+        alert('No se pudo actualizar el requerimiento editado.');
+        return;
+      }
+
+      alert('Requerimiento actualizado exitosamente.');
+      navigate('/requerimientos/enviados');
+    } catch (error) {
+      console.error(error);
+      alert('Error al actualizar el requerimiento.');
+    } finally {
+      setIsSavingEdit(false);
+    }
   };
 
   const handleRegistrarRequerimiento = async () => {
@@ -736,7 +925,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
           items={[
             { title: <Link to="/">Inicio</Link> },
             { title: <Link to="/requerimientos/enviados">Requerimientos Enviados</Link> },
-            { title: (editId || editNumero) ? `Ver ${editNumero || `REQ-${editId}`}` : 'Nuevo Requerimiento' },
+            { title: (editId || editNumero) ? `Editar ${editNumero || `REQ-${editId}`}` : 'Nuevo Requerimiento' },
           ]}
         />
       </div>
@@ -762,19 +951,19 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                 <div className="row col-12 pb-2">
                   <div className="col-lg-4 col-md-6 col-sm-12">
                     <label className="label-uniform">Num. Requerimiento</label>
-                    <InputText value={numero} onChange={(e) => setNumero(e.target.value)} className="w-full m-1" disabled={isReadOnly} />
+                    <InputText value={numero} onChange={(e) => setNumero(e.target.value)} className="w-full m-1" disabled={isEditMode} />
                   </div>
                   <div className="col-lg-4 col-md-6 col-sm-12" style={{ display: 'none' }}>
                     <label className="label-uniform">Fecha de Solicitud</label>
-                    <Calendar value={fechaSolicitud} onChange={(e) => setFechaSolicitud(e.value as Date)} showIcon showTime dateFormat="dd/mm/yy" className="w-full m-1" disabled={isReadOnly} />
+                    <Calendar value={fechaSolicitud} onChange={(e) => setFechaSolicitud(e.value as Date)} showIcon showTime dateFormat="dd/mm/yy" className="w-full m-1" disabled={isEditMode} />
                   </div>
                   <div className="col-lg-4 col-md-6 col-sm-12">
                     <label className="label-uniform">Fecha Inicio solicitud</label>
-                    <Calendar value={fechaInicio} onChange={(e) => setFechaInicio(e.value as Date)} showIcon showTime dateFormat="dd/mm/yy" className="w-full m-1" disabled={isReadOnly} />
+                    <Calendar value={fechaInicio} onChange={(e) => setFechaInicio(e.value as Date)} showIcon showTime dateFormat="dd/mm/yy" className="w-full m-1" disabled={isEditMode} />
                   </div>
                   <div className="col-lg-4 col-md-6 col-sm-12">
                     <label className="label-uniform">Fecha Fin solicitud</label>
-                    <Calendar value={fechaFin} onChange={(e) => setFechaFin(e.value as Date)} showIcon showTime dateFormat="dd/mm/yy" className="w-full m-1" disabled={isReadOnly} />
+                    <Calendar value={fechaFin} onChange={(e) => setFechaFin(e.value as Date)} showIcon showTime dateFormat="dd/mm/yy" className="w-full m-1" disabled={isEditMode} />
                   </div>
                   <div className="col-lg-12 col-md-6 col-sm-12 pt-2">
                     <label className="label-uniform">Detalle de requerimiento</label>
@@ -783,7 +972,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                       onChange={(e) => setDetalleRequerimiento(e.target.value)}
                       className="w-full m-1"
                       rows={3}
-                      disabled={isReadOnly}
+                      disabled={isEditMode}
                     />
                   </div>
                 </div>
@@ -805,7 +994,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                     options={recursoGrupos.map((g) => ({ label: g.nombre, value: g.id }))}
                     onChange={(e) => handleGrupoChange(e.value)}
                     placeholder={recursoGruposStatus === 'loading' ? 'Cargando...' : 'Seleccionar grupo'}
-                    disabled={isReadOnly || recursoGruposStatus === 'loading'}
+                    disabled={isEditMode || recursoGruposStatus === 'loading'}
                     filter
                     className="w-full m-1"
                   />
@@ -817,20 +1006,29 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                     options={recursoTipos.map((t) => ({ label: t.nombre, value: t.id }))}
                     onChange={(e) => setSelectedTipoId(e.value)}
                     placeholder={recursoTiposStatus === 'loading' ? 'Cargando...' : 'Seleccionar tipo'}
-                    disabled={isReadOnly || recursoTiposStatus === 'loading' || !selectedGrupoId}
+                    disabled={isEditMode || recursoTiposStatus === 'loading' || !selectedGrupoId}
                     filter
                     className="w-full m-1"
                   />
                 </div>
                 <div className="col-lg-4 col-md-12 col-sm-12 d-flex align-items-end">
-                  <Button
-                    label={isEndosoMode ? 'Deshabilitar Endoso' : 'Habilitar Endoso'}
-                    severity={isEndosoMode ? 'warning' : 'help'}
-                    outlined={!isEndosoMode}
-                    className="m-1"
-                    onClick={() => setIsEndosoMode((prev) => !prev)}
-                    disabled={isReadOnly || !selectedGrupoId || !selectedTipoId}
-                  />
+                  {isUsuarioNacionalId13 ? (
+                    <Button
+                      label={isRejecting ? 'Rechazando...' : 'Rechazar'}
+                      severity="danger"
+                      className="m-1"
+                      onClick={handleRechazarDesdeNacional}
+                      disabled={isRejecting}
+                    />
+                  ) : (
+                    <Button
+                      label={isEndosoMode ? 'Deshabilitar Endoso' : 'Habilitar Endoso'}
+                      severity={isEndosoMode ? 'warning' : 'help'}
+                      outlined={!isEndosoMode}
+                      className="m-1"
+                      onClick={() => setIsEndosoMode((prev) => !prev)}
+                    />
+                  )}
                 </div>
 
               </div>
@@ -844,6 +1042,11 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                   <Tag color="default">Mesas asignadas: No seleccionadas</Tag>
                 )}
               </div>
+              {cantidadSolicitadaReferencia > 0 && (
+                <div className="mb-2">
+                  <Tag color="gold">{`Cantidad solicitada de referencia: ${cantidadSolicitadaReferencia}`}</Tag>
+                </div>
+              )}
 
               <DataTable value={disponibilidadRowsForStep2} emptyMessage={disponibilidadStatus === 'loading' ? 'Cargando disponibilidad...' : 'Seleccione grupo y tipo para visualizar inventario por mesa'} responsiveLayout="scroll">
                 <Column
@@ -868,7 +1071,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                           min={0}
                           useGrouping={false}
                           className="w-20 m-1"
-                          disabled={isReadOnly || recursoYaAgregado}
+                          disabled={isSavingEdit || recursoYaAgregado}
                         />
                         {!isEndosoMode && row.cantidadSolicitada > row.cantidadDisponible && (
                           <small className="p-error">La cantidad solicitada supera la disponible.</small>
@@ -889,7 +1092,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                         value={row.detalleSolicitudRecurso}
                         onChange={(e) => handleDetalleSolicitudRecursoChange(row.mesaId, e.target.value)}
                         placeholder={isEndosoMode ? 'Detalle obligatorio para Endoso' : 'Detalle adicional (opcional)'}
-                        disabled={isReadOnly || recursoYaAgregado}
+                        disabled={isSavingEdit || recursoYaAgregado}
 
                       />
                     </div>);
@@ -908,17 +1111,17 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                             label={recursoYaAgregado ? 'Recurso agregado' : 'Agregar Recurso'}
                             icon={recursoYaAgregado ? 'pi pi-check' : 'pi pi-plus'}
                             className="p-button-sm"
-                            onClick={() => addRecursoDesdeMesa(row)}
-                            disabled={isReadOnly || recursoYaAgregado}
+                            onClick={() => handleAsignarDesdeMesa(row)}
+                            disabled={isSavingEdit || recursoYaAgregado}
                           />
                         ) : (
                           <Button
-                            label="Enviar a nivel superior"
+                            label={Number(datosLogin?.coe_id ?? 0) === 1 ? 'Enviar a brecha' : 'Enviar a nivel superior'}
                             icon="pi pi-send"
                             severity="help"
                             className="p-button-sm"
                             onClick={() => handleEnviarNivelSuperiorDesdeMesa(row)}
-                            disabled={isReadOnly || isSendingEndoso}
+                            disabled={isSavingEdit || isSendingEndoso}
                           />
                         )}
                       </div>
@@ -969,16 +1172,14 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                         tooltipOptions={{ position: 'top' }}
 
                       />
-                      {!isReadOnly && (
-                        <Button
-                          icon="pi pi-trash"
-                          severity="danger"
-                          text
-                          onClick={() => removeRecurso(row.id)}
-                          tooltip="Eliminar recurso"
-                          tooltipOptions={{ position: 'top' }}
-                        />
-                      )}
+                      <Button
+                        icon="pi pi-trash"
+                        severity="danger"
+                        text
+                        onClick={() => removeRecurso(row.id)}
+                        tooltip="Eliminar recurso"
+                        tooltipOptions={{ position: 'top' }}
+                      />
                     </div>
                   )}
                   style={{ width: '14rem' }}
@@ -1004,21 +1205,26 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
             </>
           )}
 
-          {!isReadOnly && (
-            <div className="row mt-4">
-              <div className="col-12 text-end">
-                {wizardStep > 1 && (
-                  <Button label="Anterior" icon="pi pi-arrow-left" outlined className="m-1" onClick={handlePrevStep} />
-                )}
-                {wizardStep < 3 && !(wizardStep === 2 && isEndosoMode) && (
-                  <Button label="Siguiente" icon="pi pi-arrow-right" iconPos="right" className="m-1" onClick={handleNextStep} />
-                )}
-                {wizardStep === 3 && (
-                  <Button label="Registrar Requerimiento" icon="pi pi-send" severity="success" className="m-1" onClick={handleRegistrarRequerimiento} />
-                )}
-              </div>
+          <div className="row mt-4">
+            <div className="col-12 text-end">
+              {wizardStep > 1 && (
+                <Button label="Anterior" icon="pi pi-arrow-left" outlined className="m-1" onClick={handlePrevStep} />
+              )}
+              {wizardStep < 3 && !(wizardStep === 2 && isEndosoMode) && (
+                <Button label="Siguiente" icon="pi pi-arrow-right" iconPos="right" className="m-1" onClick={handleNextStep} />
+              )}
+              {wizardStep === 3 && (
+                <Button
+                  label={isEditMode ? (isSavingEdit ? 'Guardando...' : 'Guardar Cambios') : 'Registrar Requerimiento'}
+                  icon={isEditMode ? 'pi pi-save' : 'pi pi-send'}
+                  severity="success"
+                  className="m-1"
+                  onClick={isEditMode ? handleGuardarEdicion : handleRegistrarRequerimiento}
+                  disabled={isSavingEdit}
+                />
+              )}
             </div>
-          )}
+          </div>
         </Card>
       </div>
     </div>
