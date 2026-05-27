@@ -367,7 +367,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
       if (editNumero) {
         const encodedNumero = encodeURIComponent(editNumero);
         const endpoints = [
-          `${apiBase}/requerimiento-recursos/requeramiento_numero/${encodedNumero}/usuario_emisor_id/${datosLogin?.usuario_id ?? 0}`,
+          `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}/usuario_emisor_id/${datosLogin?.usuario_id ?? 0}`,
           `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}/usuario_emisor_id/${datosLogin?.usuario_id ?? 0}`,
         ];
 
@@ -553,7 +553,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
       messageApi.error('Existen cantidades asignadas mayores a existencias. Corrija manualmente antes de guardar.');
       return;
     }
-    if (diferenciaCantidad <= 0) {
+    if (diferenciaCantidad < 0) {
       messageApi.error('No se puede guardar porque la diferencia/faltante debe ser mayor a 0.');
       return;
     }

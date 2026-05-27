@@ -238,7 +238,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       if (editNumero) {
         const encodedNumero = encodeURIComponent(editNumero);
         const endpoints = [
-          `${apiBase}/requerimiento-recursos/requeramiento_numero/${encodedNumero}/usuario_emisor_id/${datosLogin?.usuario_id ?? 0}`,
+          `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}/usuario_emisor_id/${datosLogin?.usuario_id ?? 0}`,
           `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}/usuario_emisor_id/${datosLogin?.usuario_id ?? 0}`,
         ];
 
@@ -482,7 +482,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     try {
       const encodedNumero = encodeURIComponent(requerimientoNumero);
       const endpoints = [
-        `${apiBase}/requerimiento-recursos/requeramiento_numero/${encodedNumero}/usuario_emisor_id/${usuarioEmisorId}`,
+        `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}/usuario_emisor_id/${usuarioEmisorId}`,
         `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}/usuario_emisor_id/${usuarioEmisorId}`,
       ];
       for (const url of endpoints) {

@@ -291,7 +291,7 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
     try {
       const encodedNumero = encodeURIComponent(requerimientoNumero);
       const endpoints = [
-        `${apiBase}/requerimiento-recursos/requeramiento_numero/${encodedNumero}/usuario_emisor_id/${usuarioEmisorId}`,
+        `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}/usuario_emisor_id/${usuarioEmisorId}`,
         `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}/usuario_emisor_id/${usuarioEmisorId}`,
       ];
       for (const url of endpoints) {
