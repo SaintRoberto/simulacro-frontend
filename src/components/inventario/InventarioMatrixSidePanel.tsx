@@ -778,6 +778,36 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     }
   }, [apiBase, authFetch, coeId, datosLogin?.usuario_login, effectiveMesaId]);
 
+  const loadDetalleExistencias = useCallback(async () => {
+    if (!drawerOpen || !selectedRow || !selectedInstitucion || !coeId || !effectiveMesaId) {
+      setDetalleExistenciasRows([]);
+      setDetalleExistenciasStatus('idle');
+      return;
+    }
+    setDetalleExistenciasStatus('loading');
+    try {
+      const endpoint = `${apiBase}/recursos_inventario/coe_id/${coeId}/mesa_id/${effectiveMesaId}/recurso_tipo_id/${selectedRow.recurso_tipo_id}/institucion_duena_id/${selectedInstitucion.id}`;
+      const res = await withTimeout(authFetch(endpoint, { headers: { accept: 'application/json' } }), 4500);
+      if (!res.ok) throw new Error('detalle_not_ok');
+      const data = await res.json();
+      const rows: DetalleExistenciaRow[] = (Array.isArray(data) ? data : []).map((it: any, idx: number) => ({
+        id: Number(it?.id ?? idx + 1),
+        provincia_id: Number(it?.provincia_id ?? 0),
+        canton_id: Number(it?.canton_id ?? 0),
+        parroquia_id: Number(it?.parroquia_id ?? 0),
+        provincia: it?.provincia ? String(it.provincia) : undefined,
+        canton: it?.canton ? String(it.canton) : undefined,
+        parroquia: it?.parroquia ? String(it.parroquia) : undefined,
+        existencias: Math.max(0, Number(it?.existencias ?? 0)),
+      }));
+      setDetalleExistenciasRows(rows);
+      setDetalleExistenciasStatus('ready');
+    } catch {
+      setDetalleExistenciasRows([]);
+      setDetalleExistenciasStatus('error');
+    }
+  }, [apiBase, authFetch, coeId, drawerOpen, effectiveMesaId, selectedInstitucion, selectedRow]);
+
   const saveParroquia = useCallback(async () => {
     if (!selectedRow || !selectedInstitucion) {
       message.warning('Seleccione una celda de la matriz.');
@@ -846,6 +876,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
       setDrawerInitialDetalles(persistedDetalles);
       setDrawerHasUnsavedChanges(false);
       await loadMatrixByGrupo();
+      await loadDetalleExistencias();
       message.success('Parroquia guardada correctamente.');
     } catch {
       message.error('Error al guardar en recursos_inventario.');
@@ -860,6 +891,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     effectiveMesaId,
     isUsuarioNacional,
     isUsuarioProvincial,
+    loadDetalleExistencias,
     loadMatrixByGrupo,
     persistInventarioCreateOrUpdate,
     selectedGrupoId,
@@ -890,36 +922,6 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     if (!confirmDiscardUnsavedChanges()) return;
     setDrawerOpen(false);
   }, [confirmDiscardUnsavedChanges]);
-
-  const loadDetalleExistencias = useCallback(async () => {
-    if (!drawerOpen || !selectedRow || !selectedInstitucion || !coeId || !effectiveMesaId) {
-      setDetalleExistenciasRows([]);
-      setDetalleExistenciasStatus('idle');
-      return;
-    }
-    setDetalleExistenciasStatus('loading');
-    try {
-      const endpoint = `${apiBase}/recursos_inventario/coe_id/${coeId}/mesa_id/${effectiveMesaId}/recurso_tipo_id/${selectedRow.recurso_tipo_id}/institucion_duena_id/${selectedInstitucion.id}`;
-      const res = await withTimeout(authFetch(endpoint, { headers: { accept: 'application/json' } }), 4500);
-      if (!res.ok) throw new Error('detalle_not_ok');
-      const data = await res.json();
-      const rows: DetalleExistenciaRow[] = (Array.isArray(data) ? data : []).map((it: any, idx: number) => ({
-        id: Number(it?.id ?? idx + 1),
-        provincia_id: Number(it?.provincia_id ?? 0),
-        canton_id: Number(it?.canton_id ?? 0),
-        parroquia_id: Number(it?.parroquia_id ?? 0),
-        provincia: it?.provincia ? String(it.provincia) : undefined,
-        canton: it?.canton ? String(it.canton) : undefined,
-        parroquia: it?.parroquia ? String(it.parroquia) : undefined,
-        existencias: Math.max(0, Number(it?.existencias ?? 0)),
-      }));
-      setDetalleExistenciasRows(rows);
-      setDetalleExistenciasStatus('ready');
-    } catch {
-      setDetalleExistenciasRows([]);
-      setDetalleExistenciasStatus('error');
-    }
-  }, [apiBase, authFetch, coeId, drawerOpen, effectiveMesaId, selectedInstitucion, selectedRow]);
 
   useEffect(() => {
     if (!drawerOpen || !selectedRow || !selectedInstitucion) return;

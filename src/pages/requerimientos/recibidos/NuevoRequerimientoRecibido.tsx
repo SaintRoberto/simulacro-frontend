@@ -12,6 +12,10 @@ import { InputNumber } from 'primereact/inputnumber';
 import { useAuth } from '../../../context/AuthContext';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { Tag, Breadcrumb, Progress, message } from 'antd';
+import {
+  HuellaAccionLogId,
+  registrarHuellaMovimiento,
+} from '../../../utils/requerimientoHuellaLog';
 
 interface Recurso {
   id: number;
@@ -556,7 +560,9 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
     try {
       const nowIso = (fechaRespuesta || new Date()).toISOString();
       const usuarioActual = datosLogin?.usuario_login || responsable || '';
+      const usuarioAccionId = Number(datosLogin?.usuario_id ?? 0);
       const estadoIdAuto = resolveEstadoIdByAvance(avance);
+      let secuenciaLog = Number(historial.length ?? 0);
       let respuestasMap = respuestasPreviasByInventarioId;
       const resPrevias = await authFetch(`${apiBase}/requerimiento-respuestas/${editId}`, {
         headers: { accept: 'application/json' },
@@ -610,6 +616,31 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
           messageApi.error('No se pudo actualizar una o mas respuestas del inventario.');
           return;
         }
+
+        secuenciaLog += 1;
+        void registrarHuellaMovimiento({
+          apiBase,
+          authFetch,
+          context: 'recibidos:actualizar_respuesta_inventario',
+          params: {
+            accionId: HuellaAccionLogId.ASIGNAR_REQUERIMIENTO,
+            usuarioAccionId,
+            cantidadAsignada: Number(row.cantidadAsignada ?? 0),
+            cantidadSolicitada: Number(cantidadSolicitada ?? 0),
+            coeOrigenId: Number(datosLogin?.coe_id ?? 0),
+            coeDestinoId: Number(row.coe_id ?? 0),
+            mesaOrigenId: Number(datosLogin?.mesa_id ?? 0),
+            mesaDestinoId: Number(row.mesa_id ?? 0),
+            recursoGrupoId: Number(recursoInventarioSeleccionado?.grupoId ?? 0),
+            recursoInventarioId: Number(row.id ?? 0),
+            recursoTipoId: Number(row.recurso_tipo_id ?? 0),
+            requerimientoNumero: String(numero || ''),
+            requerimientoRecursoId: Number(payload.requerimiento_recurso_id ?? 0),
+            respuestaEstadoId: Number(payload.respuesta_estado_id ?? 0),
+            respuestaFecha: String(payload.respuesta_fecha ?? nowIso),
+            secuencia: secuenciaLog,
+          },
+        });
       }
 
       for (const row of rowsToCreate) {
@@ -647,6 +678,31 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
           messageApi.error('No se pudo registrar una o más respuestas del inventario.');
           return;
         }
+
+        secuenciaLog += 1;
+        void registrarHuellaMovimiento({
+          apiBase,
+          authFetch,
+          context: 'recibidos:crear_respuesta_inventario',
+          params: {
+            accionId: HuellaAccionLogId.ASIGNAR_REQUERIMIENTO,
+            usuarioAccionId,
+            cantidadAsignada: Number(row.cantidadAsignada ?? 0),
+            cantidadSolicitada: Number(cantidadSolicitada ?? 0),
+            coeOrigenId: Number(datosLogin?.coe_id ?? 0),
+            coeDestinoId: Number(row.coe_id ?? 0),
+            mesaOrigenId: Number(datosLogin?.mesa_id ?? 0),
+            mesaDestinoId: Number(row.mesa_id ?? 0),
+            recursoGrupoId: Number(recursoInventarioSeleccionado?.grupoId ?? 0),
+            recursoInventarioId: Number(recursoInventarioId ?? 0),
+            recursoTipoId: Number(row.recurso_tipo_id ?? 0),
+            requerimientoNumero: String(numero || ''),
+            requerimientoRecursoId: Number(requerimientoRecursoId ?? 0),
+            respuestaEstadoId: Number(estadoIdAuto ?? 0),
+            respuestaFecha: nowIso,
+            secuencia: secuenciaLog,
+          },
+        });
       }
 
       // 2) Actualizar estado del requerimiento
@@ -657,6 +713,27 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
       });
       if (!resUpd.ok) {
         messageApi.warning('Respuestas guardadas, pero no se pudo actualizar el estado del requerimiento.');
+      } else {
+        secuenciaLog += 1;
+        void registrarHuellaMovimiento({
+          apiBase,
+          authFetch,
+          context: 'recibidos:cambiar_estado_requerimiento',
+          params: {
+            accionId: Number(avance) >= 100
+              ? HuellaAccionLogId.FINALIZAR_REQUERIMIENTO
+              : HuellaAccionLogId.INICIAR_PROCESAMIENTO,
+            usuarioAccionId,
+            cantidadSolicitada: Number(cantidadSolicitada ?? 0),
+            coeOrigenId: Number(datosLogin?.coe_id ?? 0),
+            mesaOrigenId: Number(datosLogin?.mesa_id ?? 0),
+            requerimientoNumero: String(numero || ''),
+            requerimientoRecursoId: Number(requerimientoRecursoIdParam ?? 0),
+            respuestaEstadoId: Number(estadoIdAuto ?? 0),
+            respuestaFecha: nowIso,
+            secuencia: secuenciaLog,
+          },
+        });
       }
 
       // 3) Refrescar historial y UI

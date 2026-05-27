@@ -15,6 +15,11 @@ import { useAuth } from '../../../context/AuthContext';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { RequerimientoRequest, RequerimientoRecursoRequest } from '../../../context/AuthContext';
 import { Breadcrumb, Tag, Progress } from 'antd';
+import {
+  HuellaAccionLogId,
+  HuellaMotivoId,
+  registrarHuellaMovimiento,
+} from '../../../utils/requerimientoHuellaLog';
 
 type WizardStep = 1 | 2 | 3;
 
@@ -461,6 +466,47 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     }
   }, [wizardStep, selectedGrupoId, selectedTipoId, loadDisponibilidadByTipo]);
 
+  const resolveCreatedRequerimientoRecursoId = useCallback(async ({
+    requerimientoNumero,
+    usuarioEmisorId,
+    recursoGrupoId,
+    recursoTipoId,
+    usuarioReceptorId,
+  }: {
+    requerimientoNumero: string;
+    usuarioEmisorId: number;
+    recursoGrupoId: number;
+    recursoTipoId: number;
+    usuarioReceptorId: number;
+  }): Promise<number> => {
+    try {
+      const encodedNumero = encodeURIComponent(requerimientoNumero);
+      const endpoints = [
+        `${apiBase}/requerimiento-recursos/requeramiento_numero/${encodedNumero}/usuario_emisor_id/${usuarioEmisorId}`,
+        `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}/usuario_emisor_id/${usuarioEmisorId}`,
+      ];
+      for (const url of endpoints) {
+        const res = await authFetch(url, { headers: { accept: 'application/json' } });
+        if (!res.ok) continue;
+        const raw = await res.json();
+        const list = Array.isArray(raw) ? raw : [];
+        const found = list
+          .filter((it: any) =>
+            Number(it?.recurso_grupo_id ?? 0) === Number(recursoGrupoId) &&
+            Number(it?.recurso_tipo_id ?? 0) === Number(recursoTipoId) &&
+            Number(it?.usuario_receptor_id ?? 0) === Number(usuarioReceptorId)
+          )
+          .sort((a: any, b: any) => Number(b?.id ?? 0) - Number(a?.id ?? 0))[0];
+        const id = Number(found?.id ?? 0);
+        if (id > 0) return id;
+      }
+      return 0;
+    } catch (error) {
+      console.error('No se pudo resolver requerimiento_recurso_id creado:', error);
+      return 0;
+    }
+  }, [apiBase, authFetch]);
+
   const disponibilidadRowsForStep2 = useMemo<DisponibilidadMesaRow[]>(() => {
     if (!isEndosoMode) return disponibilidadRows;
     if (!selectedGrupoId || !selectedTipoId) return disponibilidadRows;
@@ -656,6 +702,33 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         alert('No se pudo enviar a nivel superior.');
         return;
       }
+      const requerimientoRecursoIdLog = await resolveCreatedRequerimientoRecursoId({
+        requerimientoNumero,
+        usuarioEmisorId: Number(usuarioEmisorId ?? 0),
+        recursoGrupoId: Number(selectedGrupoId ?? 0),
+        recursoTipoId: Number(selectedTipoId ?? 0),
+        usuarioReceptorId: Number(usuarioReceptorId ?? 0),
+      });
+      void registrarHuellaMovimiento({
+        apiBase,
+        authFetch,
+        context: 'enviados:enviar_nivel_superior_o_brecha',
+        params: {
+          accionId: esNacional ? HuellaAccionLogId.ENVIAR_A_BRECHA : HuellaAccionLogId.ESCALAR_NIVEL_SUPERIOR,
+          usuarioAccionId: Number(datosLogin?.usuario_id ?? 0),
+          cantidadSolicitada: Number(row.cantidadSolicitada ?? 0),
+          coeOrigenId: Number(datosLogin?.coe_id ?? 0),
+          coeDestinoId: Number(datosLogin?.coe_id ?? 0),
+          mesaOrigenId: Number(datosLogin?.mesa_id ?? 0),
+          mesaDestinoId: Number(row.mesaId ?? 0),
+          recursoGrupoId: Number(selectedGrupoId ?? 0),
+          recursoTipoId: Number(selectedTipoId ?? 0),
+          motivoId: esNacional ? HuellaMotivoId.REQUIERE_GESTION_INTERNACIONAL : 0,
+          requerimientoNumero: requerimientoNumero,
+          requerimientoRecursoId: Number(requerimientoRecursoIdLog ?? 0),
+          respuestaFecha: new Date().toISOString(),
+        },
+      });
 
       setRecursos((prev) => [
         ...prev,
@@ -683,7 +756,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     } finally {
       setIsSendingEndoso(false);
     }
-  }, [selectedGrupoId, selectedTipoId, datosLogin, recursoGrupos, recursoTipos, detalleRequerimiento, createRequerimientoRecurso, apiBase, authFetch]);
+  }, [selectedGrupoId, selectedTipoId, datosLogin, recursoGrupos, recursoTipos, detalleRequerimiento, createRequerimientoRecurso, apiBase, authFetch, resolveCreatedRequerimientoRecursoId]);
 
   const removeRecurso = (id: number) => {
     setRecursos((prev) => {
@@ -733,6 +806,21 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         alert('No se pudo rechazar el requerimiento.');
         return;
       }
+      void registrarHuellaMovimiento({
+        apiBase,
+        authFetch,
+        context: 'enviados:rechazar_nacional',
+        params: {
+          accionId: HuellaAccionLogId.RECHAZAR_REQUERIMIENTO,
+          usuarioAccionId: Number(datosLogin?.usuario_id ?? 0),
+          coeOrigenId: Number(datosLogin?.coe_id ?? 0),
+          mesaOrigenId: Number(datosLogin?.mesa_id ?? 0),
+          motivoId: HuellaMotivoId.SIN_STOCK,
+          requerimientoNumero: String(numero || editNumero || ''),
+          requerimientoRecursoId: Number(requerimientoRecursoId ?? 0),
+          respuestaFecha: new Date().toISOString(),
+        },
+      });
 
       alert('Requerimiento rechazado correctamente.');
       navigate('/requerimientos/enviados');
@@ -832,6 +920,23 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         alert('No se pudo actualizar el requerimiento editado.');
         return;
       }
+      void registrarHuellaMovimiento({
+        apiBase,
+        authFetch,
+        context: 'enviados:guardar_edicion',
+        params: {
+          accionId: HuellaAccionLogId.ASIGNAR_REQUERIMIENTO,
+          usuarioAccionId: Number(datosLogin?.usuario_id ?? 0),
+          cantidadSolicitada: nuevaCantidad,
+          coeOrigenId: Number(datosLogin?.coe_id ?? 0),
+          mesaOrigenId: Number(datosLogin?.mesa_id ?? 0),
+          recursoGrupoId: Number(recursoEditado.grupoId ?? 0),
+          recursoTipoId: Number(recursoEditado.tipoId ?? 0),
+          requerimientoNumero: String(numero || editNumero || ''),
+          requerimientoRecursoId: Number(editContext.requerimientoRecursoId ?? 0),
+          respuestaFecha: new Date().toISOString(),
+        },
+      });
 
       alert('Requerimiento actualizado exitosamente.');
       navigate('/requerimientos/enviados');
@@ -907,7 +1012,33 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         const success = await createRequerimientoRecurso(recursoData);
         if (!success) {
           alert(`Error al agregar recurso ${recurso.tipo}`);
+          continue;
         }
+        const requerimientoRecursoIdLog = await resolveCreatedRequerimientoRecursoId({
+          requerimientoNumero: requerimientoNumeroUuid,
+          usuarioEmisorId: Number(usuarioEmisorId ?? 0),
+          recursoGrupoId: Number(recurso.grupoId ?? 0),
+          recursoTipoId: Number(recurso.tipoId ?? 0),
+          usuarioReceptorId: Number(usuarioReceptorId ?? 0),
+        });
+        void registrarHuellaMovimiento({
+          apiBase,
+          authFetch,
+          context: 'enviados:crear_requerimiento_recurso',
+          params: {
+            accionId: HuellaAccionLogId.SOLICITAR_REQUERIMIENTO,
+            usuarioAccionId: Number(datosLogin?.usuario_id ?? 0),
+            cantidadSolicitada: Number(recurso.cantidad ?? 0),
+            coeOrigenId: Number(datosLogin?.coe_id ?? 0),
+            mesaOrigenId: Number(datosLogin?.mesa_id ?? 0),
+            mesaDestinoId: Number(recurso.mesaId ?? 0),
+            recursoGrupoId: Number(recurso.grupoId ?? 0),
+            recursoTipoId: Number(recurso.tipoId ?? 0),
+            requerimientoNumero: requerimientoNumeroUuid,
+            requerimientoRecursoId: Number(requerimientoRecursoIdLog ?? 0),
+            respuestaFecha: new Date().toISOString(),
+          },
+        });
       }
 
       alert('Requerimiento registrado exitosamente');

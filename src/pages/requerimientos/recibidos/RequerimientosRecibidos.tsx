@@ -191,7 +191,10 @@ export const RequerimientosRecibidos: React.FC = () => {
           const grupoId = Number(recurso?.recurso_grupo_id ?? 0);
           const tipoId = Number(recurso?.recurso_tipo_id ?? 0);
           const cantidad = Number(recurso?.cantidad_solicitada ?? recurso?.cantidad ?? 0);
-          const grupoNombre = recursoGrupos.find((g) => g.id === grupoId)?.nombre || `Grupo ${grupoId}`;
+          const grupoNombre =
+            String(recurso?.grupo_recurso ?? '').trim() ||
+            recursoGrupos.find((g) => g.id === grupoId)?.nombre ||
+            `Grupo ${grupoId}`;
           const tipoNombre = tiposByGrupo.get(grupoId)?.find((t) => t.id === tipoId)?.nombre || `Tipo ${tipoId}`;
           if (grupoId > 0) gruposSet.add(grupoNombre);
           if (tipoId > 0) tiposSet.add(tipoNombre);
@@ -361,7 +364,7 @@ export const RequerimientosRecibidos: React.FC = () => {
       for (const recurso of recursosApi) {
         // Obtener nombre del grupo
         const grupo = recursoGrupos.find(g => g.id === recurso.recurso_grupo_id);
-        let grupoNombre = grupo?.nombre || `Grupo ${recurso.recurso_grupo_id}`;
+        let grupoNombre = grupo?.nombre || `${recurso.grupo_recurso}`;
         
         // Obtener nombre del tipo
         let tipoNombre = '';

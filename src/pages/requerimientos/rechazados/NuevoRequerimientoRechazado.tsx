@@ -12,6 +12,11 @@ import type { MenuItem } from 'primereact/menuitem';
 import { Breadcrumb, Progress, Tag } from 'antd';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth, RequerimientoRecursoRequest } from '../../../context/AuthContext';
+import {
+  HuellaAccionLogId,
+  HuellaMotivoId,
+  registrarHuellaMovimiento,
+} from '../../../utils/requerimientoHuellaLog';
 
 type WizardStep = 2 | 3;
 
@@ -270,6 +275,47 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
     }
   }, [wizardStep, selectedTipoId, loadInventarioNoRechazados]);
 
+  const resolveCreatedRequerimientoRecursoId = useCallback(async ({
+    requerimientoNumero,
+    usuarioEmisorId,
+    recursoGrupoId,
+    recursoTipoId,
+    usuarioReceptorId,
+  }: {
+    requerimientoNumero: string;
+    usuarioEmisorId: number;
+    recursoGrupoId: number;
+    recursoTipoId: number;
+    usuarioReceptorId: number;
+  }): Promise<number> => {
+    try {
+      const encodedNumero = encodeURIComponent(requerimientoNumero);
+      const endpoints = [
+        `${apiBase}/requerimiento-recursos/requeramiento_numero/${encodedNumero}/usuario_emisor_id/${usuarioEmisorId}`,
+        `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}/usuario_emisor_id/${usuarioEmisorId}`,
+      ];
+      for (const url of endpoints) {
+        const res = await authFetch(url, { headers: { accept: 'application/json' } });
+        if (!res.ok) continue;
+        const raw = await res.json();
+        const list = Array.isArray(raw) ? raw : [];
+        const found = list
+          .filter((it: any) =>
+            Number(it?.recurso_grupo_id ?? 0) === Number(recursoGrupoId) &&
+            Number(it?.recurso_tipo_id ?? 0) === Number(recursoTipoId) &&
+            Number(it?.usuario_receptor_id ?? 0) === Number(usuarioReceptorId)
+          )
+          .sort((a: any, b: any) => Number(b?.id ?? 0) - Number(a?.id ?? 0))[0];
+        const id = Number(found?.id ?? 0);
+        if (id > 0) return id;
+      }
+      return 0;
+    } catch (error) {
+      console.error('No se pudo resolver requerimiento_recurso_id creado:', error);
+      return 0;
+    }
+  }, [apiBase, authFetch]);
+
   const handleGrupoChange = (grupoId: number) => {
     setSelectedGrupoId(grupoId);
     setSelectedTipoId(null);
@@ -442,6 +488,21 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
         );
         return;
       }
+      void registrarHuellaMovimiento({
+        apiBase,
+        authFetch,
+        context: 'rechazados:deshabilitar_requerimiento_previo',
+        params: {
+          accionId: HuellaAccionLogId.REASIGNAR_MESA,
+          usuarioAccionId: Number(datosLogin?.usuario_id ?? 0),
+          coeOrigenId: Number(datosLogin?.coe_id ?? 0),
+          mesaOrigenId: Number(datosLogin?.mesa_id ?? 0),
+          motivoId: HuellaMotivoId.MESA_NO_COMPETENTE,
+          requerimientoNumero: String(prefilledRequerimientoNumero || ''),
+          requerimientoRecursoId: Number(prefilledRequerimientoId ?? 0),
+          respuestaFecha: new Date().toISOString(),
+        },
+      });
 
       const requerimientoNumeroUuid = prefilledRequerimientoNumero || generateUuid();
       setNumero(requerimientoNumeroUuid);
@@ -473,7 +534,35 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
         const ok = await createRequerimientoRecurso(recursoData);
         if (!ok) {
           alert(`Error al agregar recurso ${recurso.tipo}`);
+          continue;
         }
+        const requerimientoRecursoIdLog = await resolveCreatedRequerimientoRecursoId({
+          requerimientoNumero: String(requerimientoNumeroUuid),
+          usuarioEmisorId: Number(usuarioEmisorId ?? 0),
+          recursoGrupoId: Number(recurso.grupoId ?? 0),
+          recursoTipoId: Number(recurso.tipoId ?? 0),
+          usuarioReceptorId: Number(usuarioReceptorId ?? 0),
+        });
+        void registrarHuellaMovimiento({
+          apiBase,
+          authFetch,
+          context: 'rechazados:crear_reasignacion',
+          params: {
+            accionId: HuellaAccionLogId.REASIGNAR_MESA,
+            usuarioAccionId: Number(datosLogin?.usuario_id ?? 0),
+            cantidadSolicitada: Number(recurso.cantidad ?? 0),
+            coeOrigenId: Number(datosLogin?.coe_id ?? 0),
+            coeDestinoId: Number(datosLogin?.coe_id ?? 0),
+            mesaOrigenId: Number(datosLogin?.mesa_id ?? 0),
+            mesaDestinoId: Number(recurso.mesaId ?? 0),
+            motivoId: HuellaMotivoId.MESA_NO_COMPETENTE,
+            recursoGrupoId: Number(recurso.grupoId ?? 0),
+            recursoTipoId: Number(recurso.tipoId ?? 0),
+            requerimientoNumero: String(requerimientoNumeroUuid),
+            requerimientoRecursoId: Number(requerimientoRecursoIdLog ?? 0),
+            respuestaFecha: new Date().toISOString(),
+          },
+        });
       }
 
       alert('Reasignación registrada exitosamente');
