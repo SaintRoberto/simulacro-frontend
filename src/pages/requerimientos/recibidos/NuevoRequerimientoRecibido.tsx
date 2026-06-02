@@ -68,7 +68,7 @@ interface InventarioAsignacionRow {
   parroquia: string;
   existencias: number;
   disponible: number;
-  total_asignado_en_uso: number;
+  asignado_requerimiento: number;
   requerimiento_respuesta_id: number;
   cantidadAsignada: number;
   recurso_tipo_id: number;
@@ -244,10 +244,10 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
         parroquia: String(it?.parroquia ?? ''),
         existencias: Math.max(0, Number(it?.existencias ?? 0)),
         disponible: Math.max(0, Number(it?.disponible ?? 0)),
-        total_asignado_en_uso: Math.max(0, Number(it?.total_asignado_en_uso ?? 0)),
+        asignado_requerimiento: Math.max(0, Number(it?.asignado_requerimiento ?? 0)),
         requerimiento_respuesta_id: Math.max(0, Number(it?.requerimiento_respuesta_id ?? 0)),
         cantidadAsignada: Math.max(0, Number(it?.disponible ?? 0)) > 0
-          ? Math.max(0, Number(it?.total_asignado_en_uso ?? 0))
+          ? Math.max(0, Number(it?.asignado_requerimiento ?? 0))
           : 0,
         recurso_tipo_id: Number(it?.recurso_tipo_id ?? recursoTipoId),
         mesa_id: Number(it?.mesa_id ?? datosLogin.mesa_id),
@@ -367,8 +367,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
       if (editNumero) {
         const encodedNumero = encodeURIComponent(editNumero);
         const endpoints = [
-          `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}/usuario_emisor_id/${datosLogin?.usuario_id ?? 0}`,
-          `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}/usuario_emisor_id/${datosLogin?.usuario_id ?? 0}`,
+          `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}/usuario_receptor_id/${datosLogin?.usuario_id ?? 0}`
         ];
 
         let recursosApi: any[] = [];
@@ -706,35 +705,35 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
       }
 
       // 2) Actualizar estado del requerimiento
-      const resUpd = await authFetch(`${apiBase}/requerimientos/${editId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ porcentaje_avance: avance, requerimiento_estado_id: estadoIdAuto }),
-      });
-      if (!resUpd.ok) {
-        messageApi.warning('Respuestas guardadas, pero no se pudo actualizar el estado del requerimiento.');
-      } else {
-        secuenciaLog += 1;
-        void registrarHuellaMovimiento({
-          apiBase,
-          authFetch,
-          context: 'recibidos:cambiar_estado_requerimiento',
-          params: {
-            accionId: Number(avance) >= 100
-              ? HuellaAccionLogId.FINALIZAR_REQUERIMIENTO
-              : HuellaAccionLogId.INICIAR_PROCESAMIENTO,
-            usuarioAccionId,
-            cantidadSolicitada: Number(cantidadSolicitada ?? 0),
-            coeOrigenId: Number(datosLogin?.coe_id ?? 0),
-            mesaOrigenId: Number(datosLogin?.mesa_id ?? 0),
-            requerimientoNumero: String(numero || ''),
-            requerimientoRecursoId: Number(requerimientoRecursoIdParam ?? 0),
-            respuestaEstadoId: Number(estadoIdAuto ?? 0),
-            respuestaFecha: nowIso,
-            secuencia: secuenciaLog,
-          },
-        });
-      }
+      // const resUpd = await authFetch(`${apiBase}/requerimientos/${editId}`, {
+      //   method: 'PUT',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({ porcentaje_avance: avance, requerimiento_estado_id: estadoIdAuto }),
+      // });
+      // if (!resUpd.ok) {
+      //   messageApi.warning('Respuestas guardadas, pero no se pudo actualizar el estado del requerimiento.');
+      // } else {
+      //   secuenciaLog += 1;
+      //   void registrarHuellaMovimiento({
+      //     apiBase,
+      //     authFetch,
+      //     context: 'recibidos:cambiar_estado_requerimiento',
+      //     params: {
+      //       accionId: Number(avance) >= 100
+      //         ? HuellaAccionLogId.FINALIZAR_REQUERIMIENTO
+      //         : HuellaAccionLogId.INICIAR_PROCESAMIENTO,
+      //       usuarioAccionId,
+      //       cantidadSolicitada: Number(cantidadSolicitada ?? 0),
+      //       coeOrigenId: Number(datosLogin?.coe_id ?? 0),
+      //       mesaOrigenId: Number(datosLogin?.mesa_id ?? 0),
+      //       requerimientoNumero: String(numero || ''),
+      //       requerimientoRecursoId: Number(requerimientoRecursoIdParam ?? 0),
+      //       respuestaEstadoId: Number(estadoIdAuto ?? 0),
+      //       respuestaFecha: nowIso,
+      //       secuencia: secuenciaLog,
+      //     },
+      //   });
+      // }
 
       // 3) Refrescar historial y UI
       setFechaRespuesta(new Date());
@@ -840,7 +839,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
             <Column field="existencias" header="Existencias" />
             <Column field="disponible" header="Disponible" />
             <Column
-              header="Cantidad Asignada"
+              header="Cantidad Asignada al requerimiento"
               body={(row: InventarioAsignacionRow) => (
                 <div>
                   <InputNumber

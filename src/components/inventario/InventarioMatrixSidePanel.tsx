@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { InputNumber, Button, Typography, Space, Drawer, message, Spin, Select, Tabs, Table } from 'antd';
+import { InputNumber, Button, Typography, Space, Drawer, Tour, message, Spin, Select, Tabs, Table } from 'antd';
+import type { TourProps } from 'antd';
 import { useAuth } from '../../context/AuthContext';
 import InventarioMatrix, { Institucion, InventarioCellPayload, RecursoTipoRow, Mesa } from './InventarioMatrix';
 
@@ -125,6 +126,61 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
   const [drawerActiveTab, setDrawerActiveTab] = useState<'registro' | 'detalle'>('registro');
   const [detalleExistenciasRows, setDetalleExistenciasRows] = useState<DetalleExistenciaRow[]>([]);
   const [detalleExistenciasStatus, setDetalleExistenciasStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [tourOpen, setTourOpen] = useState(false);
+  const [tourCurrent, setTourCurrent] = useState(0);
+  const getTourTarget = useCallback((selector: string) => {
+    return document.querySelector(selector) as HTMLElement | null;
+  }, []);
+  const tourSteps: TourProps['steps'] = useMemo(
+    () => [
+      {
+        title: 'Guia de Inventario',
+        description: 'Este recorrido explica el flujo principal de la matriz y el panel lateral.',
+        target: () => getTourTarget('[data-tour="inventario-guia-btn"]'),
+      },
+      {
+        title: 'Grupo Recurso',
+        description: 'Seleccione el grupo para cargar los tipos de recurso disponibles.',
+        target: () => getTourTarget('[data-tour="inventario-grupo-recurso"]'),
+      },
+      {
+        title: 'Cargar Matriz',
+        description: 'Ejecute esta accion para consultar existencias por institucion.',
+        target: () => getTourTarget('[data-tour="inventario-cargar-matriz"]'),
+      },
+      {
+        title: 'Mesa',
+        description: 'Seleccione la mesa a consultar. Si su usuario ya tiene mesa fija, este filtro no aparece.',
+        target: () => getTourTarget('[data-tour="inventario-mesa"]'),
+      },
+      {
+        title: 'Celdas de Existencias',
+        description: 'Haga clic en una celda para abrir el panel y registrar o ajustar existencias por parroquia.',
+        target: () => getTourTarget('[data-tour="inventario-celda-existencia"]'),
+      },
+      {
+        title: 'Panel de Registro',
+        description: 'Desde aqui puede registrar cantidades por parroquia y revisar el total calculado.',
+        target: () => getTourTarget('[data-tour="inventario-registro-tab"]'),
+      },
+      {
+        title: 'Ingreso de Existencias por Parroquia',
+        description: 'Ingrese la cantidad de existencias para cada parroquia. Si no hay existencias, deje el campo vacío o en cero.',
+        target: () => getTourTarget('[data-tour="formulario-inventario-registro-parroquias"]'),
+      },
+      {
+        title: 'Detalle de Existencias',
+        description: 'Esta tabla muestra los registros guardados por provincia, canton y parroquia.',
+        target: () => getTourTarget('[data-tour="inventario-detalle-tabla"]'),
+      },
+      {
+        title: 'Guardar Cambios',
+        description: 'Guarde para persistir cambios y refrescar inmediatamente la matriz y el detalle.',
+        target: () => getTourTarget('[data-tour="inventario-guardar-btn"]'),
+      },
+    ],
+    [getTourTarget]
+  );
   const confirmDiscardUnsavedChanges = useCallback(() => {
     if (!drawerHasUnsavedChanges) return true;
     return window.confirm('Tienes cambios sin guardar. Si sales, se perderán. ¿Deseas continuar?');
@@ -632,6 +688,24 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     setDrawerOpen(true);
   }, [confirmDiscardUnsavedChanges, isUsuarioCantonal, isUsuarioNacional, isUsuarioProvincial, loginCantonId, loginProvinciaId]);
 
+  useEffect(() => {
+    if (!tourOpen) return;
+
+    if (tourCurrent >= 5 && !drawerOpen && rows.length > 0 && instituciones.length > 0) {
+      openCellPanel(rows[0], instituciones[0]);
+      return;
+    }
+
+    if (tourCurrent >= 6 && drawerOpen && drawerActiveTab !== 'detalle') {
+      setDrawerActiveTab('detalle');
+      return;
+    }
+
+    if (tourCurrent < 6 && drawerOpen && drawerActiveTab !== 'registro') {
+      setDrawerActiveTab('registro');
+    }
+  }, [drawerActiveTab, drawerOpen, instituciones, openCellPanel, rows, tourCurrent, tourOpen]);
+
   const handleParroquiaExistenciaChange = useCallback((parroquia: Parroquia, value: number | null) => {
     const safeValue = Math.max(0, Math.floor(Number(value ?? 0)));
     setDrawerHasUnsavedChanges(true);
@@ -963,7 +1037,29 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
   }, [drawerInitialDetalles, parroquiasOptions]);
 
   return (
-    <div>
+    <div data-tour="inventario-root">
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <Button
+          data-tour="inventario-guia-btn"
+          onClick={() => {
+            setDrawerActiveTab('registro');
+            setTourCurrent(0);
+            setTourOpen(true);
+          }}
+        >
+          Ver guia
+        </Button>
+      </div>
+      <Tour
+        open={tourOpen}
+        current={tourCurrent}
+        steps={tourSteps}
+        onChange={(next) => setTourCurrent(next)}
+        onClose={() => {
+          setTourOpen(false);
+          setTourCurrent(0);
+        }}
+      />
       <Spin spinning={loading && rows.length === 0}>
         <InventarioMatrix
           tableTitle={tableTitle}
@@ -996,182 +1092,186 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
         open={drawerOpen}
       >
         {selectedRow && selectedInstitucion ? (
-          <Space direction="vertical" size={12} style={{ width: '100%' }}>
-            <Tabs
-              activeKey={drawerActiveTab}
-              onChange={(key) => setDrawerActiveTab(key as 'registro' | 'detalle')}
-              items={[
-                {
-                  key: 'registro',
-                  label: 'Registro',
-                  children: (
-                    <div style={{ border: '1px solid #0ea5e9', borderRadius: 10, padding: 12, background: '#e0f2fe', boxShadow: '0 0 0 1px #9ed2e9' }}>
-                      <Text strong style={{ display: 'block', marginBottom: 8 }}>Registro de Inventario por Parroquia</Text>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
-                        {isUsuarioNacional ? (
-                          <div>
-                            <Text style={{ fontSize: 12, color: '#6b7280' }}>Provincia</Text>
-                            <Select
-                              placeholder="Seleccione provincia"
-                              options={provincias.map((p) => ({ label: p.nombre, value: p.id }))}
-                              value={drawerProvinciaId}
-                              onChange={onDrawerProvinciaChange}
-                              style={{ width: '100%' }}
-                              loading={geoLoading}
-                            />
-                          </div>
-                        ) : null}
-
-                        {(isUsuarioNacional || isUsuarioProvincial) ? (
-                          <div>
-                            <Text style={{ fontSize: 12, color: '#6b7280' }}>Cantón</Text>
-                            <Select
-                              placeholder="Seleccione cantón"
-                              options={cantones.map((c) => ({ label: c.nombre, value: c.id }))}
-                              value={drawerCantonId}
-                              onChange={onDrawerCantonChange}
-                              style={{ width: '100%' }}
-                              loading={geoLoading}
-                              disabled={isUsuarioNacional && !drawerProvinciaId}
-                            />
-                          </div>
-                        ) : null}
-
-                        <div>
-                          <Text style={{ fontSize: 12, color: '#6b7280' }}>Existencias por Parroquia</Text>
-                          <Spin spinning={geoLoading}>
-                            <div style={{ maxHeight: 450, overflowY: 'auto', border: '1px solid #bfdbfe', borderRadius: 8, background: '#fff', padding: 8 }}>
-                              {(isUsuarioNacional && !drawerProvinciaId) ? (
-                                <Text type="secondary">Seleccione una provincia para continuar.</Text>
-                              ) : ((isUsuarioNacional || isUsuarioProvincial) && !drawerCantonId) ? (
-                                <Text type="secondary">Seleccione un cantón para listar parroquias.</Text>
-                              ) : parroquiasOptions.length === 0 ? (
-                                <Text type="secondary">No hay parroquias disponibles para el cantón seleccionado.</Text>
-                              ) : (
-                                parroquiasOptions.map((parroquia) => (
-                                  <div
-                                    key={parroquia.id}
-                                    style={{
-                                      display: 'grid',
-                                      gridTemplateColumns: '1fr 110px',
-                                      gap: 8,
-                                      alignItems: 'center',
-                                      padding: '6px 4px',
-                                      borderBottom: '1px solid #f1f5f9',
-                                    }}
-                                  >
-                                    <Text>{parroquia.nombre}</Text>
-                                    <InputNumber
-                                      min={0}
-                                      precision={0}
-                                      value={drawerParroquiaValues[parroquia.id] ?? 0}
-                                      onChange={(value) => handleParroquiaExistenciaChange(parroquia, typeof value === 'number' ? value : 0)}
-                                      style={{ width: '100%' }}
-                                    />
-                                  </div>
-                                ))
-                              )}
+          <div data-tour="inventario-registro-tab">
+            <Space direction="vertical" size={12} style={{ width: '100%' }}>
+              <Tabs
+                activeKey={drawerActiveTab}
+                onChange={(key) => setDrawerActiveTab(key as 'registro' | 'detalle')}
+                items={[
+                  {
+                    key: 'registro',
+                    label: 'Registro',
+                    children: (
+                      <div style={{ border: '1px solid #0ea5e9', borderRadius: 10, padding: 12, background: '#e0f2fe', boxShadow: '0 0 0 1px #9ed2e9' }}>
+                        <Text strong style={{ display: 'block', marginBottom: 8 }}>Registro de Inventario por Parroquia</Text>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+                          {isUsuarioNacional ? (
+                            <div>
+                              <Text style={{ fontSize: 12, color: '#6b7280' }}>Provincia</Text>
+                              <Select
+                                placeholder="Seleccione provincia"
+                                options={provincias.map((p) => ({ label: p.nombre, value: p.id }))}
+                                value={drawerProvinciaId}
+                                onChange={onDrawerProvinciaChange}
+                                style={{ width: '100%' }}
+                                loading={geoLoading}
+                              />
                             </div>
-                          </Spin>
-                        </div>
+                          ) : null}
 
-                        <div>
-                          <Text style={{ fontSize: 12, color: '#6b7280' }}>Existencias (Total Calculado)</Text>
-                          <InputNumber
-                            type="number"
-                            min={0}
-                            value={drawerTotalExistencias}
-                            style={{ width: '100%' }}
-                            disabled
-                          />
+                          {(isUsuarioNacional || isUsuarioProvincial) ? (
+                            <div>
+                              <Text style={{ fontSize: 12, color: '#6b7280' }}>Cantón</Text>
+                              <Select
+                                placeholder="Seleccione cantón"
+                                options={cantones.map((c) => ({ label: c.nombre, value: c.id }))}
+                                value={drawerCantonId}
+                                onChange={onDrawerCantonChange}
+                                style={{ width: '100%' }}
+                                loading={geoLoading}
+                                disabled={isUsuarioNacional && !drawerProvinciaId}
+                              />
+                            </div>
+                          ) : null}
+
+                          <div data-tour="formulario-inventario-registro-parroquias" style={{ border: '1px solid #0ea5e9', borderRadius: 10, padding: 12, background: '#e0f2fe', boxShadow: '0 0 0 1px #9ed2e9' }}>
+                            <Text style={{ fontSize: 12, color: '#6b7280' }}>Existencias por Parroquia</Text>
+                            <Spin spinning={geoLoading}>
+                              <div style={{ maxHeight: 450, overflowY: 'auto', border: '1px solid #bfdbfe', borderRadius: 8, background: '#fff', padding: 8 }}>
+                                {(isUsuarioNacional && !drawerProvinciaId) ? (
+                                  <Text type="secondary">Seleccione una provincia para continuar.</Text>
+                                ) : ((isUsuarioNacional || isUsuarioProvincial) && !drawerCantonId) ? (
+                                  <Text type="secondary">Seleccione un cantón para listar parroquias.</Text>
+                                ) : parroquiasOptions.length === 0 ? (
+                                  <Text type="secondary">No hay parroquias disponibles para el cantón seleccionado.</Text>
+                                ) : (
+                                  parroquiasOptions.map((parroquia) => (
+                                    <div
+                                      key={parroquia.id}
+                                      style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: '1fr 110px',
+                                        gap: 8,
+                                        alignItems: 'center',
+                                        padding: '6px 4px',
+                                        borderBottom: '1px solid #f1f5f9',
+                                      }}
+                                    >
+                                      <Text>{parroquia.nombre}</Text>
+                                      <InputNumber
+                                        min={0}
+                                        precision={0}
+                                        value={drawerParroquiaValues[parroquia.id] ?? 0}
+                                        onChange={(value) => handleParroquiaExistenciaChange(parroquia, typeof value === 'number' ? value : 0)}
+                                        style={{ width: '100%' }}
+                                      />
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </Spin>
+                          </div>
+
+                          <div>
+                            <Text style={{ fontSize: 12, color: '#6b7280' }}>Existencias (Total Calculado)</Text>
+                            <InputNumber
+                              type="number"
+                              min={0}
+                              value={drawerTotalExistencias}
+                              style={{ width: '100%' }}
+                              disabled
+                            />
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ),
-                },
-                {
-                  key: 'detalle',
-                  label: 'Detalle de Existencias',
-                  children: (
-                    <div style={{ border: '1px solid #bfdbfe', borderRadius: 10, background: '#f8fbff', padding: 10 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                        <Text strong>Existencias Registradas</Text>
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                          {detalleExistenciasRows.length} fila(s)
-                        </Text>
+                    ),
+                  },
+                  {
+                    key: 'detalle',
+                    label: 'Detalle de Existencias',
+                    children: (
+                      <div data-tour="inventario-detalle-tabla" style={{ border: '1px solid #bfdbfe', borderRadius: 10, background: '#f8fbff', padding: 10 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                          <Text strong>Existencias Registradas</Text>
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            {detalleExistenciasRows.length} fila(s)
+                          </Text>
+                        </div>
+                        <Table<DetalleExistenciaRow>
+                          rowKey={(r) => `${r.id}_${r.parroquia_id}`}
+                          dataSource={detalleExistenciasRows}
+                          loading={detalleExistenciasStatus === 'loading'}
+                          pagination={{ pageSize: 20, size: 'small', hideOnSinglePage: true }}
+                          size="small"
+                          bordered
+                          sticky
+                          scroll={{ y: 400 }}
+                          style={{ fontSize: 6 }}
+                          tableLayout="fixed"
+                          onRow={() => ({ style: { whiteSpace: 'nowrap' } })}
+                          locale={{
+                            emptyText:
+                              detalleExistenciasStatus === 'error'
+                                ? 'No se pudo cargar el detalle de existencias.'
+                                : 'Sin existencias registradas.',
+                          }}
+                          columns={[
+                            {
+                              title: 'Provincia',
+                              dataIndex: 'provincia_id',
+                              key: 'provincia',
+                              ellipsis: true,
+                              onHeaderCell: () => ({ style: { fontSize: 11, padding: '6px 8px' } }),
+                              onCell: () => ({ style: { fontSize: 11, padding: '6px 8px', whiteSpace: 'nowrap' } }),
+                              render: (_: number, row: DetalleExistenciaRow) =>
+                                row.provincia || provinciaNameById.get(Number(row.provincia_id)) || `${row.provincia_id}`,
+                            },
+                            {
+                              title: 'Canton',
+                              dataIndex: 'canton_id',
+                              key: 'canton',
+                              ellipsis: true,
+                              onHeaderCell: () => ({ style: { fontSize: 11, padding: '6px 8px' } }),
+                              onCell: () => ({ style: { fontSize: 11, padding: '6px 8px', whiteSpace: 'nowrap' } }),
+                              render: (_: number, row: DetalleExistenciaRow) =>
+                                row.canton || cantonNameById.get(Number(row.canton_id)) || `${row.canton_id}`,
+                            },
+                            {
+                              title: 'Parroquia',
+                              dataIndex: 'parroquia_id',
+                              key: 'parroquia',
+                              ellipsis: true,
+                              onHeaderCell: () => ({ style: { fontSize: 11, padding: '6px 8px' } }),
+                              onCell: () => ({ style: { fontSize: 11, padding: '6px 8px', whiteSpace: 'nowrap' } }),
+                              render: (_: number, row: DetalleExistenciaRow) =>
+                                row.parroquia || parroquiaNameById.get(Number(row.parroquia_id)) || `${row.parroquia_id}`,
+                            },
+                            {
+                              title: 'Existencias',
+                              dataIndex: 'existencias',
+                              key: 'existencias',
+                              align: 'right',
+                              onHeaderCell: () => ({ style: { fontSize: 11, padding: '6px 8px' } }),
+                              onCell: () => ({ style: { fontSize: 11, padding: '6px 8px', whiteSpace: 'nowrap' } }),
+                              render: (value: number) => <Text strong style={{ fontSize: 11 }}>{value}</Text>,
+                            },
+                          ]}
+                        />
                       </div>
-                      <Table<DetalleExistenciaRow>
-                        rowKey={(r) => `${r.id}_${r.parroquia_id}`}
-                        dataSource={detalleExistenciasRows}
-                        loading={detalleExistenciasStatus === 'loading'}
-                        pagination={{ pageSize: 20, size: 'small', hideOnSinglePage: true }}
-                        size="small"
-                        bordered
-                        sticky
-                        scroll={{ y: 400 }}
-                        style={{ fontSize: 6 }}
-                        tableLayout="fixed"
-                        onRow={() => ({ style: { whiteSpace: 'nowrap' } })}
-                        locale={{
-                          emptyText:
-                            detalleExistenciasStatus === 'error'
-                              ? 'No se pudo cargar el detalle de existencias.'
-                              : 'Sin existencias registradas.',
-                        }}
-                        columns={[
-                          {
-                            title: 'Provincia',
-                            dataIndex: 'provincia_id',
-                            key: 'provincia',
-                            ellipsis: true,
-                            onHeaderCell: () => ({ style: { fontSize: 11, padding: '6px 8px' } }),
-                            onCell: () => ({ style: { fontSize: 11, padding: '6px 8px', whiteSpace: 'nowrap' } }),
-                            render: (_: number, row: DetalleExistenciaRow) =>
-                              row.provincia || provinciaNameById.get(Number(row.provincia_id)) || `${row.provincia_id}`,
-                          },
-                          {
-                            title: 'Canton',
-                            dataIndex: 'canton_id',
-                            key: 'canton',
-                            ellipsis: true,
-                            onHeaderCell: () => ({ style: { fontSize: 11, padding: '6px 8px' } }),
-                            onCell: () => ({ style: { fontSize: 11, padding: '6px 8px', whiteSpace: 'nowrap' } }),
-                            render: (_: number, row: DetalleExistenciaRow) =>
-                              row.canton || cantonNameById.get(Number(row.canton_id)) || `${row.canton_id}`,
-                          },
-                          {
-                            title: 'Parroquia',
-                            dataIndex: 'parroquia_id',
-                            key: 'parroquia',
-                            ellipsis: true,
-                            onHeaderCell: () => ({ style: { fontSize: 11, padding: '6px 8px' } }),
-                            onCell: () => ({ style: { fontSize: 11, padding: '6px 8px', whiteSpace: 'nowrap' } }),
-                            render: (_: number, row: DetalleExistenciaRow) =>
-                              row.parroquia || parroquiaNameById.get(Number(row.parroquia_id)) || `${row.parroquia_id}`,
-                          },
-                          {
-                            title: 'Existencias',
-                            dataIndex: 'existencias',
-                            key: 'existencias',
-                            align: 'right',
-                            onHeaderCell: () => ({ style: { fontSize: 11, padding: '6px 8px' } }),
-                            onCell: () => ({ style: { fontSize: 11, padding: '6px 8px', whiteSpace: 'nowrap' } }),
-                            render: (value: number) => <Text strong style={{ fontSize: 11 }}>{value}</Text>,
-                          },
-                        ]}
-                      />
-                    </div>
-                  ),
-                },
-              ]}
-            />
-            <Space>
-              <Button onClick={closeDrawer}>Cerrar</Button>
-              <Button type="primary" onClick={saveParroquia} loading={savingParroquia}>
-                Guardar
-              </Button>
+                    ),
+                  },
+                ]}
+              />
+              <Space>
+                <Button onClick={closeDrawer}>Cerrar</Button>
+                <div data-tour="inventario-guardar-btn">
+                  <Button type="primary" onClick={saveParroquia} loading={savingParroquia}>
+                    Guardar
+                  </Button>
+                </div>
+              </Space>
             </Space>
-          </Space>
+          </div>
         ) : null}
       </Drawer>
     </div>

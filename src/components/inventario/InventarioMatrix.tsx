@@ -101,6 +101,7 @@ export const InventarioMatrix: React.FC<InventarioMatrixProps> = ({
           <button
             type="button"
             onClick={() => onCellClick(row, inst)}
+            data-tour="inventario-celda-existencia"
             style={{
               width: '100%',
               border: isSelected ? '2px solid #0ea5e9' : '1px solid #d9d9d9',
@@ -113,7 +114,6 @@ export const InventarioMatrix: React.FC<InventarioMatrixProps> = ({
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <Text style={{ fontSize: 12 }}>Existencias</Text>
               <Text strong>{existencias}</Text>
             </div>
             
@@ -126,7 +126,7 @@ export const InventarioMatrix: React.FC<InventarioMatrixProps> = ({
   }, [instituciones, getCell, onCellClick, selectedInstitucionId, selectedRowId]);
 
   return (
-    <div>
+    <div data-tour="inventario-matriz-panel">
       <div style={{ marginBottom: 12 }}>
         <Text strong style={{ fontSize: 22 }}>{tableTitle}</Text>
       </div>
@@ -134,58 +134,66 @@ export const InventarioMatrix: React.FC<InventarioMatrixProps> = ({
       <Row gutter={[12, 12]} style={{ marginBottom: 8 }}>
         
         <Col xs={24} md={10} lg={6}>
-          <Space direction="vertical" size={4} style={{ width: '100%' }}>
-            <Text strong>Grupo Recurso</Text>
-            <Select
-              placeholder="Seleccione grupo de recurso"
-              options={recursoGrupos.map((g) => ({ label: g.nombre, value: g.id }))}
-              value={selectedGrupoId}
-              onChange={(value) => onGrupoChange(value)}
-              disabled={recursoGruposStatus === 'loading'}
-              loading={recursoGruposStatus === 'loading'}
-              style={{ width: '100%' }}
-              showSearch
-              optionFilterProp="label"
-            />
-          </Space>
-        </Col>
-        {!hideMesaSelector && (
-          <Col xs={24} md={10} lg={6}>
+          <div data-tour="inventario-grupo-recurso">
             <Space direction="vertical" size={4} style={{ width: '100%' }}>
-              <Text strong>Mesa</Text>
+              <Text strong>Grupo Recurso</Text>
               <Select
-                placeholder="Seleccione mesa"
-                options={mesas.map((m) => ({ label: m.grupo_mesa_abreviatura ? `${m.grupo_mesa_abreviatura} - ${m.nombre}` : m.nombre, value: m.id }))}
-                value={selectedMesaId}
-                onChange={(value) => onMesaChange(value)}
-                disabled={mesasStatus === 'loading'}
-                loading={mesasStatus === 'loading'}
+                placeholder="Seleccione grupo de recurso"
+                options={recursoGrupos.map((g) => ({ label: g.nombre, value: g.id }))}
+                value={selectedGrupoId}
+                onChange={(value) => onGrupoChange(value)}
+                disabled={recursoGruposStatus === 'loading'}
+                loading={recursoGruposStatus === 'loading'}
                 style={{ width: '100%' }}
                 showSearch
                 optionFilterProp="label"
               />
             </Space>
+          </div>
+        </Col>
+        {!hideMesaSelector && (
+          <Col xs={24} md={10} lg={6}>
+            <div data-tour="inventario-mesa">
+              <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                <Text strong>Mesa</Text>
+                <Select
+                  placeholder="Seleccione mesa"
+                  options={mesas.map((m) => ({ label: m.grupo_mesa_abreviatura ? `${m.grupo_mesa_abreviatura} - ${m.nombre}` : m.nombre, value: m.id }))}
+                  value={selectedMesaId}
+                  onChange={(value) => onMesaChange(value)}
+                  disabled={mesasStatus === 'loading'}
+                  loading={mesasStatus === 'loading'}
+                  style={{ width: '100%' }}
+                  showSearch
+                  optionFilterProp="label"
+                />
+              </Space>
+            </div>
           </Col>
         )}
         <Col xs={24} md={8} lg={2} style={{ display: 'flex', alignItems: 'end' }}>
-          <Button type="default" onClick={onLoadMatrix} disabled={loadDisabled} loading={loading}>
-            Cargar Matriz
-          </Button>
+          <div data-tour="inventario-cargar-matriz">
+            <Button type="default" onClick={onLoadMatrix} disabled={loadDisabled} loading={loading}>
+              Cargar Matriz
+            </Button>
+          </div>
           
         </Col>
       </Row>
 
-      <Table<RecursoTipoRow>
-        rowKey={(r) => `${r.recurso_tipo_id}`}
-        dataSource={rows}
-        columns={columns}
-        pagination={false}
-        scroll={{ x: 1200, y: 550 }}
-        sticky
-        bordered
-        size="middle"
-        loading={loading}
-      />
+      <div data-tour="inventario-tabla-matriz">
+        <Table<RecursoTipoRow>
+          rowKey={(r) => `${r.recurso_tipo_id}`}
+          dataSource={rows}
+          columns={columns}
+          pagination={false}
+          scroll={{ x: 1200, y: 550 }}
+          sticky
+          bordered
+          size="middle"
+          loading={loading}
+        />
+      </div>
     </div>
   );
 };

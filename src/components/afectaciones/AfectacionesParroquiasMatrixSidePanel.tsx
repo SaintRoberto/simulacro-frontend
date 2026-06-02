@@ -21,6 +21,7 @@ type AfectacionVariable = {
   requiere_costo: boolean;
   requiere_gis: boolean;
   dato_tipo_id?: number;
+  infraestructura_tipo_id?: number;
 };
 
 type AfectacionCellPayload = {
@@ -106,6 +107,7 @@ export const AfectacionesParroquiasMatrixSidePanel: React.FC<AfectacionesParroqu
   const [infraLoading, setInfraLoading] = useState(false);
   const [infraList, setInfraList] = useState<InfraDetalle[]>([]);
   const [infraChecked, setInfraChecked] = useState<number[]>([]);
+  const [infraestructuraTipoId, setInfraestructuraTipoId] = useState<number | null>(null);
 
   useEffect(() => {
     if (datosLogin?.provincia_id && provinciaId === undefined) setProvinciaId(datosLogin.provincia_id);
@@ -266,8 +268,47 @@ export const AfectacionesParroquiasMatrixSidePanel: React.FC<AfectacionesParroqu
   };
 
   useEffect(() => {
+    let mounted = true;
+    const loadSelectedVariable = async () => {
+      if (!drawerOpen || !selectedVar) {
+        if (mounted) setInfraestructuraTipoId(null);
+        return;
+      }
+
+      if (typeof selectedVar.infraestructura_tipo_id === 'number') {
+        setInfraestructuraTipoId(selectedVar.infraestructura_tipo_id);
+        return;
+      }
+
+      try {
+        const res = await authFetch(`${apiBase}/afectacion_variables/${selectedVar.id}`, {
+          headers: { accept: 'application/json' },
+        });
+        const data = res.ok ? await res.json() : null;
+        if (!mounted) return;
+        setInfraestructuraTipoId(
+          typeof data?.infraestructura_tipo_id === 'number' ? data.infraestructura_tipo_id : -1
+        );
+      } catch {
+        if (mounted) setInfraestructuraTipoId(-1);
+      }
+    };
+
+    loadSelectedVariable();
+    return () => {
+      mounted = false;
+    };
+  }, [apiBase, authFetch, drawerOpen, selectedVar]);
+
+  const shouldShowInfraestructura = infraestructuraTipoId !== -1 && infraestructuraTipoId !== null;
+
+  useEffect(() => {
     const loadInfra = async () => {
-      if (!drawerOpen || !selectedRow || !selectedVar) return;
+      if (!drawerOpen || !selectedRow || !selectedVar || !shouldShowInfraestructura) {
+        setInfraList([]);
+        setInfraChecked([]);
+        return;
+      }
       setInfraLoading(true);
       try {
         const url = `${apiBase}/afectacion_variable_registro_detalles/emergencia/${emergencyId}/variable/${selectedVar.id}/parroquia/${selectedRow.parroquia_id}`;
@@ -281,7 +322,7 @@ export const AfectacionesParroquiasMatrixSidePanel: React.FC<AfectacionesParroqu
       }
     };
     loadInfra();
-  }, [apiBase, authFetch, drawerOpen, emergencyId, selectedRow, selectedVar]);
+  }, [apiBase, authFetch, drawerOpen, emergencyId, selectedRow, selectedVar, shouldShowInfraestructura]);
 
   const applyDrawerToMatrix = () => {
     if (!selectedRowKey || !selectedVar) return;
@@ -346,7 +387,7 @@ export const AfectacionesParroquiasMatrixSidePanel: React.FC<AfectacionesParroqu
   }, [apiBase, authFetch, cantonSelId, datosLogin?.usuario_login, draftCantidad, draftCosto, emergencyId, provinciaId, recordIds, selectedRow, selectedRowKey, selectedVar]);
 
   const saveInfraFromDrawer = async () => {
-    if (isNacionalReadOnly || !selectedVar || !selectedRow) return;
+    if (isNacionalReadOnly || !selectedVar || !selectedRow || !shouldShowInfraestructura) return;
     applyDrawerToMatrix();
     const registroId = await ensureRegistroIdForSelected();
     if (!registroId) {
@@ -622,32 +663,40 @@ export const AfectacionesParroquiasMatrixSidePanel: React.FC<AfectacionesParroqu
               </Row>
             </div>
 
-            <div style={{ border: '1px solid #dbeafe', borderRadius: 10, padding: 12, background: '#f8fbff' }}>
-              <Text strong style={{ display: 'block', marginBottom: 8 }}>Infraestructura</Text>
-              <Spin spinning={infraLoading}>
-                <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, background: '#fff' }}>
-                  {infraList.map(item => (
-                    <div key={item.infraestructura_id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 4px', borderBottom: '1px solid #f3f4f6' }}>
-                      <input
-                        type="checkbox"
-                        checked={infraChecked.includes(item.infraestructura_id)}
-                        disabled={isNacionalReadOnly}
-                        onChange={(e) => {
-                          const checked = e.currentTarget.checked;
-                          setInfraChecked(prev => checked ? [...prev, item.infraestructura_id] : prev.filter(id => id !== item.infraestructura_id));
-                        }}
-                      />
-                      <span>{item.nombre}</span>
+            {shouldShowInfraestructura ? (
+              <>
+                <div style={{ border: '1px solid #dbeafe', borderRadius: 10, padding: 12, background: '#f8fbff' }}>
+                  <Text strong style={{ display: 'block', marginBottom: 8 }}>Infraestructura</Text>
+                  <Spin spinning={infraLoading}>
+                    <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, background: '#fff' }}>
+                      {infraList.map(item => (
+                        <div key={item.infraestructura_id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 4px', borderBottom: '1px solid #f3f4f6' }}>
+                          <input
+                            type="checkbox"
+                            checked={infraChecked.includes(item.infraestructura_id)}
+                            disabled={isNacionalReadOnly}
+                            onChange={(e) => {
+                              const checked = e.currentTarget.checked;
+                              setInfraChecked(prev => checked ? [...prev, item.infraestructura_id] : prev.filter(id => id !== item.infraestructura_id));
+                            }}
+                          />
+                          <span>{item.nombre}</span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </Spin>
                 </div>
-              </Spin>
-            </div>
 
-            <Space>
-              <Button onClick={() => setDrawerOpen(false)}>Cerrar</Button>
-              <Button type="primary" onClick={saveInfraFromDrawer} loading={infraLoading} disabled={isNacionalReadOnly}>Guardar Infraestructura</Button>
-            </Space>
+                <Space>
+                  <Button onClick={() => setDrawerOpen(false)}>Cancelar</Button>
+                  <Button type="primary" onClick={saveInfraFromDrawer} loading={infraLoading} disabled={isNacionalReadOnly}>Guardar Infraestructura</Button>
+                </Space>
+              </>
+            ) : (
+              <Space>
+                <Button onClick={() => setDrawerOpen(false)}>Cerrar</Button>
+              </Space>
+            )}
           </Space>
         ) : null}
       </Drawer>
