@@ -51,6 +51,7 @@ interface RequerimientoRechazadoAPI {
 
 const RECHAZADO_ESTADO_ID = 4;
 const REASIGNADO_ESTADO_ID = 1;
+const ESCALADO_ESTADO_ID = 5;
 
 export const RequerimientosRechazados: React.FC = () => {
   const [requerimientos, setRequerimientos] = useState<RequerimientoRechazado[]>([]);
@@ -197,20 +198,20 @@ export const RequerimientosRechazados: React.FC = () => {
         return;
       }
 
-      const estadoEndpoint = `${apiBase}/requerimiento-recursos/${reqRecursoId}`;
-      const estadoRes = await authFetch(estadoEndpoint, {
-        method: 'PATCH',
-        headers: {
-          accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ requerimiento_estado_id: Number(REASIGNADO_ESTADO_ID) }),
-      });
+      // const estadoEndpoint = `${apiBase}/requerimiento-recursos/${reqRecursoId}`;
+      // const estadoRes = await authFetch(estadoEndpoint, {
+      //   method: 'PATCH',
+      //   headers: {
+      //     accept: 'application/json',
+      //     'Content-Type': 'application/json',
+      //   },
+      //   body: JSON.stringify({ requerimiento_estado_id: Number(ESCALADO_ESTADO_ID) }),
+      // });
 
-      if (!estadoRes.ok) {
-        alert('El requerimiento fue reasignado al usuario superior, pero no se pudo actualizar su estado.');
-        return;
-      }
+      // if (!estadoRes.ok) {
+      //   alert('El requerimiento fue reasignado al usuario superior, pero no se pudo actualizar su estado.');
+      //   return;
+      // }
 
       alert('Requerimiento enviado a nivel superior y estado actualizado correctamente.');
       await loadRequerimientos();
