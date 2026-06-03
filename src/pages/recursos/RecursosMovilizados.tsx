@@ -20,7 +20,9 @@ interface RecursoMovilizadoListItem {
   fecha_inicio: string | null;
   fecha_fin: string | null;
   latitud: number | null;
+  latitud_destino?: number | null;
   longitud: number | null;
+  longitud_destino?: number | null;
   cantidad?: number;
   recurso_inventario_id?: number;
   provincia_id?: number;
@@ -45,6 +47,7 @@ interface RecursoMovilizadoPayload {
   latitud_destino: number | null;
   longitud: number | null;
   longitud_destino: number | null;
+  modificacion?: string | null;
   modificador: string;
   parroquia_destino_id: number;
   parroquia_id: number;
@@ -229,7 +232,13 @@ export const RecursosMovilizados: React.FC = () => {
       } else {
         const data = await res.json();
         setRows(
-          Array.isArray(data) ? (data as RecursoMovilizadoListItem[]) : []
+          Array.isArray(data)
+            ? data.map((item: any) => ({
+                ...item,
+                latitud: item?.latitud_destino ?? item?.latitud ?? null,
+                longitud: item?.longitud_destino ?? item?.longitud ?? null,
+              })) as RecursoMovilizadoListItem[]
+            : []
         );
       }
     } catch {
@@ -257,9 +266,6 @@ export const RecursosMovilizados: React.FC = () => {
       : Number(loginProvinciaId || payload.provincia_id || 0);
     const resolvedCantonId = Number(payload.canton_id ?? loginCantonId ?? 0);
     const resolvedParroquiaId = Number(payload.parroquia_id ?? 0);
-    const resolvedInventarioId = Number(
-      payload.recurso_inventario_id ?? payload.recurso_tipo_id ?? 0
-    );
     const provinciaDestinoId =
       Number(payload.provincia_destino_id ?? 0) > 0
         ? Number(payload.provincia_destino_id)
@@ -276,24 +282,30 @@ export const RecursosMovilizados: React.FC = () => {
     const id = (payload as any)?.id ?? (payload as any)?.recurso_id;
     const isEdit = !!id;
 
-    const body = {
+    const baseBody = {
       activo: payload.activo ?? true,
       cantidad_asignada: Number(payload.cantidad_asignada ?? 0),
       canton_destino_id: cantonDestinoId,
       emergencia_id: Number(payload.emergencia_id ?? (selectedEmergenciaId || 0)),
-      factor: Number(payload.factor ?? 0),
       fecha_fin: payload.fecha_fin ?? null,
       fecha_inicio:
         payload.fecha_inicio ?? new Date().toISOString().substring(0, 19),
-      latitud: Number(payload.latitud ?? 0),
+      institucion_id: Number(payload.institucion_id ?? 0),
       latitud_destino: Number(payload.latitud_destino ?? payload.latitud ?? 0),
-      longitud: Number(payload.longitud ?? 0),
       longitud_destino: Number(payload.longitud_destino ?? payload.longitud ?? 0),
       modificador: payload.modificador ?? creator,
       parroquia_destino_id: parroquiaDestinoId,
       provincia_destino_id: provinciaDestinoId,
-      recurso_inventario_id: resolvedInventarioId,
+      recurso_tipo_id: Number(payload.recurso_tipo_id ?? payload.recurso_inventario_id ?? 0),
     };
+    const body = isEdit
+      ? baseBody
+      : {
+          ...baseBody,
+          creador: payload.creador ?? creator,
+          modificacion:
+            payload.modificacion ?? new Date().toISOString().substring(0, 19),
+        };
 
     const url = isEdit
       ? `${apiBase}/recursos_movilizados/${id}`
@@ -747,10 +759,10 @@ export const RecursosMovilizados: React.FC = () => {
       fecha_inicio:
         (detail?.fecha_inicio ?? row.fecha_inicio) ||
         new Date().toISOString().substring(0, 19),
-      latitud: detail?.latitud ?? row.latitud ?? null,
-      latitud_destino: detail?.latitud_destino ?? row.latitud ?? null,
-      longitud: detail?.longitud ?? row.longitud ?? null,
-      longitud_destino: detail?.longitud_destino ?? row.longitud ?? null,
+      latitud: detail?.latitud_destino ?? detail?.latitud ?? row.latitud_destino ?? row.latitud ?? null,
+      latitud_destino: detail?.latitud_destino ?? row.latitud_destino ?? row.latitud ?? null,
+      longitud: detail?.longitud_destino ?? detail?.longitud ?? row.longitud_destino ?? row.longitud ?? null,
+      longitud_destino: detail?.longitud_destino ?? row.longitud_destino ?? row.longitud ?? null,
       modificador:
         detail?.modificador ||
         datosLogin?.usuario_login ||
@@ -786,7 +798,6 @@ export const RecursosMovilizados: React.FC = () => {
       body: (r: RecursoMovilizadoListItem) =>
         Number(r.disponible) === 1 || r.disponible === true ? "Si" : "No",
     },
-    { field: "factor", header: "Factor", sortable: true },
     { field: "fecha_inicio", header: "Fecha Inicio", sortable: true },
     { field: "fecha_fin", header: "Fecha Fin", sortable: true },
     { field: "latitud", header: "Latitud", sortable: true },
