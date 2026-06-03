@@ -96,7 +96,7 @@ interface RequerimientoRespuestaRecord {
 
 export const NuevoRequerimientoRecibido: React.FC = () => {
   const [searchParams] = useSearchParams();
-  const _navigate = useNavigate();
+  const navigate = useNavigate();
   const editId = useMemo(() => {
     const idStr = searchParams.get('id');
     const n = idStr ? Number(idStr) : NaN;
@@ -176,28 +176,31 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
     })();
   }, [getRequerimientoEstados, datosLogin, responsable]);
 
-  const resolveEstadoIdByAvance = useCallback((porcentaje: number): number => {
-    const targetName = porcentaje >= 100 ? 'completado' : 'en proceso';
-    const found = estados.find((e) => (e.nombre || '').toLowerCase().includes(targetName));
-    if (found) return found.id;
-    // fallback defensivo si catalogo no coincide literalmente
-    return porcentaje >= 100
-      ? (estados[estados.length - 1]?.id ?? 0)
-      : (estados[0]?.id ?? 0);
-  }, [estados]);
-
   const handleCantidadAsignadaChange = (rowId: number, value: number | null) => {
+    const row = inventarioRows.find((it) => it.id === rowId);
+    if (!row) return;
+
+    if (isEditing && diferenciaCantidad === 0) {
+      return;
+    }
+
+    if (Number(row.disponible ?? 0) <= 0) {
+      setInventarioRows((prev) =>
+        prev.map((item) => (item.id === rowId ? { ...item, cantidadAsignada: 0 } : item))
+      );
+      return;
+    }
+
     const parsed = Math.floor(Number(value ?? 0));
     const saneValue = Number.isFinite(parsed) ? parsed : 0;
     const bounded = Math.max(0, saneValue);
-    const row = inventarioRows.find((it) => it.id === rowId);
     if (row && bounded > row.existencias) {
       messageApi.error(`Cantidad asignada no puede superar existencias (${row.existencias}).`);
     }
     setInventarioRows((prev) =>
-      prev.map((row) => {
-        if (row.id !== rowId) return row;
-        return { ...row, cantidadAsignada: bounded };
+      prev.map((item) => {
+        if (item.id !== rowId) return item;
+        return { ...item, cantidadAsignada: bounded };
       })
     );
   };
@@ -221,6 +224,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
   }, [recursoInventarioSeleccionado, cantidadSolicitadaParam]);
 
   const diferenciaCantidad = useMemo(() => cantidadSolicitada - totalCantidadAsignada, [cantidadSolicitada, totalCantidadAsignada]);
+  const isEditing = Boolean(editId || editNumero);
 
   const loadInventarioAsignacion = useCallback(async (recursoTipoId: number) => {
     if (!recursoTipoId || !datosLogin?.coe_id || !datosLogin?.mesa_id) {
@@ -245,10 +249,11 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
         existencias: Math.max(0, Number(it?.existencias ?? 0)),
         disponible: Math.max(0, Number(it?.disponible ?? 0)),
         asignado_requerimiento: Math.max(0, Number(it?.asignado_requerimiento ?? 0)),
-        requerimiento_respuesta_id: Math.max(0, Number(it?.requerimiento_respuesta_id ?? 0)),
-        cantidadAsignada: Math.max(0, Number(it?.disponible ?? 0)) > 0
-          ? Math.max(0, Number(it?.asignado_requerimiento ?? 0))
-          : 0,
+        requerimiento_respuesta_id: Math.max(
+          0,
+          Number(it?.requerimiento_respuesta_id ?? it?.requerimiento_respuesta_ids?.[0] ?? 0)
+        ),
+        cantidadAsignada: Math.max(0, Number(it?.asignado_requerimiento ?? 0)),
         recurso_tipo_id: Number(it?.recurso_tipo_id ?? recursoTipoId),
         mesa_id: Number(it?.mesa_id ?? datosLogin.mesa_id),
         coe_id: Number(it?.coe_id ?? datosLogin.coe_id),
@@ -560,7 +565,9 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
       const nowIso = (fechaRespuesta || new Date()).toISOString();
       const usuarioActual = datosLogin?.usuario_login || responsable || '';
       const usuarioAccionId = Number(datosLogin?.usuario_id ?? 0);
-      const estadoIdAuto = resolveEstadoIdByAvance(avance);
+      const porcentajeAvanceCalculado = Number(avance ?? 0);
+      const respuestaEstadoIdAuto = porcentajeAvanceCalculado === 100 ? 3 : 2;
+      const requerimientoEstadoIdAuto = porcentajeAvanceCalculado === 100 ? 3 : 2;
       let secuenciaLog = Number(historial.length ?? 0);
       let respuestasMap = respuestasPreviasByInventarioId;
       const resPrevias = await authFetch(`${apiBase}/requerimiento-respuestas/${editId}`, {
@@ -575,8 +582,87 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
         setRespuestasPreviasByInventarioId(respuestasMap);
       }
 
-      const rowsToUpdate = inventarioRows.filter((r) => Number(r.requerimiento_respuesta_id) > 0);
-      const rowsToCreate = inventarioRows.filter((r) => Number(r.requerimiento_respuesta_id) <= 0 && Number(r.cantidadAsignada) > 0);
+      const hasExistingRespuesta = (row: InventarioAsignacionRow) =>
+        Number(row.requerimiento_respuesta_id) > 0 || Boolean(respuestasMap[row.id]);
+
+      const patchEstadoRequerimientoRecurso = async (requerimientoRecursoId: number) => {
+        const resEstado = await authFetch(
+          `${apiBase}/requerimiento-recursos/${requerimientoRecursoId}/actualiza-estado-requerimiento`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              modificador: usuarioActual,
+              porcentaje_avance: porcentajeAvanceCalculado,
+              requerimiento_estado_id: requerimientoEstadoIdAuto,
+            }),
+          }
+        );
+
+        if (!resEstado.ok) {
+          messageApi.error('No se pudo actualizar el estado del requerimiento recurso.');
+          return false;
+        }
+
+        return true;
+      };
+
+      const shouldLiberarInventario = isEditing && porcentajeAvanceCalculado === 100 && respuestaEstadoIdAuto === 3;
+
+      const liberarInventarioRespuesta = async (requerimientoRespuestaId: number, recursoInventarioId: number) => {
+        if (!shouldLiberarInventario) return true;
+
+        const resLibera = await authFetch(
+          `${apiBase}/requerimiento-respuestas/${requerimientoRespuestaId}/libera-inventario/${recursoInventarioId}`,
+          {
+            method: 'PATCH',
+            headers: { accept: 'application/json' },
+          }
+        );
+
+        if (!resLibera.ok) {
+          messageApi.error('No se pudo liberar el inventario de la respuesta.');
+          return false;
+        }
+
+        return true;
+      };
+
+      const actualizarAvanceRespuesta = async (
+        respuestaId: number,
+        existente: RequerimientoRespuestaRecord | undefined,
+        row: InventarioAsignacionRow,
+        requerimientoRecursoId: number
+      ) => {
+        const resAvance = await authFetch(`${apiBase}/requerimiento-respuestas/${respuestaId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            activo: existente?.activo ?? true,
+            cantidad_asignada: Number(row.cantidadAsignada),
+            factor: Number(existente?.factor ?? 1),
+            modificacion: nowIso,
+            modificador: usuarioActual,
+            porcentaje_avance: porcentajeAvanceCalculado,
+            recurso_inventario_id: Number(row.id ?? 0),
+            requerimiento_recurso_id: requerimientoRecursoId,
+            responsable: existente?.responsable || responsable,
+            respuesta_estado_id: respuestaEstadoIdAuto,
+            respuesta_fecha: existente?.respuesta_fecha || nowIso,
+            situacion_actual: existente?.situacion_actual || situacion,
+          }),
+        });
+
+        if (!resAvance.ok) {
+          messageApi.error('No se pudo actualizar el avance y estado de la respuesta.');
+          return false;
+        }
+
+        return true;
+      };
+
+      const rowsToUpdate = inventarioRows.filter((r) => hasExistingRespuesta(r));
+      const rowsToCreate = inventarioRows.filter((r) => !hasExistingRespuesta(r) && Number(r.cantidadAsignada) > 0);
       if (rowsToUpdate.length === 0 && rowsToCreate.length === 0) {
         messageApi.error('Debe ingresar al menos una cantidad asignada mayor a cero.');
         return;
@@ -585,34 +671,48 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
       for (const row of rowsToUpdate) {
         const existente = respuestasMap[row.id];
         const respuestaId = Number(row.requerimiento_respuesta_id ?? existente?.id ?? 0);
-        if (!respuestaId) {
+        const recursoInventarioId = Number(row.id ?? 0);
+        const requerimientoRecursoId = Number(existente?.requerimiento_recurso_id ?? requerimientoRecursoIdParam ?? 0);
+        if (!respuestaId || !recursoInventarioId || !requerimientoRecursoId) {
           messageApi.error('No se pudo resolver la respuesta previa para actualizar.');
           return;
         }
 
         const payload = {
-          activo: existente?.activo ?? true,
           cantidad_asignada: Number(row.cantidadAsignada),
-          factor: Number(existente?.factor ?? 1),
-          modificacion: nowIso,
-          modificador: usuarioActual,
-          porcentaje_avance: Number(existente?.porcentaje_avance ?? avance),
-          recurso_inventario_id: Number(row.id ?? 0),
-          requerimiento_recurso_id: Number(existente?.requerimiento_recurso_id ?? requerimientoRecursoIdParam ?? 0),
-          responsable: existente?.responsable || responsable,
-          respuesta_estado_id: Number(existente?.respuesta_estado_id ?? estadoIdAuto),
-          respuesta_fecha: existente?.respuesta_fecha || nowIso,
-          situacion_actual: existente?.situacion_actual || situacion,
         };
 
-        const res = await authFetch(`${apiBase}/requerimiento-respuestas/${respuestaId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
+        const res = await authFetch(
+          `${apiBase}/requerimiento-respuesta/${respuestaId}/requerimiento-recurso/${requerimientoRecursoId}`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          }
+        );
 
         if (!res.ok) {
-          messageApi.error('No se pudo actualizar una o mas respuestas del inventario.');
+          messageApi.error('No se pudo actualizar una o mas cantidades asignadas del inventario.');
+          return;
+        }
+
+        const respuestaActualizada = await actualizarAvanceRespuesta(
+          respuestaId,
+          existente,
+          row,
+          requerimientoRecursoId
+        );
+        if (!respuestaActualizada) {
+          return;
+        }
+
+        const estadoActualizado = await patchEstadoRequerimientoRecurso(requerimientoRecursoId);
+        if (!estadoActualizado) {
+          return;
+        }
+
+        const inventarioLiberado = await liberarInventarioRespuesta(respuestaId, recursoInventarioId);
+        if (!inventarioLiberado) {
           return;
         }
 
@@ -631,12 +731,12 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
             mesaOrigenId: Number(datosLogin?.mesa_id ?? 0),
             mesaDestinoId: Number(row.mesa_id ?? 0),
             recursoGrupoId: Number(recursoInventarioSeleccionado?.grupoId ?? 0),
-            recursoInventarioId: Number(row.id ?? 0),
+            recursoInventarioId,
             recursoTipoId: Number(row.recurso_tipo_id ?? 0),
             requerimientoNumero: String(numero || ''),
-            requerimientoRecursoId: Number(payload.requerimiento_recurso_id ?? 0),
-            respuestaEstadoId: Number(payload.respuesta_estado_id ?? 0),
-            respuestaFecha: String(payload.respuesta_fecha ?? nowIso),
+            requerimientoRecursoId,
+            respuestaEstadoId: Number(respuestaEstadoIdAuto ?? 0),
+            respuestaFecha: nowIso,
             secuencia: secuenciaLog,
           },
         });
@@ -658,11 +758,11 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
           factor: 1,
           modificacion: nowIso,
           modificador: usuarioActual,
-          porcentaje_avance: avance,
+          porcentaje_avance: porcentajeAvanceCalculado,
           recurso_inventario_id: recursoInventarioId,
           requerimiento_recurso_id: requerimientoRecursoId,
           responsable,
-          respuesta_estado_id: estadoIdAuto,
+          respuesta_estado_id: respuestaEstadoIdAuto,
           respuesta_fecha: nowIso,
           situacion_actual: situacion,
         };
@@ -676,6 +776,21 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
         if (!res.ok) {
           messageApi.error('No se pudo registrar una o más respuestas del inventario.');
           return;
+        }
+
+        const createdResponse = await res.json().catch(() => null);
+        const createdRespuestaId = Number(createdResponse?.id ?? 0);
+
+        const estadoActualizado = await patchEstadoRequerimientoRecurso(requerimientoRecursoId);
+        if (!estadoActualizado) {
+          return;
+        }
+
+        if (createdRespuestaId > 0) {
+          const inventarioLiberado = await liberarInventarioRespuesta(createdRespuestaId, recursoInventarioId);
+          if (!inventarioLiberado) {
+            return;
+          }
         }
 
         secuenciaLog += 1;
@@ -697,48 +812,27 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
             recursoTipoId: Number(row.recurso_tipo_id ?? 0),
             requerimientoNumero: String(numero || ''),
             requerimientoRecursoId: Number(requerimientoRecursoId ?? 0),
-            respuestaEstadoId: Number(estadoIdAuto ?? 0),
+            respuestaEstadoId: Number(respuestaEstadoIdAuto ?? 0),
             respuestaFecha: nowIso,
             secuencia: secuenciaLog,
           },
         });
       }
 
-      // 2) Actualizar estado del requerimiento
-      // const resUpd = await authFetch(`${apiBase}/requerimientos/${editId}`, {
-      //   method: 'PUT',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ porcentaje_avance: avance, requerimiento_estado_id: estadoIdAuto }),
-      // });
-      // if (!resUpd.ok) {
-      //   messageApi.warning('Respuestas guardadas, pero no se pudo actualizar el estado del requerimiento.');
-      // } else {
-      //   secuenciaLog += 1;
-      //   void registrarHuellaMovimiento({
-      //     apiBase,
-      //     authFetch,
-      //     context: 'recibidos:cambiar_estado_requerimiento',
-      //     params: {
-      //       accionId: Number(avance) >= 100
-      //         ? HuellaAccionLogId.FINALIZAR_REQUERIMIENTO
-      //         : HuellaAccionLogId.INICIAR_PROCESAMIENTO,
-      //       usuarioAccionId,
-      //       cantidadSolicitada: Number(cantidadSolicitada ?? 0),
-      //       coeOrigenId: Number(datosLogin?.coe_id ?? 0),
-      //       mesaOrigenId: Number(datosLogin?.mesa_id ?? 0),
-      //       requerimientoNumero: String(numero || ''),
-      //       requerimientoRecursoId: Number(requerimientoRecursoIdParam ?? 0),
-      //       respuestaEstadoId: Number(estadoIdAuto ?? 0),
-      //       respuestaFecha: nowIso,
-      //       secuencia: secuenciaLog,
-      //     },
-      //   });
-      // }
-
       // 3) Refrescar historial y UI
       setFechaRespuesta(new Date());
       setSituacion('');
-      await loadHistorial(editId);
+      if (recursoInventarioSeleccionado?.tipoId) {
+        await loadInventarioAsignacion(recursoInventarioSeleccionado.tipoId);
+      }
+      if (editId) {
+        await loadHistorial(editId);
+      }
+      if (porcentajeAvanceCalculado === 100) {
+        message.success('Requerimiento finalizado.');
+        navigate('/requerimientos/recibidos');
+        return;
+      }
       messageApi.success('Respuesta guardada.');
     } catch (e) {
       messageApi.error('Error al guardar la respuesta.');
@@ -819,6 +913,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
             <div className="col-12 mt-2">
               <span><strong>Grupo Recurso:</strong> {recursoInventarioSeleccionado?.grupo || grupoRequerimientoParam || '-'}</span>
               <span className="mx-3"><strong>Tipo Recurso:</strong> {recursoInventarioSeleccionado?.tipo || tipoRequerimientoParam || '-'}</span>
+              <span className="mx-3"><strong>Cantidad Solicitada:</strong> {recursoInventarioSeleccionado?.cantidad || cantidadSolicitada || '-'}</span>
             </div>
           </div>
           <DataTable
@@ -836,7 +931,6 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
             <Column field="provincia" header="Provincia" />
             <Column field="canton" header="Cantón" />
             <Column field="parroquia" header="Parroquia" />
-            <Column field="existencias" header="Existencias" />
             <Column field="disponible" header="Disponible" />
             <Column
               header="Cantidad Asignada al requerimiento"
@@ -851,7 +945,14 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
                     minFractionDigits={0}
                     maxFractionDigits={0}
                     className="w-full"
+                    disabled={Number(row.disponible ?? 0) <= 0 || (isEditing && diferenciaCantidad === 0)}
                   />
+                  {Number(row.disponible ?? 0) <= 0 && (
+                    <small className="text-muted">Sin inventario disponible para asignar.</small>
+                  )}
+                  {isEditing && diferenciaCantidad === 0 && (
+                    <small className="text-muted">El faltante es 0; no se permite editar la cantidad asignada.</small>
+                  )}
                   {row.cantidadAsignada > row.existencias && (
                     <small className="p-error">No puede ser mayor a existencias.</small>
                   )}
@@ -862,9 +963,9 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
 
           <div className="row mt-3">
             <div className="col-md-4"><strong>Total Cantidad Asignada:</strong> {totalCantidadAsignada}</div>
-            <div className="col-md-4"><strong>Cantidad Solicitada:</strong> {cantidadSolicitada}</div>
+            
             <div className="col-md-4">
-              <strong>Diferencia/Faltante:</strong> {diferenciaCantidad}
+              <strong>Faltante:</strong> {diferenciaCantidad}
               {diferenciaCantidad > 0 ? ' (faltante)' : diferenciaCantidad < 0 ? ' (sobreasignado)' : ''}
             </div>
           </div>

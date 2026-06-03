@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Input } from 'antd';
+import { Input, Progress } from 'antd';
 
 export interface RequerimientoEnviadoGrupoRow {
+  id?: number;
   requerimiento_numero: string;
   cantidad_solicitada: number;
+  porcentaje_avance: number;
   detalle?: string;
   creacion: string;
   estado?: string;
@@ -16,6 +18,7 @@ export interface RequerimientoEnviadoDetalleRow {
   recurso_tipo_nombre: string;
   cantidad_solicitada: number;
   especificaciones: string;
+  porcentaje_avance: number;
   detalle: string;
   requerimiento_id?: number;
   creacion: string;
@@ -42,6 +45,11 @@ const formatDate = (value: string | null | undefined): string => {
   const hh = String(d.getHours()).padStart(2, '0');
   const min = String(d.getMinutes()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+};
+
+const progressPercent = (value: number | null | undefined): number => {
+  const numeric = Number(value ?? 0);
+  return Number.isFinite(numeric) ? numeric : 0;
 };
 
 export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviadosAgrupadosTableProps> = ({
@@ -140,8 +148,10 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
         <table className="table table-hover">
           <thead className="table-light">
             <tr>
-              <th>Nro. Req</th>
+              <th>#</th>
+              <th>Cod. Req</th>
               <th>Cantidad Total</th>
+              <th>Porcentaje Avance</th>
               <th>Estado</th>              
               <th>Acciones</th>
             </tr>
@@ -154,16 +164,18 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
                 </td>
               </tr>
             ) : paginatedItems.length > 0 ? (
-              paginatedItems.map((item) => {
+              paginatedItems.map((item, index) => {
                 const numero = item.requerimiento_numero;
                 const isExpanded = !!expandedRows[numero];
                 const detalleRows = detalleCache[numero] || [];
                 const isDetalleLoading = !!detalleLoading[numero];
                 const detalleErrorMsg = detalleError[numero];
+                const sequentialNumber = first + index + 1;
 
                 return (
                   <React.Fragment key={numero}>
                     <tr onClick={() => toggleExpand(item)} style={{ cursor: 'pointer' }}>
+                      <td>{sequentialNumber}</td>
                       <td>
                         <button
                           type="button"
@@ -179,6 +191,13 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
                         <span title={numero}>{numero}</span>
                       </td>
                       <td>{Number(item.cantidad_solicitada ?? 0)}</td>
+                      <td>
+                        <Progress
+                          percent={progressPercent(item.porcentaje_avance)}
+                          size="small"
+                          status={progressPercent(item.porcentaje_avance) === 100 ? 'success' : undefined}
+                        />
+                      </td>
                       <td>{item.estado || 'Iniciada'}</td>                      
                       <td>
                         <div className="d-flex gap-2">
@@ -240,6 +259,7 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
                                     <th>Tipo</th>
                                     <th>Cantidad</th>
                                     <th>Especificaciones</th>
+                                    <th>Porcentaje Avance</th>
                                     <th>Creacion</th>
                                   </tr>
                                 </thead>
@@ -252,6 +272,13 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
                                       <td>{detalle.recurso_tipo_nombre || '-'}</td>
                                       <td>{Number(detalle.cantidad_solicitada ?? 0)}</td>
                                       <td>{detalle.especificaciones || '-'}</td>
+                                      <td>
+                                        <Progress
+                                          percent={progressPercent(detalle.porcentaje_avance)}
+                                          size="small"
+                                          status={progressPercent(detalle.porcentaje_avance) === 100 ? 'success' : undefined}
+                                        />
+                                      </td>
                                       <td>{formatDate(detalle.creacion)}</td>
                                     </tr>
                                   ))}

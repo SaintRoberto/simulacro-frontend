@@ -40,6 +40,8 @@ interface BaseCRUDProps<T> {
   emptyMessage?: string;
   onRead?: (item: T) => void;
   onEdit?: (item: T) => void;
+  canEditRow?: (item: T) => boolean;
+  canDeleteRow?: (item: T) => boolean;
   showCreateButton?: boolean;
   showDeleteButton?: boolean;
   showEditAction?: boolean;
@@ -71,6 +73,8 @@ export function BaseCRUD<T extends Record<string, any>>({
   rightToolbarTemplate,
   emptyMessage = 'No se encontraron registros.',
   onEdit,
+  canEditRow,
+  canDeleteRow,
   showCreateButton = true,
   showDeleteButton = true,
   showEditAction = true,
@@ -399,7 +403,7 @@ export function BaseCRUD<T extends Record<string, any>>({
             <i className="pi pi-search" style={{ fontSize: '1.1rem' }}></i>
           </button>
         )}
-        {canEdit && (
+        {canEdit && (!canEditRow || canEditRow(rowData)) && (
           <button 
             onClick={(e) => {
               e.stopPropagation();
@@ -411,7 +415,7 @@ export function BaseCRUD<T extends Record<string, any>>({
             <i className="pi pi-pencil" style={{ fontSize: '1.1rem' }}></i>
           </button>
         )}
-        {canDelete && (
+        {canDelete && (!canDeleteRow || canDeleteRow(rowData)) && (
           <button 
             onClick={(e) => {
               e.stopPropagation();

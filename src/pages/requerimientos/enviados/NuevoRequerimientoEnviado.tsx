@@ -57,6 +57,7 @@ interface EditRecursoContext {
   usuarioReceptorId: number;
   mesaId: number;
   cantidadSolicitada: number;
+  original?: any;
 }
 
 const parseCostoToNumber = (value: unknown): number => {
@@ -288,6 +289,20 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         });
 
         setRecursos([]);
+        const cantidadByKey = parsed.reduce<Record<string, number>>((acc, recurso) => {
+          const key = `${recurso.grupoId}-${recurso.tipoId}-${recurso.mesaId}`;
+          acc[key] = Number(recurso.cantidad ?? 0);
+          return acc;
+        }, {});
+        const detalleByKey = parsed.reduce<Record<string, string>>((acc, recurso) => {
+          const key = `${recurso.grupoId}-${recurso.tipoId}-${recurso.mesaId}`;
+          acc[key] = String(recurso.detalleSolicitudRecurso ?? '');
+          return acc;
+        }, {});
+        cantidadSolicitadaByKeyRef.current = cantidadByKey;
+        detalleSolicitudByKeyRef.current = detalleByKey;
+        setCantidadSolicitadaByKey(cantidadByKey);
+        setDetalleSolicitudByKey(detalleByKey);
         const recursoBase = parsed[0];
         if (recursoBase) {
           setSelectedGrupoId(recursoBase.grupoId);
@@ -299,6 +314,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
             usuarioReceptorId: Number(recursoBase.mesaUsuarioId ?? 0),
             mesaId: Number(recursoBase.mesaId ?? 0),
             cantidadSolicitada: Number(recursoBase.cantidad ?? 0),
+            original: first,
           });
           loadRecursoTipos(recursoBase.grupoId);
         }
@@ -345,6 +361,20 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         });
       }
       setRecursos([]);
+      const cantidadByKey = parsed.reduce<Record<string, number>>((acc, recurso) => {
+        const key = `${recurso.grupoId}-${recurso.tipoId}-${recurso.mesaId}`;
+        acc[key] = Number(recurso.cantidad ?? 0);
+        return acc;
+      }, {});
+      const detalleByKey = parsed.reduce<Record<string, string>>((acc, recurso) => {
+        const key = `${recurso.grupoId}-${recurso.tipoId}-${recurso.mesaId}`;
+        acc[key] = String(recurso.detalleSolicitudRecurso ?? '');
+        return acc;
+      }, {});
+      cantidadSolicitadaByKeyRef.current = cantidadByKey;
+      detalleSolicitudByKeyRef.current = detalleByKey;
+      setCantidadSolicitadaByKey(cantidadByKey);
+      setDetalleSolicitudByKey(detalleByKey);
       const recursoBase = parsed[0];
       if (recursoBase) {
         setSelectedGrupoId(recursoBase.grupoId);
@@ -356,6 +386,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
           usuarioReceptorId: Number(recursoBase.mesaUsuarioId ?? 0),
           mesaId: Number(recursoBase.mesaId ?? 0),
           cantidadSolicitada: Number(recursoBase.cantidad ?? 0),
+          original: recursosApi.find((r: any) => Number(r?.id ?? 0) === Number(recursoBase.id ?? 0)),
         });
         loadRecursoTipos(recursoBase.grupoId);
       }
@@ -611,10 +642,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
   };
 
   const handleAsignarDesdeMesa = (row: DisponibilidadMesaRow) => {
-    const assigned = addRecursoDesdeMesa(row);
-    if (assigned) {
-      setWizardStep(3);
-    }
+    addRecursoDesdeMesa(row);
   };
 
   const handleEnviarNivelSuperiorDesdeMesa = useCallback(async (row: DisponibilidadMesaRow) => {
@@ -904,15 +932,28 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     setIsSavingEdit(true);
     try {
       const endpoint = `${apiBase}/requerimiento-recursos/${editContext.requerimientoRecursoId}`;
+      const original = editContext.original || {};
       const res = await authFetch(endpoint, {
-        method: 'PATCH',
+        method: 'PUT',
         headers: {
           accept: 'application/json',
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          activo: Boolean(original?.activo ?? recursoEditado.activo ?? true),
           cantidad_solicitada: nuevaCantidad,
+          costo: Number(original?.costo ?? recursoEditado.costoEstimado ?? 0),
+          destino: String(original?.destino ?? ''),
+          detalle: String(original?.detalle ?? detalleRequerimiento ?? ''),
           especificaciones: String(recursoEditado.detalleSolicitudRecurso || '').trim(),
+          modificacion: new Date().toISOString(),
+          modificador: String(datosLogin?.usuario_login ?? original?.modificador ?? ''),
+          recurso_grupo_id: Number(original?.recurso_grupo_id ?? recursoEditado.grupoId ?? 0),
+          recurso_tipo_id: Number(original?.recurso_tipo_id ?? recursoEditado.tipoId ?? 0),
+          requerimiento_estado_id: Number(original?.requerimiento_estado_id ?? 1),
+          requerimiento_id: Number(original?.requerimiento_id ?? 0),
+          requerimiento_numero: String(original?.requerimiento_numero ?? numero ?? editNumero ?? ''),
+          usuario_receptor_id: Number(original?.usuario_receptor_id ?? recursoEditado.mesaUsuarioId ?? 0),
         }),
       });
 

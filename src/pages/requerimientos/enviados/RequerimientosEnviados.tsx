@@ -29,6 +29,19 @@ export const RequerimientosEnviados: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
+      const mapDetalleRows = (list: any[]): RequerimientoEnviadoDetalleRow[] => list.map((row: any) => ({
+        id: Number(row?.id ?? 0),
+        usuario_receptor: String(row?.usuario_receptor ?? '-'),
+        recurso_grupo_nombre: String(row?.recurso_grupo_nombre ?? '-'),
+        recurso_tipo_nombre: String(row?.recurso_tipo_nombre ?? '-'),
+        cantidad_solicitada: Number(row?.cantidad_solicitada ?? row?.cantidad ?? 0),
+        especificaciones: String(row?.especificaciones ?? ''),
+        porcentaje_avance: Number(row?.porcentaje_avance ?? 0),
+        detalle: String(row?.detalle ?? ''),
+        requerimiento_id: Number(row?.requerimiento_id ?? 0),
+        creacion: String(row?.creacion ?? ''),
+      }));
+
       const url = `${apiBase}/requerimiento-recursos/requerimiento_numero/usuario_emisor_id/${userId}`;
       const res = await authFetch(url, { headers: { accept: 'application/json' } });
       if (!res.ok) {
@@ -47,6 +60,7 @@ export const RequerimientosEnviados: React.FC = () => {
           return {
             requerimiento_numero: String(row.requerimiento_numero),
             cantidad_solicitada: Number(row?.cantidad_solicitada ?? 0),
+            porcentaje_avance: 0,
             creacion: String(row?.creacion ?? ''),
             detalle,
             estado: row?.estado ? String(row.estado) : 'Iniciada',
@@ -54,7 +68,34 @@ export const RequerimientosEnviados: React.FC = () => {
         })
         .sort((a, b) => new Date(b.creacion).getTime() - new Date(a.creacion).getTime());
 
-      setRequerimientos(mapped);
+      const detalleEntries = await Promise.all(
+        mapped.map(async (item) => {
+          const encodedNumero = encodeURIComponent(item.requerimiento_numero);
+          const detalleRes = await authFetch(
+            `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}/usuario_emisor_id/${userId}`,
+            { headers: { accept: 'application/json' } }
+          );
+          if (!detalleRes.ok) return [item.requerimiento_numero, [] as RequerimientoEnviadoDetalleRow[]] as const;
+          const detalleParsed = await detalleRes.json();
+          const detalleList = Array.isArray(detalleParsed) ? detalleParsed : [];
+          return [item.requerimiento_numero, mapDetalleRows(detalleList)] as const;
+        })
+      );
+
+      const nextDetalleCache: Record<string, RequerimientoEnviadoDetalleRow[]> = {};
+      for (const [numero, detalleRows] of detalleEntries) {
+        nextDetalleCache[numero] = detalleRows;
+      }
+      setDetalleCache(nextDetalleCache);
+
+      setRequerimientos(
+        mapped.map((item) => {
+          const detalleRows = nextDetalleCache[item.requerimiento_numero] || [];
+          const totalAvance = detalleRows.reduce((sum, row) => sum + Number(row.porcentaje_avance ?? 0), 0);
+          const porcentajeGlobal = detalleRows.length > 0 ? Math.round(totalAvance / detalleRows.length) : 0;
+          return { ...item, porcentaje_avance: porcentajeGlobal };
+        })
+      );
     } catch (e) {
       console.error('Error loading grouped requerimientos:', e);
       setRequerimientos([]);
@@ -88,6 +129,7 @@ export const RequerimientosEnviados: React.FC = () => {
           recurso_tipo_nombre: String(row?.recurso_tipo_nombre ?? '-'),
           cantidad_solicitada: Number(row?.cantidad_solicitada ?? row?.cantidad ?? 0),
           especificaciones: String(row?.especificaciones ?? ''),
+          porcentaje_avance: Number(row?.porcentaje_avance ?? 0),
           detalle: String(row?.detalle ?? ''),
           requerimiento_id: Number(row?.requerimiento_id ?? 0),
           creacion: String(row?.creacion ?? ''),

@@ -19,6 +19,7 @@ interface RequerimientoRecibido {
   fechaSolicitud: Date; // inicio
   fechaCumplimiento: Date | null; // fin
   porcentajeAvance: number; // 0|25|50|75|100
+  requerimientoEstadoId: number;
   estado: string; // nombre proveniente del backend
 }
 
@@ -81,6 +82,11 @@ const isRejectedStateName = (value: string): boolean => {
     normalized.includes('devuelt') ||
     normalized.includes('no acept')
   );
+};
+
+const isFinalizedRequirement = (value: Pick<RequerimientoRecibido, 'estado' | 'requerimientoEstadoId'>): boolean => {
+  const normalized = String(value.estado || '').toLowerCase();
+  return Number(value.requerimientoEstadoId) === 3 || normalized.includes('final');
 };
 
 export const RequerimientosRecibidos: React.FC = () => {
@@ -204,7 +210,13 @@ export const RequerimientosRecibidos: React.FC = () => {
         const tiposResumen = Array.from(tiposSet).join(' / ') || '-';
 
         const req = rid > 0 ? byId.get(rid) : undefined;
+        const firstPorcentajeAvance = Number(first?.porcentaje_avance);
+        const firstEstadoId = Number(first?.requerimiento_estado_id);
         if (req) {
+          const reqPorcentajeAvance = Number(req.porcentaje_avance);
+          const requerimientoEstadoId = Number.isFinite(firstEstadoId)
+            ? firstEstadoId
+            : Number(req.requerimiento_estado_id ?? 0);
           transformedData.push({
             id: requerimientoRecursoId,
             requerimientoId: rid,
@@ -217,8 +229,11 @@ export const RequerimientosRecibidos: React.FC = () => {
             cantidadSolicitada,
             fechaSolicitud: new Date(req.fecha_inicio),
             fechaCumplimiento: req.fecha_fin ? new Date(req.fecha_fin) : null,
-            porcentajeAvance: typeof req.porcentaje_avance === 'number' ? req.porcentaje_avance : 0,
-            estado: estadosMap.get(req.requerimiento_estado_id ?? -1) || estadosMap.get(Number(first?.requerimiento_estado_id ?? -1)) || 'Solicitado',
+            porcentajeAvance: Number.isFinite(firstPorcentajeAvance)
+              ? firstPorcentajeAvance
+              : (Number.isFinite(reqPorcentajeAvance) ? reqPorcentajeAvance : 0),
+            requerimientoEstadoId,
+            estado: estadosMap.get(requerimientoEstadoId) || 'Solicitado',
           });
           continue;
         }
@@ -228,6 +243,11 @@ export const RequerimientosRecibidos: React.FC = () => {
         if (rid > 0) {
           detalle = await getRequerimientoById(rid);
         }
+        const detallePorcentajeAvance = Number((detalle as any)?.porcentaje_avance);
+        const detalleEstadoId = Number((detalle as any)?.requerimiento_estado_id);
+        const requerimientoEstadoId = Number.isFinite(firstEstadoId)
+          ? firstEstadoId
+          : (Number.isFinite(detalleEstadoId) ? detalleEstadoId : 0);
         transformedData.push({
           id: requerimientoRecursoId,
           requerimientoId: rid,
@@ -240,8 +260,11 @@ export const RequerimientosRecibidos: React.FC = () => {
           cantidadSolicitada,
           fechaSolicitud: first?.creacion ? new Date(first.creacion) : (detalle?.fecha_inicio ? new Date(detalle.fecha_inicio) : new Date()),
           fechaCumplimiento: first?.modificacion ? new Date(first.modificacion) : (detalle?.fecha_fin ? new Date(detalle.fecha_fin) : null),
-          porcentajeAvance: Number((detalle as any)?.porcentaje_avance ?? 0),
-          estado: estadosMap.get(Number(first?.requerimiento_estado_id ?? (detalle as any)?.requerimiento_estado_id ?? -1)) || 'Solicitado',
+          porcentajeAvance: Number.isFinite(firstPorcentajeAvance)
+            ? firstPorcentajeAvance
+            : (Number.isFinite(detallePorcentajeAvance) ? detallePorcentajeAvance : 0),
+          requerimientoEstadoId,
+          estado: estadosMap.get(requerimientoEstadoId) || 'Solicitado',
         });
       }
 
@@ -274,6 +297,7 @@ export const RequerimientosRecibidos: React.FC = () => {
         fechaSolicitud: requerimiento.fechaSolicitud || new Date(),
         fechaCumplimiento: requerimiento.fechaCumplimiento ?? null,
         porcentajeAvance: typeof requerimiento.porcentajeAvance === 'number' ? requerimiento.porcentajeAvance : 0,
+        requerimientoEstadoId: Number(requerimiento.requerimientoEstadoId ?? 0),
         estado: (requerimiento.estado as any) || 'Inicio',
       };
       setRequerimientos((prev) => [...prev, nuevo]);
@@ -281,6 +305,11 @@ export const RequerimientosRecibidos: React.FC = () => {
   };
 
   const handleDelete = useCallback(async (requerimiento: RequerimientoRecibido) => {
+    if (isFinalizedRequirement(requerimiento)) {
+      alert('No se puede rechazar un requerimiento finalizado.');
+      return;
+    }
+
     if (!rechazadoEstadoId) {
       alert('No se encontro el estado de rechazo configurado.');
       return;
@@ -472,6 +501,10 @@ export const RequerimientosRecibidos: React.FC = () => {
           items={requerimientos}
           columns={columns}
           onEdit={(row) => {
+            if (isFinalizedRequirement(row)) {
+              alert('No se puede editar un requerimiento finalizado.');
+              return;
+            }
             const params = new URLSearchParams({
               id: String(row.id),
               requerimiento_id: String(row.requerimientoId),
@@ -483,6 +516,8 @@ export const RequerimientosRecibidos: React.FC = () => {
             });
             navigate(`/requerimientos/Recibidos/nuevo?${params.toString()}`);
           }}
+          canEditRow={(row) => !isFinalizedRequirement(row)}
+          canDeleteRow={(row) => !isFinalizedRequirement(row)}
           onRead={handleRead}
           showCreateButton={false}
           showDeleteButton={true}
@@ -508,6 +543,7 @@ export const RequerimientosRecibidos: React.FC = () => {
             fechaSolicitud: new Date(),
             fechaCumplimiento: null,
             porcentajeAvance: 0,
+            requerimientoEstadoId: 0,
             estado: 'Solicitado',
           }}
         />
