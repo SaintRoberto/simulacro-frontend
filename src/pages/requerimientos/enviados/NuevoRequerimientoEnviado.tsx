@@ -159,6 +159,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
 
   const isEditMode = !!editId || !!editNumero;
   const isUsuarioNacionalId13 = Number(datosLogin?.usuario_id ?? 0) === 13;
+  const isReplacementFlow = Number(editContext?.original?.requerimiento_estado_id ?? 0) === 5;
 
   const steps = useMemo<MenuItem[]>(
     () => [
@@ -931,6 +932,88 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
 
     setIsSavingEdit(true);
     try {
+      if (isReplacementFlow) {
+        const closeRes = await authFetch(`${apiBase}/requerimiento-recursos/${editContext.requerimientoRecursoId}`, {
+          method: 'PATCH',
+          headers: {
+            accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ requerimiento_estado_id: 6 }),
+        });
+
+        if (!closeRes.ok) {
+          alert('No se pudo cerrar el recurso original.');
+          return;
+        }
+
+        const usuarioEmisorId = Number(datosLogin?.usuario_id ?? editContext.original?.usuario_emisor_id ?? 0);
+        const requerimientoNumero = String(editContext.original?.requerimiento_numero ?? numero ?? editNumero ?? '');
+        if (!usuarioEmisorId || !requerimientoNumero) {
+          alert('No se pudo resolver el usuario emisor o numero de requerimiento.');
+          return;
+        }
+
+        for (const recurso of recursos) {
+          const usuarioReceptorId = Number(recurso.mesaUsuarioId ?? 0);
+          if (!usuarioReceptorId) {
+            alert(`No se encontro usuario receptor para la mesa ${recurso.mesaNombre}.`);
+            continue;
+          }
+
+          const recursoData: RequerimientoRecursoRequest = {
+            activo: true,
+            cantidad: recurso.cantidad,
+            costo: parseCostoToNumber(recurso.costoEstimado),
+            creador: datosLogin?.usuario_login || '',
+            destino: '',
+            detalle: detalleRequerimiento,
+            especificaciones: (recurso.detalleSolicitudRecurso || '').trim(),
+            requerimiento_numero: requerimientoNumero,
+            recurso_grupo_id: recurso.grupoId,
+            recurso_tipo_id: recurso.tipoId,
+            requerimiento_id: 0,
+            usuario_receptor_id: usuarioReceptorId,
+            requerimiento_estado_id: 1,
+            usuario_emisor_id: usuarioEmisorId,
+          };
+          const success = await createRequerimientoRecurso(recursoData);
+          if (!success) {
+            alert(`Error al agregar recurso ${recurso.tipo}`);
+            continue;
+          }
+          const requerimientoRecursoIdLog = await resolveCreatedRequerimientoRecursoId({
+            requerimientoNumero,
+            usuarioEmisorId,
+            recursoGrupoId: Number(recurso.grupoId ?? 0),
+            recursoTipoId: Number(recurso.tipoId ?? 0),
+            usuarioReceptorId: Number(usuarioReceptorId ?? 0),
+          });
+          void registrarHuellaMovimiento({
+            apiBase,
+            authFetch,
+            context: 'enviados:crear_requerimiento_recurso_reemplazo',
+            params: {
+              accionId: HuellaAccionLogId.SOLICITAR_REQUERIMIENTO,
+              usuarioAccionId: Number(datosLogin?.usuario_id ?? 0),
+              cantidadSolicitada: Number(recurso.cantidad ?? 0),
+              coeOrigenId: Number(datosLogin?.coe_id ?? 0),
+              mesaOrigenId: Number(datosLogin?.mesa_id ?? 0),
+              mesaDestinoId: Number(recurso.mesaId ?? 0),
+              recursoGrupoId: Number(recurso.grupoId ?? 0),
+              recursoTipoId: Number(recurso.tipoId ?? 0),
+              requerimientoNumero,
+              requerimientoRecursoId: Number(requerimientoRecursoIdLog ?? 0),
+              respuestaFecha: new Date().toISOString(),
+            },
+          });
+        }
+
+        alert('Recursos registrados exitosamente.');
+        navigate('/requerimientos/enviados');
+        return;
+      }
+
       const endpoint = `${apiBase}/requerimiento-recursos/${editContext.requerimientoRecursoId}`;
       const original = editContext.original || {};
       const res = await authFetch(endpoint, {
@@ -1166,7 +1249,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                     options={recursoGrupos.map((g) => ({ label: g.nombre, value: g.id }))}
                     onChange={(e) => handleGrupoChange(e.value)}
                     placeholder={recursoGruposStatus === 'loading' ? 'Cargando...' : 'Seleccionar grupo'}
-                    disabled={isEditMode || recursoGruposStatus === 'loading'}
+                    disabled={(isEditMode && !isReplacementFlow) || recursoGruposStatus === 'loading'}
                     filter
                     className="w-full m-1"
                   />
@@ -1178,7 +1261,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                     options={recursoTipos.map((t) => ({ label: t.nombre, value: t.id }))}
                     onChange={(e) => setSelectedTipoId(e.value)}
                     placeholder={recursoTiposStatus === 'loading' ? 'Cargando...' : 'Seleccionar tipo'}
-                    disabled={isEditMode || recursoTiposStatus === 'loading' || !selectedGrupoId}
+                    disabled={(isEditMode && !isReplacementFlow) || recursoTiposStatus === 'loading' || !selectedGrupoId}
                     filter
                     className="w-full m-1"
                   />

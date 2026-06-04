@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Input, Progress } from 'antd';
+import { Input, Progress, Tag } from 'antd';
 
 export interface RequerimientoEnviadoGrupoRow {
   id?: number;
@@ -19,6 +19,7 @@ export interface RequerimientoEnviadoDetalleRow {
   cantidad_solicitada: number;
   especificaciones: string;
   porcentaje_avance: number;
+  requerimiento_estado_nombre?: string;
   detalle: string;
   requerimiento_id?: number;
   creacion: string;
@@ -50,6 +51,16 @@ const formatDate = (value: string | null | undefined): string => {
 const progressPercent = (value: number | null | undefined): number => {
   const numeric = Number(value ?? 0);
   return Number.isFinite(numeric) ? numeric : 0;
+};
+
+const estadoTagColor = (estado: string): string => {
+  const normalized = estado.toLowerCase();
+  if (normalized.includes('rechaz')) return 'red';
+  if (normalized.includes('final') || normalized.includes('complet')) return 'green';
+  if (normalized.includes('proceso') || normalized.includes('seguim')) return 'gold';
+  if (normalized.includes('reasign') || normalized.includes('escal')) return 'purple';
+  if (normalized.includes('inici') || normalized.includes('solicit')) return 'blue';
+  return 'default';
 };
 
 export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviadosAgrupadosTableProps> = ({
@@ -152,7 +163,6 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
               <th>Cod. Req</th>
               <th>Cantidad Total</th>
               <th>Porcentaje Avance</th>
-              <th>Estado</th>              
               <th>Acciones</th>
             </tr>
           </thead>
@@ -198,7 +208,6 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
                           status={progressPercent(item.porcentaje_avance) === 100 ? 'success' : undefined}
                         />
                       </td>
-                      <td>{item.estado || 'Iniciada'}</td>                      
                       <td>
                         <div className="d-flex gap-2">
                           <button
@@ -260,6 +269,7 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
                                     <th>Cantidad</th>
                                     <th>Especificaciones</th>
                                     <th>Porcentaje Avance</th>
+                                    <th>Estado</th>
                                     <th>Creacion</th>
                                   </tr>
                                 </thead>
@@ -278,6 +288,15 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
                                           size="small"
                                           status={progressPercent(detalle.porcentaje_avance) === 100 ? 'success' : undefined}
                                         />
+                                      </td>
+                                      <td>
+                                        {detalle.requerimiento_estado_nombre ? (
+                                          <Tag color={estadoTagColor(detalle.requerimiento_estado_nombre)}>
+                                            {detalle.requerimiento_estado_nombre}
+                                          </Tag>
+                                        ) : (
+                                          '-'
+                                        )}
                                       </td>
                                       <td>{formatDate(detalle.creacion)}</td>
                                     </tr>
