@@ -148,6 +148,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
   const [estados, setEstados] = useState<Array<{ id: number; nombre: string }>>([]);
   const [inventarioRows, setInventarioRows] = useState<InventarioAsignacionRow[]>([]);
   const [inventarioStatus, setInventarioStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [isSavingRespuesta, setIsSavingRespuesta] = useState(false);
   const [messageApi, messageContextHolder] = message.useMessage();
 
   // Historial
@@ -225,6 +226,14 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
 
   const diferenciaCantidad = useMemo(() => cantidadSolicitada - totalCantidadAsignada, [cantidadSolicitada, totalCantidadAsignada]);
   const isEditing = Boolean(editId || editNumero);
+  const isBrechaEditing = isEditing && Number(datosLogin?.mesa_id ?? 0) === 13;
+
+  useEffect(() => {
+    if (isBrechaEditing) {
+      setInventarioRows([]);
+      setInventarioStatus('idle');
+    }
+  }, [isBrechaEditing]);
 
   const loadInventarioAsignacion = useCallback(async (recursoTipoId: number) => {
     if (!recursoTipoId || !datosLogin?.coe_id || !datosLogin?.mesa_id) {
@@ -393,6 +402,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
         setFechaSolicitud(fechaCreacion);
         setFechaInicio(fechaCreacion);
         setFechaFin(fechaModificacion);
+        setAvance(Number(first?.porcentaje_avance ?? 0));
 
         if (receptores && receptores.length > 0) {
           const rec = receptores.find((r) => Number(r.usuario_id) === Number(first?.usuario_receptor_id ?? 0));
@@ -432,7 +442,9 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
 
         if (recursosRows.length) {
           setRecursos(recursosRows);
-          await loadInventarioAsignacion(recursosRows[0].tipoId);
+          if (!isBrechaEditing) {
+            await loadInventarioAsignacion(recursosRows[0].tipoId);
+          }
         }
 
         if (editId) {
@@ -487,7 +499,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
           institucionDuenaId: Number((r as any)?.institucion_duena_id ?? (r as any)?.institucion_id ?? 0),
           recursosComplementarios: tipo?.complemento,
           caracteristicasTecnicas: tipo?.descripcion,
-          cantidad: Number((r as any).cantidad_solicitada ?? r.cantidad ?? 0),
+          cantidad: Number(r.cantidad_solicitada ?? 0),
           costo: r.costo,
           especificacionesAdicionales: r.especificaciones,
           destinoUbicacion: r.destino,
@@ -496,13 +508,18 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
       }
 
       if (recursosRows.length) setRecursos(recursosRows);
+      if (recursosApi.length > 0) {
+        setAvance(Number((recursosApi[0] as any)?.porcentaje_avance ?? 0));
+      }
       if (recursosRows.length > 0) {
-        await loadInventarioAsignacion(recursosRows[0].tipoId);
+        if (!isBrechaEditing) {
+          await loadInventarioAsignacion(recursosRows[0].tipoId);
+        }
       }
       await loadHistorial(editId);
     };
 
-    const currentLoadKey = editNumero ? `numero:${editNumero}` : `id:${editId}`;
+    const currentLoadKey = `${editNumero ? `numero:${editNumero}` : `id:${editId}`}:mesa:${Number(datosLogin?.mesa_id ?? 0)}`;
     if (editLoadKeyRef.current === currentLoadKey) return;
     editLoadKeyRef.current = currentLoadKey;
     loadForEdit().catch((e) => {
@@ -510,7 +527,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
       editLoadKeyRef.current = '';
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiBase, authFetch, editId, editNumero, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, recursoGrupos, recursoTipos, loadHistorial, loadInventarioAsignacion, receptores]);
+  }, [apiBase, authFetch, editId, editNumero, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, recursoGrupos, recursoTipos, loadHistorial, loadInventarioAsignacion, receptores, isBrechaEditing]);
 
   // const nivelOptions = [
   //   { label: 'Parroquial', value: 'Parroquial' },
@@ -544,6 +561,9 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
   };
 
   const handleGuardarRespuesta = async () => {
+    if (isSavingRespuesta) {
+      return;
+    }
     // if (!editId) {
     //   messageApi.error('No hay un requerimiento seleccionado.');
     //   return;
@@ -552,15 +572,44 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
       messageApi.error('Complete los campos obligatorios.');
       return;
     }
-    const filasConExceso = inventarioRows.filter((r) => Number(r.cantidadAsignada) > Number(r.existencias));
-    if (filasConExceso.length > 0) {
-      messageApi.error('Existen cantidades asignadas mayores a existencias. Corrija manualmente antes de guardar.');
-      return;
+    if (!isBrechaEditing) {
+      const filasConExceso = inventarioRows.filter((r) => Number(r.cantidadAsignada) > Number(r.existencias));
+      if (filasConExceso.length > 0) {
+        messageApi.error('Existen cantidades asignadas mayores a existencias. Corrija manualmente antes de guardar.');
+        return;
+      }
+      if (diferenciaCantidad < 0) {
+        messageApi.error('No se puede guardar porque la diferencia/faltante debe ser mayor a 0.');
+        return;
+      }
     }
-    if (diferenciaCantidad < 0) {
-      messageApi.error('No se puede guardar porque la diferencia/faltante debe ser mayor a 0.');
-      return;
-    }
+    const messageKey = 'guardar-respuesta-recibida';
+    let guardadoExitoso = false;
+    const volverAGrilla = (mensaje: string) => {
+      guardadoExitoso = true;
+      messageApi.open({
+        key: messageKey,
+        type: 'success',
+        content: <span style={{ fontSize: 18, fontWeight: 600 }}>{mensaje}</span>,
+        duration: 1.4,
+      });
+      window.setTimeout(() => {
+        navigate('/requerimientos/recibidos', {
+          state: {
+            shouldRefresh: true,
+            refreshKey: Date.now(),
+          },
+        });
+      }, 900);
+    };
+
+    setIsSavingRespuesta(true);
+    messageApi.open({
+      key: messageKey,
+      type: 'loading',
+      content: <span style={{ fontSize: 18, fontWeight: 600 }}>Guardando respuesta...</span>,
+      duration: 0,
+    });
     try {
       const nowIso = (fechaRespuesta || new Date()).toISOString();
       const usuarioActual = datosLogin?.usuario_login || responsable || '';
@@ -570,6 +619,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
       const requerimientoEstadoIdAuto = porcentajeAvanceCalculado === 100 ? 3 : 2;
       let secuenciaLog = Number(historial.length ?? 0);
       let respuestasMap = respuestasPreviasByInventarioId;
+      let respuestasPreviasRaw: any[] = [];
       const resPrevias = await authFetch(`${apiBase}/requerimiento-respuestas/${editId}`, {
         headers: { accept: 'application/json' },
       });
@@ -578,6 +628,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
         const dataPrevias = Array.isArray(rawPrevias)
           ? rawPrevias
           : (rawPrevias && typeof rawPrevias === 'object' ? [rawPrevias] : []);
+        respuestasPreviasRaw = dataPrevias;
         respuestasMap = mapRespuestasPreviasByInventarioId(dataPrevias);
         setRespuestasPreviasByInventarioId(respuestasMap);
       }
@@ -606,6 +657,68 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
 
         return true;
       };
+
+      if (isBrechaEditing) {
+        const requerimientoRecursoId = Number(requerimientoRecursoIdParam || recursos[0]?.id || editId || 0);
+        if (!requerimientoRecursoId) {
+          messageApi.error('No se pudo identificar el requerimiento recurso de brecha.');
+          return;
+        }
+
+        const respuestaExistente = respuestasPreviasRaw
+          .filter((item: any) =>
+            Number(item?.requerimiento_recurso_id ?? requerimientoRecursoId) === requerimientoRecursoId
+          )
+          .sort((a: any, b: any) => Number(b?.id ?? 0) - Number(a?.id ?? 0))[0];
+
+        const payloadBrecha = {
+          activo: Boolean(respuestaExistente?.activo ?? true),
+          cantidad_asignada: Number(respuestaExistente?.cantidad_asignada ?? 0),
+          factor: Number(respuestaExistente?.factor ?? 0),
+          modificacion: nowIso,
+          modificador: usuarioActual,
+          porcentaje_avance: porcentajeAvanceCalculado,
+          recurso_inventario_id: Number(respuestaExistente?.recurso_inventario_id ?? 0),
+          requerimiento_recurso_id: requerimientoRecursoId,
+          responsable,
+          respuesta_estado_id: respuestaEstadoIdAuto,
+          respuesta_fecha: nowIso,
+          situacion_actual: situacion,
+        };
+
+        const respuestaId = Number(respuestaExistente?.id ?? 0);
+        const respuestaRes = await authFetch(
+          respuestaId > 0
+            ? `${apiBase}/requerimiento-respuestas/${respuestaId}`
+            : `${apiBase}/requerimiento-respuestas`,
+          {
+            method: respuestaId > 0 ? 'PUT' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(
+              respuestaId > 0
+                ? payloadBrecha
+                : { ...payloadBrecha, creador: usuarioActual }
+            ),
+          }
+        );
+
+        if (!respuestaRes.ok) {
+          messageApi.error('No se pudo guardar la respuesta del requerimiento de brecha.');
+          return;
+        }
+
+        const estadoActualizado = await patchEstadoRequerimientoRecurso(requerimientoRecursoId);
+        if (!estadoActualizado) {
+          return;
+        }
+
+        volverAGrilla(
+          porcentajeAvanceCalculado === 100
+            ? 'Requerimiento finalizado.'
+            : 'Respuesta guardada.'
+        );
+        return;
+      }
 
       const shouldLiberarInventario = isEditing && porcentajeAvanceCalculado === 100 && respuestaEstadoIdAuto === 3;
 
@@ -829,14 +942,19 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
         await loadHistorial(editId);
       }
       if (porcentajeAvanceCalculado === 100) {
-        message.success('Requerimiento finalizado.');
-        navigate('/requerimientos/recibidos');
+        volverAGrilla('Requerimiento finalizado.');
         return;
       }
-      messageApi.success('Respuesta guardada.');
+      volverAGrilla('Respuesta guardada.');
     } catch (e) {
+      messageApi.destroy(messageKey);
       messageApi.error('Error al guardar la respuesta.');
       console.error(e);
+    } finally {
+      if (!guardadoExitoso) {
+        messageApi.destroy(messageKey);
+      }
+      setIsSavingRespuesta(false);
     }
   };
 
@@ -900,10 +1018,27 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
                 <InputTextarea value={situacion} onChange={(e) => setSituacion(e.target.value)} className="w-full m-1" placeholder="Describir la situación actual, avances, dificultades, próximos pasos..." rows={3} autoResize />
               </div>
             </div>
+            {isBrechaEditing && (
+              <div className="row mt-3">
+                <div className="col-12 text-end">
+                  <Button label="Ver Requerimiento" icon="pi pi-info-circle" className="m-1" onClick={() => setShowDetalleDialog(true)} />
+                  <Button label="Ver Historial" icon="pi pi-history" className="m-1" severity="secondary" onClick={() => setShowHistorialDialog(true)} />
+                  <Button
+                    label={isSavingRespuesta ? 'Guardando...' : 'Guardar'}
+                    icon={isSavingRespuesta ? 'pi pi-spin pi-spinner' : 'pi pi-lock'}
+                    className="m-1"
+                    severity="secondary"
+                    onClick={handleGuardarRespuesta}
+                    disabled={isSavingRespuesta}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </Card>
       </div>
 
+      {!isBrechaEditing && (
       <div className="col-12">
         <Card>
           <div className="row">
@@ -974,11 +1109,19 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
             <div className="col-12 text-end">
               <Button label="Ver Requerimiento" icon="pi pi-info-circle" className="m-1" onClick={() => setShowDetalleDialog(true)} />
               <Button label="Ver Historial" icon="pi pi-history" className="m-1" severity="secondary" onClick={() => setShowHistorialDialog(true)} />
-              <Button label="Guardar" icon="pi pi-lock" className="m-1" severity="secondary" onClick={handleGuardarRespuesta} />
+              <Button
+                label={isSavingRespuesta ? 'Guardando...' : 'Guardar'}
+                icon={isSavingRespuesta ? 'pi pi-spin pi-spinner' : 'pi pi-lock'}
+                className="m-1"
+                severity="secondary"
+                onClick={handleGuardarRespuesta}
+                disabled={isSavingRespuesta}
+              />
             </div>
           </div>
         </Card>
       </div>
+      )}
 
       <Dialog
         visible={showHistorialDialog}

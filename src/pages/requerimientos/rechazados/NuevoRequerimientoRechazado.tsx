@@ -105,10 +105,17 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
   );
   const prefilledRequerimientoId = useMemo(() => {
     const rawReqId = Number(searchParams.get('req_id') || 0);
-    if (Number.isFinite(rawReqId) && rawReqId > 0) return rawReqId;
-
-    const rawLegacy = Number(searchParams.get('requerimiento_id') || 0);
-    return Number.isFinite(rawLegacy) && rawLegacy > 0 ? rawLegacy : null;
+    return Number.isFinite(rawReqId) && rawReqId > 0 ? rawReqId : null;
+  }, [searchParams]);
+  const prefilledFechaInicio = useMemo(() => {
+    const raw = searchParams.get('fecha_inicio');
+    const parsed = raw ? new Date(raw) : null;
+    return parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date();
+  }, [searchParams]);
+  const prefilledFechaFin = useMemo(() => {
+    const raw = searchParams.get('fecha_fin');
+    const parsed = raw ? new Date(raw) : null;
+    return parsed && !Number.isNaN(parsed.getTime()) ? parsed : null;
   }, [searchParams]);
   const prefilledDetalle = useMemo(
     () => String(searchParams.get('detalle') || '').trim(),
@@ -129,9 +136,9 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
 
   const [wizardStep, setWizardStep] = useState<WizardStep>(2);
   const [numero, setNumero] = useState<string>(prefilledRequerimientoNumero || 'REQ-0000');
-  const [fechaSolicitud] = useState<Date | null>(new Date());
-  const [fechaInicio] = useState<Date | null>(new Date());
-  const [fechaFin] = useState<Date | null>(null);
+  const [fechaSolicitud] = useState<Date | null>(prefilledFechaInicio);
+  const [fechaInicio] = useState<Date | null>(prefilledFechaInicio);
+  const [fechaFin] = useState<Date | null>(prefilledFechaFin);
   const [detalleRequerimiento] = useState<string>(prefilledDetalle);
 
   const [selectedGrupoId, setSelectedGrupoId] = useState<number | null>(prefilledGrupoId);
@@ -157,9 +164,17 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
     loadRecursoGrupos,
     loadRecursoTipos,
     createRequerimientoRecurso,
+    selectedEmergenciaId,
   } = useAuth();
 
   const lockSelection = Boolean(prefilledGrupoId && prefilledTipoId);
+  const emergenciaGlobalId = useMemo(() => {
+    const storedId = Number(localStorage.getItem('selectedEmergenciaId') || 'NaN');
+    return Number(
+      selectedEmergenciaId
+      ?? (Number.isNaN(storedId) ? datosLogin?.emergencia_id ?? 0 : storedId)
+    );
+  }, [selectedEmergenciaId, datosLogin?.emergencia_id]);
 
   const steps = useMemo<MenuItem[]>(
     () => [
@@ -504,7 +519,7 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
         },
       });
 
-      const requerimientoNumeroUuid = prefilledRequerimientoNumero || generateUuid();
+      const requerimientoNumeroUuid = generateUuid();
       setNumero(requerimientoNumeroUuid);
 
       for (const recurso of recursos) {
@@ -516,16 +531,18 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
 
         const recursoData: RequerimientoRecursoRequest = {
           activo: true,
-          cantidad: recurso.cantidad,
+          cantidad_solicitada: recurso.cantidad,
           costo: parseCostoToNumber(recurso.costoEstimado),
           creador: datosLogin.usuario_login,
           destino: '',
           detalle: detalleRequerimiento || '',
+          emergencia_id: emergenciaGlobalId,
           especificaciones: (recurso.detalleSolicitudRecurso || '').trim(),
+          fecha_fin: (fechaFin || fechaInicio || new Date()).toISOString(),
+          fecha_inicio: (fechaInicio || new Date()).toISOString(),
           requerimiento_numero: requerimientoNumeroUuid,
           recurso_grupo_id: recurso.grupoId,
           recurso_tipo_id: recurso.tipoId,
-          requerimiento_id: 0,
           usuario_receptor_id: usuarioReceptorId,
           requerimiento_estado_id: 1,
           usuario_emisor_id: usuarioEmisorId,

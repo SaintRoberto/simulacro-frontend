@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Card } from 'primereact/card';
 import { Button } from 'primereact/button';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import RequerimientosEnviadosAgrupadosTable, {
   RequerimientoEnviadoDetalleRow,
@@ -10,6 +10,7 @@ import RequerimientosEnviadosAgrupadosTable, {
 
 export const RequerimientosEnviados: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { datosLogin, authFetch } = useAuth();
   const apiBase = process.env.REACT_APP_API_URL || '/api';
 
@@ -17,17 +18,29 @@ export const RequerimientosEnviados: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [detalleCache, setDetalleCache] = useState<Record<string, RequerimientoEnviadoDetalleRow[]>>({});
-  const loadedOnceRef = useRef(false);
+  const loadInFlightRef = useRef(false);
+  const loadSequenceRef = useRef(0);
+  const handledRefreshKeyRef = useRef<string | number | null>(null);
 
-  const loadRequerimientos = useCallback(async () => {
+  const loadRequerimientos = useCallback(async (options?: { silent?: boolean; force?: boolean }) => {
+    const silent = options?.silent ?? false;
+    const force = options?.force ?? false;
+    if (loadInFlightRef.current && silent && !force) {
+      return;
+    }
+
+    const sequence = ++loadSequenceRef.current;
     const userId = Number(datosLogin?.usuario_id ?? localStorage.getItem('userId'));
     if (!Number.isFinite(userId) || userId <= 0) {
       setRequerimientos([]);
       return;
     }
+    loadInFlightRef.current = true;
 
-    setLoading(true);
-    setError(null);
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const mapDetalleRows = (list: any[]): RequerimientoEnviadoDetalleRow[] => list.map((row: any) => ({
         id: Number(row?.id ?? 0),
@@ -46,8 +59,10 @@ export const RequerimientosEnviados: React.FC = () => {
       const url = `${apiBase}/requerimiento-recursos/requerimiento_numero/usuario_emisor_id/${userId}`;
       const res = await authFetch(url, { headers: { accept: 'application/json' } });
       if (!res.ok) {
-        setRequerimientos([]);
-        setError('No se pudo cargar la cabecera agrupada de requerimientos enviados.');
+        if (!silent && sequence === loadSequenceRef.current) {
+          setRequerimientos([]);
+          setError('No se pudo cargar la cabecera agrupada de requerimientos enviados.');
+        }
         return;
       }
       const parsed = await res.json();
@@ -87,6 +102,10 @@ export const RequerimientosEnviados: React.FC = () => {
       for (const [numero, detalleRows] of detalleEntries) {
         nextDetalleCache[numero] = detalleRows;
       }
+      if (sequence !== loadSequenceRef.current) {
+        return;
+      }
+      setError(null);
       setDetalleCache(nextDetalleCache);
 
       setRequerimientos(
@@ -99,10 +118,17 @@ export const RequerimientosEnviados: React.FC = () => {
       );
     } catch (e) {
       console.error('Error loading grouped requerimientos:', e);
-      setRequerimientos([]);
-      setError('Ocurrió un error al cargar la información.');
+      if (!silent && sequence === loadSequenceRef.current) {
+        setRequerimientos([]);
+        setError('Ocurrio un error al cargar la informacion.');
+      }
     } finally {
-      setLoading(false);
+      if (sequence === loadSequenceRef.current) {
+        loadInFlightRef.current = false;
+      }
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [apiBase, authFetch, datosLogin?.usuario_id]);
 
@@ -113,9 +139,9 @@ export const RequerimientosEnviados: React.FC = () => {
       }
 
       const encodedNumero = encodeURIComponent(requerimientoNumero);
+      const userId = Number(datosLogin?.usuario_id ?? localStorage.getItem('userId') ?? 0);
       const endpoints = [
-        `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}/usuario_emisor_id/${datosLogin?.usuario_id ?? 0}`,
-        `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}/usuario_emisor_id/${datosLogin?.usuario_id ?? 0}`,
+        `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}/usuario_emisor_id/${userId}`,
       ];
 
       for (const url of endpoints) {
@@ -144,14 +170,52 @@ export const RequerimientosEnviados: React.FC = () => {
 
       throw new Error('detalle_not_found');
     },
-    [apiBase, authFetch, detalleCache]
+    [apiBase, authFetch, detalleCache, datosLogin?.usuario_id]
   );
 
   useEffect(() => {
-    if (loadedOnceRef.current) return;
-    loadedOnceRef.current = true;
     loadRequerimientos();
+    const refreshSilently = () => {
+      void loadRequerimientos({ silent: true });
+    };
+    const refreshOnVisible = () => {
+      if (document.visibilityState === 'visible') {
+        refreshSilently();
+      }
+    };
+
+    window.addEventListener('focus', refreshSilently);
+    window.addEventListener('requerimientos-enviados:refresh', refreshSilently);
+    document.addEventListener('visibilitychange', refreshOnVisible);
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        refreshSilently();
+      }
+    }, 15000);
+
+    return () => {
+      window.removeEventListener('focus', refreshSilently);
+      window.removeEventListener('requerimientos-enviados:refresh', refreshSilently);
+      document.removeEventListener('visibilitychange', refreshOnVisible);
+      window.clearInterval(intervalId);
+    };
   }, [loadRequerimientos]);
+
+  useEffect(() => {
+    const refreshState = location.state as { shouldRefresh?: boolean; refreshKey?: string | number } | null;
+    if (!refreshState?.shouldRefresh) {
+      return;
+    }
+
+    const refreshKey = refreshState.refreshKey ?? 'default';
+    if (handledRefreshKeyRef.current === refreshKey) {
+      return;
+    }
+
+    handledRefreshKeyRef.current = refreshKey;
+    void loadRequerimientos({ silent: true, force: true });
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [loadRequerimientos, location.pathname, location.state, navigate]);
 
   const handleEdit = useCallback(
     (item: RequerimientoEnviadoGrupoRow) => {
@@ -188,6 +252,7 @@ export const RequerimientosEnviados: React.FC = () => {
         loading={loading}
         error={error}
         loadDetalle={loadDetalleByNumero}
+        detalleData={detalleCache}
         onRead={() => {}}
         onEdit={handleEdit}
         onDelete={handleDelete}

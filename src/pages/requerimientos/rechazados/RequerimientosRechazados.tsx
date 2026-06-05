@@ -7,8 +7,8 @@ import { useAuth } from '../../../context/AuthContext';
 
 interface RequerimientoRechazado {
   id: number;
-  requerimientoId: number;
   requerimientoNumero?: string | null;
+  emergenciaId: number;
   usuarioEmisorId: number;
   solicitante: string;
   destinatario: string;
@@ -33,7 +33,10 @@ interface RequerimientoRechazadoAPI {
   creador: string;
   destino: string;
   detalle: string;
+  emergencia_id: number;
   especificaciones: string;
+  fecha_fin: string;
+  fecha_inicio: string;
   modificacion: string;
   modificador: string;
   recurso_grupo_id: number;
@@ -41,7 +44,6 @@ interface RequerimientoRechazadoAPI {
   recurso_tipo_id: number;
   recurso_tipo_nombre: string | null;
   requerimiento_estado_id: number;
-  requerimiento_id: number;
   requerimiento_numero: string;
   usuario_emisor: string;
   usuario_emisor_id: number;
@@ -82,8 +84,8 @@ export const RequerimientosRechazados: React.FC = () => {
       const transformedData: RequerimientoRechazado[] = recursosLista
         .map((row) => ({
           id: Number(row.id ?? 0),
-          requerimientoId: Number(row.requerimiento_id ?? 0),
           requerimientoNumero: String(row.requerimiento_numero ?? '').trim() || null,
+          emergenciaId: Number(row.emergencia_id ?? 0),
           usuarioEmisorId: Number(row.usuario_emisor_id ?? 0),
           solicitante: String(row.usuario_emisor ?? row.creador ?? '-'),
           destinatario: String(row.usuario_receptor ?? '-'),
@@ -92,8 +94,8 @@ export const RequerimientosRechazados: React.FC = () => {
           grupoId: Number(row.recurso_grupo_id ?? 0),
           tipoId: Number(row.recurso_tipo_id ?? 0),
           cantidadSolicitada: Number(row.cantidad_solicitada ?? 0),
-          fechaSolicitud: row.creacion ? new Date(row.creacion) : new Date(),
-          fechaCumplimiento: row.modificacion ? new Date(row.modificacion) : null,
+          fechaSolicitud: row.fecha_inicio ? new Date(row.fecha_inicio) : new Date(),
+          fechaCumplimiento: row.fecha_fin ? new Date(row.fecha_fin) : null,
           porcentajeAvance: 0,
           estado: `Rechazado (${Number(row.requerimiento_estado_id ?? RECHAZADO_ESTADO_ID)})`,
           requerimientoEstadoId: Number(row.requerimiento_estado_id ?? RECHAZADO_ESTADO_ID),
@@ -135,13 +137,14 @@ export const RequerimientosRechazados: React.FC = () => {
       req_id: String(row.id || 0),
       cantidad_solicitada: String(row.cantidadSolicitada || 0),
       flow: 'rechazado',
-      requerimiento_id: String(row.requerimientoId || 0),
       requerimiento_numero: String(row.requerimientoNumero || ''),
+      fecha_inicio: row.fechaSolicitud.toISOString(),
+      fecha_fin: row.fechaCumplimiento?.toISOString() || '',
       grupoRequerimiento: row.grupoRequerimiento || '',
       tipoRequerimiento: row.tipoRequerimiento || '',
       grupo_id: String(row.grupoId || 0),
       tipo_id: String(row.tipoId || 0),
-      detalle: `Reasignacion por requerimiento rechazado ${row.requerimientoNumero || ''}`.trim(),
+      detalle: `Reasignacion por requerimiento rechazado ${row.requerimientoNumero?.slice(0, 8) || ''}`,
     });
     navigate(`/requerimientos/rechazados/nuevo?${params.toString()}`);
   };
@@ -290,8 +293,8 @@ export const RequerimientosRechazados: React.FC = () => {
         onDelete={() => {}}
         initialItem={{
           id: 0,
-          requerimientoId: 0,
           requerimientoNumero: '',
+          emergenciaId: 0,
           usuarioEmisorId: 0,
           solicitante: '',
           destinatario: '',

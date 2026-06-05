@@ -84,16 +84,18 @@ export interface RequerimientoResponse {
 
 export interface RequerimientoRecursoRequest {
   activo: boolean;
-  cantidad: number;
+  cantidad_solicitada: number;
   costo: number;
   creador: string;
   destino: string;
   detalle: string;
+  emergencia_id: number;
   especificaciones: string;
+  fecha_fin: string;
+  fecha_inicio: string;
   requerimiento_numero: string;
   recurso_grupo_id: number;
   recurso_tipo_id: number;
-  requerimiento_id: number;
   usuario_receptor_id: number;
   requerimiento_estado_id: number;
   usuario_emisor_id: number;
@@ -174,17 +176,24 @@ export interface RequerimientoByIdResponse {
 export interface RequerimientoRecursoResponse {
   id: number;
   activo: boolean;
-  cantidad: number;
+  cantidad_solicitada: number;
   costo: number;
   creacion: string;
   creador: string;
   destino: string;
+  detalle: string;
+  emergencia_id: number;
   especificaciones: string;
+  fecha_fin: string;
+  fecha_inicio: string;
   modificacion: string | null;
   modificador: string | null;
   recurso_grupo_id: number;
   recurso_tipo_id: number;
-  requerimiento_id: number;
+  requerimiento_estado_id: number;
+  requerimiento_numero: string;
+  usuario_emisor_id: number;
+  usuario_receptor_id: number;
 }
 
 interface AuthContextValue {

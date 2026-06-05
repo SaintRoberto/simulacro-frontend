@@ -25,6 +25,7 @@ type WizardStep = 1 | 2 | 3;
 
 interface RecursoSeleccionado {
   id: number;
+  original?: any;
   grupo: string;
   grupoId: number;
   tipo: string;
@@ -127,6 +128,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
   const cantidadSolicitadaByKeyRef = useRef<Record<string, number>>({});
   const [detalleSolicitudByKey, setDetalleSolicitudByKey] = useState<Record<string, string>>({});
   const detalleSolicitudByKeyRef = useRef<Record<string, string>>({});
+  const editOriginalByKeyRef = useRef<Record<string, any>>({});
   const editLoadKeyRef = useRef<string | null>(null);
   const [disponibilidadStatus, setDisponibilidadStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [isEndosoMode, setIsEndosoMode] = useState<boolean>(false);
@@ -160,6 +162,22 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
   const isEditMode = !!editId || !!editNumero;
   const isUsuarioNacionalId13 = Number(datosLogin?.usuario_id ?? 0) === 13;
   const isReplacementFlow = Number(editContext?.original?.requerimiento_estado_id ?? 0) === 5;
+  const emergenciaGlobalId = useMemo(() => {
+    const storedId = Number(localStorage.getItem('selectedEmergenciaId') || 'NaN');
+    return Number(
+      selectedEmergenciaId
+      ?? (Number.isNaN(storedId) ? datosLogin?.emergencia_id ?? 0 : storedId)
+    );
+  }, [selectedEmergenciaId, datosLogin?.emergencia_id]);
+  const navigateToEnviadosWithRefresh = useCallback(() => {
+    window.dispatchEvent(new Event('requerimientos-enviados:refresh'));
+    navigate('/requerimientos/enviados', {
+      state: {
+        shouldRefresh: true,
+        refreshKey: Date.now(),
+      },
+    });
+  }, [navigate]);
 
   const steps = useMemo<MenuItem[]>(
     () => [
@@ -259,8 +277,8 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         setNumero(String(first?.requerimiento_numero || editNumero));
         const creacionDate = first?.creacion ? new Date(first.creacion) : null;
         setFechaSolicitud(creacionDate);
-        setFechaInicio(creacionDate);
-        setFechaFin(first?.modificacion ? new Date(first.modificacion) : null);
+        setFechaInicio(first?.fecha_inicio ? new Date(first.fecha_inicio) : null);
+        setFechaFin(first?.fecha_fin ? new Date(first.fecha_fin) : null);
         setDetalleRequerimiento(String(first?.detalle ?? ''));
 
         const parsed: RecursoSeleccionado[] = recursosApi.map((row: any) => {
@@ -273,11 +291,12 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
 
           return {
             id: Number(row?.id ?? 0),
+            original: row,
             grupo: String(row?.recurso_grupo_nombre || grupoFallback || `Grupo ${grupoId}`),
             grupoId,
             tipo: String(row?.recurso_tipo_nombre || tipoFallback || `Tipo ${tipoId}`),
             tipoId,
-            cantidad: Number(row?.cantidad_solicitada ?? row?.cantidad ?? 0),
+            cantidad: Number(row?.cantidad_solicitada ?? 0),
             detalleSolicitudRecurso: String(row?.especificaciones ?? ''),
             porcentajeAvance: Number(row?.porcentaje_avance ?? 0),
             costoEstimado: parseCostoToNumber(row?.costo),
@@ -290,6 +309,11 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         });
 
         setRecursos([]);
+        editOriginalByKeyRef.current = parsed.reduce<Record<string, any>>((acc, recurso) => {
+          const key = `${recurso.grupoId}-${recurso.tipoId}-${recurso.mesaUsuarioId}`;
+          acc[key] = recurso.original;
+          return acc;
+        }, {});
         const cantidadByKey = parsed.reduce<Record<string, number>>((acc, recurso) => {
           const key = `${recurso.grupoId}-${recurso.tipoId}-${recurso.mesaId}`;
           acc[key] = Number(recurso.cantidad ?? 0);
@@ -339,6 +363,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       for (const r of recursosApi) {
         const grupo = recursoGrupos.find((g) => g.id === r.recurso_grupo_id);
         let tipo = recursoTipos.find((t) => t.id === r.recurso_tipo_id);
+        const receptorRef = receptores.find((receptor) => Number(receptor.usuario_id) === Number(r.usuario_receptor_id));
         if (!tipo) {
           const tipos = await getRecursoTiposByGrupo(r.recurso_grupo_id);
           tipo = tipos.find((t) => t.id === r.recurso_tipo_id);
@@ -346,22 +371,28 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
 
         parsed.push({
           id: r.id,
+          original: r,
           grupo: grupo?.nombre || `Grupo ${r.recurso_grupo_id}`,
           grupoId: r.recurso_grupo_id,
           tipo: tipo?.nombre || `Tipo ${r.recurso_tipo_id}`,
           tipoId: r.recurso_tipo_id,
-          cantidad: r.cantidad,
+          cantidad: r.cantidad_solicitada,
           detalleSolicitudRecurso: (r as any).especificaciones ?? '',
           porcentajeAvance: Number((r as any).porcentaje_avance ?? 0),
           costoEstimado: parseCostoToNumber((r as any).costo ?? tipo?.costo),
-          mesaId: req?.usuario_receptor_id || 0,
-          mesaNombre: '-',
-          mesaSiglas: '-',
-          mesaUsuarioId: req?.usuario_receptor_id || 0,
+          mesaId: Number(receptorRef?.mesa_id ?? r.usuario_receptor_id ?? 0),
+          mesaNombre: String(receptorRef?.mesa_nombre ?? '-'),
+          mesaSiglas: String(receptorRef?.siglas ?? '-'),
+          mesaUsuarioId: Number(r.usuario_receptor_id ?? 0),
           activo: r.activo,
         });
       }
       setRecursos([]);
+      editOriginalByKeyRef.current = parsed.reduce<Record<string, any>>((acc, recurso) => {
+        const key = `${recurso.grupoId}-${recurso.tipoId}-${recurso.mesaUsuarioId}`;
+        acc[key] = recurso.original;
+        return acc;
+      }, {});
       const cantidadByKey = parsed.reduce<Record<string, number>>((acc, recurso) => {
         const key = `${recurso.grupoId}-${recurso.tipoId}-${recurso.mesaId}`;
         acc[key] = Number(recurso.cantidad ?? 0);
@@ -406,6 +437,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     getRequerimientoRecursos,
     getRecursoTiposByGrupo,
     loadRecursoTipos,
+    receptores,
   ]);
 
   const loadDisponibilidadByTipo = useCallback(async () => {
@@ -619,10 +651,13 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
 
     setRecursos((prev) => {
       const newId = Math.max(0, ...prev.map((r) => r.id)) + 1;
+      const editKey = `${selectedGrupoId}-${selectedTipoId}-${row.usuarioId}`;
+      const original = isEditMode ? editOriginalByKeyRef.current[editKey] : undefined;
       return [
         ...prev,
         {
-          id: newId,
+          id: Number(original?.id ?? newId),
+          original,
           grupo: grupo?.nombre || `Grupo ${selectedGrupoId}`,
           grupoId: selectedGrupoId,
           tipo: tipo?.nombre || `Tipo ${selectedTipoId}`,
@@ -646,7 +681,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     addRecursoDesdeMesa(row);
   };
 
-  const handleEnviarNivelSuperiorDesdeMesa = useCallback(async (row: DisponibilidadMesaRow) => {
+  const handleEnviarNivelSuperiorDesdeMesa = async (row: DisponibilidadMesaRow) => {
     if (!selectedGrupoId || !selectedTipoId) {
       alert('Seleccione grupo y tipo de recurso.');
       return;
@@ -676,7 +711,34 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       let usuarioEmisorId = 0;
       const esNacional = Number(datosLogin?.coe_id ?? 0) === 1;
       if (esNacional) {
-        usuarioEmisorId = 13;
+        const receptorMesa13 = receptores.find((receptor) => Number(receptor.mesa_id) === 13);
+        const usuarioMesa13Id = Number(receptorMesa13?.usuario_id ?? 0);
+        if (!usuarioMesa13Id) {
+          alert('No se pudo identificar el usuario receptor de la mesa 13.');
+          return;
+        }
+
+        const grupo = recursoGrupos.find((g) => g.id === selectedGrupoId);
+        const tipo = recursoTipos.find((t) => t.id === selectedTipoId);
+        const recursoNacional: RecursoSeleccionado = {
+          id: 1,
+          grupo: grupo?.nombre || `Grupo ${selectedGrupoId}`,
+          grupoId: selectedGrupoId,
+          tipo: tipo?.nombre || `Tipo ${selectedTipoId}`,
+          tipoId: selectedTipoId,
+          cantidad: row.cantidadSolicitada,
+          detalleSolicitudRecurso: detalle,
+          porcentajeAvance: 0,
+          costoEstimado: parseCostoToNumber(tipo?.costo),
+          mesaId: 13,
+          mesaNombre: receptorMesa13?.mesa_nombre || 'Mesa 13',
+          mesaSiglas: receptorMesa13?.mesa_siglas || receptorMesa13?.siglas || '',
+          mesaUsuarioId: usuarioMesa13Id,
+          activo: true,
+        };
+
+        await handleRegistrarRequerimiento([recursoNacional]);
+        return;
       } else {
         const getSuperiorEndpoint = `${apiBase}/usuarios/get_usuario_nivel_superior/${usuarioOrigenId}`;
         const superiorRes = await authFetch(getSuperiorEndpoint, {
@@ -711,16 +773,18 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
 
       const recursoData: RequerimientoRecursoRequest = {
         activo: true,
-        cantidad: row.cantidadSolicitada,
+        cantidad_solicitada: row.cantidadSolicitada,
         costo: parseCostoToNumber(tipo?.costo),
         creador: datosLogin.usuario_login,
         destino: '',
         detalle: detalleRequerimiento,
+        emergencia_id: emergenciaGlobalId,
         especificaciones: detalle,
+        fecha_fin: (fechaFin || new Date()).toISOString(),
+        fecha_inicio: (fechaInicio || new Date()).toISOString(),
         requerimiento_numero: requerimientoNumero,
         recurso_grupo_id: selectedGrupoId,
         recurso_tipo_id: selectedTipoId,
-        requerimiento_id: 0,
         usuario_receptor_id: usuarioReceptorId,
         requerimiento_estado_id: 1,
         usuario_emisor_id: usuarioEmisorId,
@@ -743,7 +807,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         authFetch,
         context: 'enviados:enviar_nivel_superior_o_brecha',
         params: {
-          accionId: esNacional ? HuellaAccionLogId.ENVIAR_A_BRECHA : HuellaAccionLogId.ESCALAR_NIVEL_SUPERIOR,
+          accionId: HuellaAccionLogId.ESCALAR_NIVEL_SUPERIOR,
           usuarioAccionId: Number(datosLogin?.usuario_id ?? 0),
           cantidadSolicitada: Number(row.cantidadSolicitada ?? 0),
           coeOrigenId: Number(datosLogin?.coe_id ?? 0),
@@ -752,7 +816,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
           mesaDestinoId: Number(row.mesaId ?? 0),
           recursoGrupoId: Number(selectedGrupoId ?? 0),
           recursoTipoId: Number(selectedTipoId ?? 0),
-          motivoId: esNacional ? HuellaMotivoId.REQUIERE_GESTION_INTERNACIONAL : 0,
+          motivoId: 0,
           requerimientoNumero: requerimientoNumero,
           requerimientoRecursoId: Number(requerimientoRecursoIdLog ?? 0),
           respuestaFecha: new Date().toISOString(),
@@ -785,7 +849,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     } finally {
       setIsSendingEndoso(false);
     }
-  }, [selectedGrupoId, selectedTipoId, datosLogin, recursoGrupos, recursoTipos, detalleRequerimiento, createRequerimientoRecurso, apiBase, authFetch, resolveCreatedRequerimientoRecursoId]);
+  };
 
   const removeRecurso = (id: number) => {
     setRecursos((prev) => {
@@ -852,14 +916,25 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       });
 
       alert('Requerimiento rechazado correctamente.');
-      navigate('/requerimientos/enviados');
+      navigateToEnviadosWithRefresh();
     } catch (error) {
       console.error(error);
       alert('Error al rechazar el requerimiento.');
     } finally {
       setIsRejecting(false);
     }
-  }, [editContext?.requerimientoRecursoId, reqIdParam, apiBase, authFetch, navigate]);
+  }, [
+    editContext?.requerimientoRecursoId,
+    reqIdParam,
+    apiBase,
+    authFetch,
+    datosLogin?.usuario_id,
+    datosLogin?.coe_id,
+    datosLogin?.mesa_id,
+    numero,
+    editNumero,
+    navigateToEnviadosWithRefresh,
+  ]);
 
   const handleWizardSelect = (targetIndex: number) => {
     const targetStep = (targetIndex + 1) as WizardStep;
@@ -915,17 +990,12 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       alert('No hay un requerimiento en modo edición.');
       return;
     }
-    if (!editContext.requerimientoRecursoId) {
-      alert('No se pudo resolver el ID del requerimiento recurso a editar.');
-      return;
-    }
-    const recursoEditado = recursos[0];
-    if (!recursoEditado) {
+    if (recursos.length === 0) {
       alert('Debe asignar un recurso antes de guardar.');
       return;
     }
-    const nuevaCantidad = Number(recursoEditado.cantidad ?? 0);
-    if (!nuevaCantidad || nuevaCantidad <= 0) {
+    const recursoInvalido = recursos.find((recurso) => Number(recurso.cantidad ?? 0) <= 0);
+    if (recursoInvalido) {
       alert('La cantidad solicitada debe ser mayor a 0.');
       return;
     }
@@ -933,6 +1003,10 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     setIsSavingEdit(true);
     try {
       if (isReplacementFlow) {
+        if (!editContext.requerimientoRecursoId) {
+          alert('No se pudo resolver el ID del requerimiento recurso a reemplazar.');
+          return;
+        }
         const closeRes = await authFetch(`${apiBase}/requerimiento-recursos/${editContext.requerimientoRecursoId}`, {
           method: 'PATCH',
           headers: {
@@ -963,16 +1037,18 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
 
           const recursoData: RequerimientoRecursoRequest = {
             activo: true,
-            cantidad: recurso.cantidad,
+            cantidad_solicitada: recurso.cantidad,
             costo: parseCostoToNumber(recurso.costoEstimado),
             creador: datosLogin?.usuario_login || '',
             destino: '',
             detalle: detalleRequerimiento,
+            emergencia_id: emergenciaGlobalId,
             especificaciones: (recurso.detalleSolicitudRecurso || '').trim(),
+            fecha_fin: (fechaFin || new Date()).toISOString(),
+            fecha_inicio: (fechaInicio || new Date()).toISOString(),
             requerimiento_numero: requerimientoNumero,
             recurso_grupo_id: recurso.grupoId,
             recurso_tipo_id: recurso.tipoId,
-            requerimiento_id: 0,
             usuario_receptor_id: usuarioReceptorId,
             requerimiento_estado_id: 1,
             usuario_emisor_id: usuarioEmisorId,
@@ -1010,60 +1086,109 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         }
 
         alert('Recursos registrados exitosamente.');
-        navigate('/requerimientos/enviados');
+        navigateToEnviadosWithRefresh();
         return;
       }
 
-      const endpoint = `${apiBase}/requerimiento-recursos/${editContext.requerimientoRecursoId}`;
-      const original = editContext.original || {};
-      const res = await authFetch(endpoint, {
-        method: 'PUT',
-        headers: {
-          accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      for (const recursoEditado of recursos) {
+        const editKey = `${recursoEditado.grupoId}-${recursoEditado.tipoId}-${recursoEditado.mesaUsuarioId}`;
+        const original = recursoEditado.original ?? editOriginalByKeyRef.current[editKey];
+        const requerimientoRecursoId = Number(original?.id ?? 0);
+        const nuevaCantidad = Number(recursoEditado.cantidad ?? 0);
+        const requerimientoNumero = String(original?.requerimiento_numero ?? numero ?? editNumero ?? '');
+        const usuarioEmisorId = Number(original?.usuario_emisor_id ?? datosLogin?.usuario_id ?? 0);
+        const usuarioReceptorId = Number(original?.usuario_receptor_id ?? recursoEditado.mesaUsuarioId ?? 0);
+        const payload: RequerimientoRecursoRequest = {
           activo: Boolean(original?.activo ?? recursoEditado.activo ?? true),
           cantidad_solicitada: nuevaCantidad,
           costo: Number(original?.costo ?? recursoEditado.costoEstimado ?? 0),
+          creador: String(original?.creador ?? datosLogin?.usuario_login ?? ''),
           destino: String(original?.destino ?? ''),
-          detalle: String(original?.detalle ?? detalleRequerimiento ?? ''),
+          detalle: String(detalleRequerimiento ?? original?.detalle ?? ''),
+          emergencia_id: emergenciaGlobalId,
           especificaciones: String(recursoEditado.detalleSolicitudRecurso || '').trim(),
-          modificacion: new Date().toISOString(),
-          modificador: String(datosLogin?.usuario_login ?? original?.modificador ?? ''),
+          fecha_fin: (fechaFin || new Date()).toISOString(),
+          fecha_inicio: (fechaInicio || new Date()).toISOString(),
           recurso_grupo_id: Number(original?.recurso_grupo_id ?? recursoEditado.grupoId ?? 0),
           recurso_tipo_id: Number(original?.recurso_tipo_id ?? recursoEditado.tipoId ?? 0),
           requerimiento_estado_id: Number(original?.requerimiento_estado_id ?? 1),
-          requerimiento_id: Number(original?.requerimiento_id ?? 0),
-          requerimiento_numero: String(original?.requerimiento_numero ?? numero ?? editNumero ?? ''),
-          usuario_receptor_id: Number(original?.usuario_receptor_id ?? recursoEditado.mesaUsuarioId ?? 0),
-        }),
-      });
+          requerimiento_numero: requerimientoNumero,
+          usuario_emisor_id: usuarioEmisorId,
+          usuario_receptor_id: usuarioReceptorId,
+        };
 
-      if (!res.ok) {
-        alert('No se pudo actualizar el requerimiento editado.');
-        return;
+        if (!requerimientoRecursoId) {
+          const created = await createRequerimientoRecurso(payload);
+          if (!created) {
+            alert(`No se pudo crear el recurso adicional asignado a ${recursoEditado.mesaNombre}.`);
+            return;
+          }
+
+          const nuevoRequerimientoRecursoId = await resolveCreatedRequerimientoRecursoId({
+            requerimientoNumero,
+            usuarioEmisorId,
+            recursoGrupoId: payload.recurso_grupo_id,
+            recursoTipoId: payload.recurso_tipo_id,
+            usuarioReceptorId,
+          });
+
+          void registrarHuellaMovimiento({
+            apiBase,
+            authFetch,
+            context: 'enviados:crear_recurso_adicional_edicion',
+            params: {
+              accionId: HuellaAccionLogId.SOLICITAR_REQUERIMIENTO,
+              usuarioAccionId: Number(datosLogin?.usuario_id ?? 0),
+              cantidadSolicitada: nuevaCantidad,
+              coeOrigenId: Number(datosLogin?.coe_id ?? 0),
+              mesaOrigenId: Number(datosLogin?.mesa_id ?? 0),
+              mesaDestinoId: Number(recursoEditado.mesaId ?? 0),
+              recursoGrupoId: payload.recurso_grupo_id,
+              recursoTipoId: payload.recurso_tipo_id,
+              requerimientoNumero,
+              requerimientoRecursoId: nuevoRequerimientoRecursoId,
+              respuestaFecha: new Date().toISOString(),
+            },
+          });
+          continue;
+        }
+
+        const endpoint = `${apiBase}/requerimiento-recursos/${requerimientoRecursoId}`;
+        const res = await authFetch(endpoint, {
+          method: 'PUT',
+          headers: {
+            accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+          alert(`No se pudo actualizar el recurso asignado a ${recursoEditado.mesaNombre}.`);
+          return;
+        }
+
+        void registrarHuellaMovimiento({
+          apiBase,
+          authFetch,
+          context: 'enviados:guardar_edicion',
+          params: {
+            accionId: HuellaAccionLogId.ASIGNAR_REQUERIMIENTO,
+            usuarioAccionId: Number(datosLogin?.usuario_id ?? 0),
+            cantidadSolicitada: nuevaCantidad,
+            coeOrigenId: Number(datosLogin?.coe_id ?? 0),
+            mesaOrigenId: Number(datosLogin?.mesa_id ?? 0),
+            recursoGrupoId: Number(recursoEditado.grupoId ?? 0),
+            recursoTipoId: Number(recursoEditado.tipoId ?? 0),
+            requerimientoNumero,
+            requerimientoRecursoId,
+            respuestaFecha: new Date().toISOString(),
+          },
+        });
       }
-      void registrarHuellaMovimiento({
-        apiBase,
-        authFetch,
-        context: 'enviados:guardar_edicion',
-        params: {
-          accionId: HuellaAccionLogId.ASIGNAR_REQUERIMIENTO,
-          usuarioAccionId: Number(datosLogin?.usuario_id ?? 0),
-          cantidadSolicitada: nuevaCantidad,
-          coeOrigenId: Number(datosLogin?.coe_id ?? 0),
-          mesaOrigenId: Number(datosLogin?.mesa_id ?? 0),
-          recursoGrupoId: Number(recursoEditado.grupoId ?? 0),
-          recursoTipoId: Number(recursoEditado.tipoId ?? 0),
-          requerimientoNumero: String(numero || editNumero || ''),
-          requerimientoRecursoId: Number(editContext.requerimientoRecursoId ?? 0),
-          respuestaFecha: new Date().toISOString(),
-        },
-      });
 
       alert('Requerimiento actualizado exitosamente.');
-      navigate('/requerimientos/enviados');
+      navigateToEnviadosWithRefresh();
     } catch (error) {
       console.error(error);
       alert('Error al actualizar el requerimiento.');
@@ -1072,8 +1197,9 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     }
   };
 
-  const handleRegistrarRequerimiento = async () => {
-    if (!datosLogin || recursos.length === 0) {
+  const handleRegistrarRequerimiento = async (recursosOverride?: RecursoSeleccionado[]) => {
+    const recursosARegistrar = Array.isArray(recursosOverride) ? recursosOverride : recursos;
+    if (!datosLogin || recursosARegistrar.length === 0) {
       alert('Complete el wizard antes de registrar.');
       return;
     }
@@ -1109,7 +1235,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       //   return;
       // }
 
-      for (const recurso of recursos) {
+      for (const recurso of recursosARegistrar) {
         const usuarioReceptorId = Number(recurso.mesaUsuarioId ?? 0);
         if (!usuarioReceptorId) {
           alert(`No se encontro usuario receptor para la mesa ${recurso.mesaNombre}.`);
@@ -1118,16 +1244,18 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
 
         const recursoData: RequerimientoRecursoRequest = {
           activo: true,
-          cantidad: recurso.cantidad,
+          cantidad_solicitada: recurso.cantidad,
           costo: parseCostoToNumber(recurso.costoEstimado),
           creador: datosLogin.usuario_login,
           destino: '',
           detalle: detalleRequerimiento,
+          emergencia_id: emergenciaGlobalId,
           especificaciones: (recurso.detalleSolicitudRecurso || '').trim(),
+          fecha_fin: (fechaFin || new Date()).toISOString(),
+          fecha_inicio: (fechaInicio || new Date()).toISOString(),
           requerimiento_numero: requerimientoNumeroUuid,
           recurso_grupo_id: recurso.grupoId,
           recurso_tipo_id: recurso.tipoId,
-          requerimiento_id: 0,
           usuario_receptor_id: usuarioReceptorId,
           requerimiento_estado_id: 1,
           usuario_emisor_id: usuarioEmisorId,
@@ -1166,7 +1294,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       }
 
       alert('Requerimiento registrado exitosamente');
-      navigate('/requerimientos/enviados');
+      navigateToEnviadosWithRefresh();
     } catch (error) {
       alert('Error al registrar el requerimiento');
       console.error(error);
@@ -1418,16 +1546,6 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                   body={(row: RecursoSeleccionado) => (
                     <div className="flex gap-2">
                       <Button
-                        label=""
-                        icon="pi pi-send"
-                        severity="help"
-                        text
-                        onClick={() => handleEnviarABrecha(row)}
-                        tooltip="Enviar a brecha"
-                        tooltipOptions={{ position: 'top' }}
-
-                      />
-                      <Button
                         icon="pi pi-trash"
                         severity="danger"
                         text
@@ -1474,7 +1592,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                   icon={isEditMode ? 'pi pi-save' : 'pi pi-send'}
                   severity="success"
                   className="m-1"
-                  onClick={isEditMode ? handleGuardarEdicion : handleRegistrarRequerimiento}
+                  onClick={isEditMode ? handleGuardarEdicion : () => handleRegistrarRequerimiento()}
                   disabled={isSavingEdit}
                 />
               )}

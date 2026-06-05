@@ -33,6 +33,7 @@ interface RequerimientosEnviadosAgrupadosTableProps {
   onEdit?: (item: RequerimientoEnviadoGrupoRow) => void;
   onDelete?: (item: RequerimientoEnviadoGrupoRow) => void;
   loadDetalle: (requerimientoNumero: string) => Promise<RequerimientoEnviadoDetalleRow[]>;
+  detalleData?: Record<string, RequerimientoEnviadoDetalleRow[]>;
   emptyMessage?: string;
 }
 
@@ -71,6 +72,7 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
   onEdit,
   onDelete,
   loadDetalle,
+  detalleData,
   emptyMessage = 'No se encontraron registros.',
 }) => {
   const [globalFilter, setGlobalFilter] = useState('');
@@ -106,6 +108,12 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
       setFirst(Math.max(0, filteredItems.length - rows));
     }
   }, [filteredItems.length, first, rows]);
+
+  useEffect(() => {
+    if (detalleData) {
+      setDetalleCache(detalleData);
+    }
+  }, [detalleData]);
 
   const fetchDetalleIfNeeded = async (requerimientoNumero: string) => {
     if (detalleCache[requerimientoNumero] || detalleLoading[requerimientoNumero]) return;
@@ -162,7 +170,9 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
               <th>#</th>
               <th>Cod. Req</th>
               <th>Cantidad Total</th>
+              <th>Detalle</th>
               <th>Porcentaje Avance</th>
+              
               <th>Acciones</th>
             </tr>
           </thead>
@@ -198,9 +208,10 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
                         >
                           <i className={`pi ${isExpanded ? 'pi-chevron-down' : 'pi-chevron-right'}`} />
                         </button>
-                        <span title={numero}>{numero}</span>
+                        <span title={numero}>{numero.slice(0, 8)}</span>
                       </td>
                       <td>{Number(item.cantidad_solicitada ?? 0)}</td>
+                      <td>{item.detalle || '-'}</td>
                       <td>
                         <Progress
                           percent={progressPercent(item.porcentaje_avance)}

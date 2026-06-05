@@ -136,18 +136,42 @@ export const NuevoActaCOE: React.FC = () => {
     return Array.from(grupos.entries()).map(([detalle, resoluciones]) => {
       // Tomar la primera resolución como base
       const base = resoluciones[0];
-      const mesasAgrupadas = resoluciones
-        .map(r => r.mesaAsignadaId)
-        .filter((id): id is number => typeof id === 'number')
-        .map((mesaId) => {
-          const mesa = mesas.find(m => m.id === mesaId);
-          return {
-            id: mesaId,
-            nombre: mesa?.mesa_nombre || mesa?.nombre || '',
-            siglas: mesa?.mesa_siglas || mesa?.siglas || '',
-            mesa_abreviatura: mesa?.mesa_siglas || mesa?.siglas || ''
-          };
+      const mesasPorId = new Map<number, {
+        id: number;
+        nombre: string;
+        siglas: string;
+        mesa_abreviatura: string;
+      }>();
+      resoluciones.forEach((resolucion) => {
+        const mesasResolucion = Array.isArray(resolucion.mesas) ? resolucion.mesas : [];
+        mesasResolucion.forEach((mesaResolucion) => {
+          if (typeof mesaResolucion.id !== 'number') return;
+          const mesa = mesas.find(m => m.id === mesaResolucion.id);
+          mesasPorId.set(mesaResolucion.id, {
+            id: mesaResolucion.id,
+            nombre: mesaResolucion.nombre || mesa?.mesa_nombre || mesa?.nombre || '',
+            siglas: mesaResolucion.siglas || mesa?.mesa_siglas || mesa?.siglas || '',
+            mesa_abreviatura: mesaResolucion.mesa_abreviatura || mesa?.mesa_siglas || mesa?.siglas || ''
+          });
         });
+
+        const mesaIds = Array.isArray(resolucion.mesaAsignadaIds) && resolucion.mesaAsignadaIds.length > 0
+          ? resolucion.mesaAsignadaIds
+          : [resolucion.mesaAsignadaId];
+        mesaIds
+          .filter((id): id is number => typeof id === 'number')
+          .forEach((mesaId) => {
+            if (mesasPorId.has(mesaId)) return;
+            const mesa = mesas.find(m => m.id === mesaId);
+            mesasPorId.set(mesaId, {
+              id: mesaId,
+              nombre: mesa?.mesa_nombre || mesa?.nombre || '',
+              siglas: mesa?.mesa_siglas || mesa?.siglas || '',
+              mesa_abreviatura: mesa?.mesa_siglas || mesa?.siglas || ''
+            });
+          });
+      });
+      const mesasAgrupadas = Array.from(mesasPorId.values());
       return {
         id: base.id, // Usar el ID real de la resolución
         key: base.id || detalle, // Key única para React basada en ID o detalle
@@ -193,13 +217,13 @@ export const NuevoActaCOE: React.FC = () => {
         
         const mesasCompletas = mesasData.map((m: any) => {
           const mesa = mesas.find(me => me.id === m.mesa_id);
-          return mesa ? { 
-            id: mesa.id, 
-            nombre: mesa.mesa_nombre, 
-            siglas: mesa.siglas,
-            mesa_abreviatura: m.mesa_abreviatura
-          } : null;
-        }).filter(Boolean);
+          return {
+            id: Number(m.mesa_id ?? mesa?.id ?? 0),
+            nombre: String(m.mesa_nombre || mesa?.mesa_nombre || mesa?.nombre || ''),
+            siglas: String(m.mesa_abreviatura || mesa?.mesa_siglas || mesa?.siglas || ''),
+            mesa_abreviatura: String(m.mesa_abreviatura || mesa?.mesa_siglas || mesa?.siglas || '')
+          };
+        }).filter((mesa: any) => mesa.id > 0);
 
         return {
           ...resolucion,
