@@ -1,143 +1,154 @@
 import React, { useEffect, useRef } from 'react';
 import { notification } from 'antd';
 import { useAuth } from '../../context/AuthContext';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useNotifications } from '../../context/NotificationsContext';
 
-// Polls for new requerimientos recibidos for the logged-in user and shows a notification when new ones arrive
-export const NotificationWatcher: React.FC<{ intervalMs?: number }>= ({ intervalMs = 3000 }) => {
-  const { getRequerimientosEnviados, getRequerimientoEstados, datosLogin } = useAuth();
-  const seenIdsRef = useRef<Set<number>>(new Set());
-  const lastSnapshotRef = useRef<Map<number, { estadoId?: number; avance?: number }>>(new Map());
+interface NotificationSnapshot {
+  estadoId: number;
+  avance: number;
+}
+
+export const NotificationWatcher: React.FC<{ intervalMs?: number }> = ({ intervalMs = 3000 }) => {
+  const {
+    getRequerimientosRecibidosNotificaciones,
+    getRequerimientoEstados,
+    datosLogin,
+    selectedEmergenciaId,
+  } = useAuth();
+  const snapshotsRef = useRef<Map<string, NotificationSnapshot>>(new Map());
   const estadosMapRef = useRef<Map<number, string>>(new Map());
   const navigate = useNavigate();
-  const location = useLocation();
   const { addNotification } = useNotifications();
-
-  // Helper to standardize how we show notifications
-  const openNotificationWithIcon = (
-    type: 'success' | 'info' | 'warning' | 'error',
-    message: React.ReactNode,
-    description?: React.ReactNode,
-    onClick?: () => void,
-  ) => {
-    notification[type]({
-      message,
-      description,
-      onClick,
-      placement: 'topRight',
-    });
-  };
 
   useEffect(() => {
     let isMounted = true;
     let timer: number | undefined;
-    const initializedRef = { current: false } as { current: boolean };
 
-    const loadEstados = async () => {
-      try {
-        const estados = await getRequerimientoEstados();
-        estadosMapRef.current = new Map((estados || []).map((e: any) => [e.id, e.nombre]));
-      } catch {}
+    const getEstadoNombre = (estadoId: number) =>
+      estadosMapRef.current.get(estadoId) || `Estado ${estadoId}`;
+
+    const getNotificationKey = (item: any) => {
+      const recursoId = Number(item?.requerimiento_recurso_id ?? item?.id ?? 0);
+      return `${item?.tipo_notificacion || 'notificacion'}:${recursoId}`;
     };
 
-    const getEstadoNombre = (estadoId?: number) => {
-      if (typeof estadoId !== 'number') return 'Solicitado';
-      return estadosMapRef.current.get(estadoId) || `Estado ${estadoId}`;
+    const getSnapshot = (item: any): NotificationSnapshot => ({
+      estadoId: Number(item?.requerimiento_estado_id ?? 0),
+      avance: Number(item?.porcentaje_avance ?? 0),
+    });
+
+    const showNotification = (item: any, showPopup = true) => {
+      const tipo = item?.tipo_notificacion === 'retornado' ? 'retornado' : 'recibido';
+      const recursoId = Number(item?.requerimiento_recurso_id ?? item?.id ?? 0);
+      const numero = String(item?.requerimiento_numero || recursoId);
+      const estadoId = Number(item?.requerimiento_estado_id ?? 0);
+      const avance = Number(item?.porcentaje_avance ?? 0);
+      const estadoNombre = getEstadoNombre(estadoId);
+      const isRecibido = tipo === 'recibido';
+      const title = isRecibido
+        ? `Nuevo requerimiento recibido ${numero}`
+        : `Requerimiento enviado actualizado ${numero}`;
+      const description = isRecibido
+        ? `De: ${item?.usuario_emisor || item?.creador || '-'} | Estado: ${estadoNombre} | Avance: ${avance}%`
+        : `Estado: ${estadoNombre} | Avance: ${avance}%`;
+      const path = isRecibido
+        ? `/requerimientos/recibidos/nuevo?id=${recursoId}&requerimiento_numero=${encodeURIComponent(numero)}&requerimientoRecursoId=${recursoId}`
+        : '/requerimientos/enviados';
+      const notificationId = `${getNotificationKey(item)}:${estadoId}:${avance}:${item?.creacion || ''}`;
+
+      addNotification({
+        id: notificationId,
+        reqId: recursoId,
+        title,
+        description,
+        from: item?.usuario_emisor || item?.creador || '',
+        createdAt: item?.creacion || new Date().toISOString(),
+        path,
+      });
+
+      if (showPopup) {
+        notification.info({
+          message: title,
+          description: (
+            <>
+              Estado: {estadoNombre}
+              <br />
+              Avance: {avance}%
+            </>
+          ),
+          onClick: () => navigate(path),
+          placement: 'topRight',
+        });
+      }
     };
 
     const loadInitial = async () => {
-      try {
-        await loadEstados();
-        const list = await getRequerimientosEnviados();
-        if (!isMounted) return;
-        // eslint-disable-next-line no-console
-        console.log('[NotificationWatcher] initial list size:', Array.isArray(list) ? list.length : 'n/a');
-        for (const r of list) {
-          const id = (r as any).id ?? (r as any).requerimiento_id;
-          if (typeof id !== 'number') continue;
-          if (!seenIdsRef.current.has(id)) {
-            seenIdsRef.current.add(id);
-          }
-          lastSnapshotRef.current.set(id, {
-            estadoId: (r as any).requerimiento_estado_id,
-            avance: (r as any).porcentaje_avance,
-          });
-        }
-      } catch {}
+      const [estados, list] = await Promise.all([
+        getRequerimientoEstados(),
+        getRequerimientosRecibidosNotificaciones(),
+      ]);
+      if (!isMounted) return;
+
+      estadosMapRef.current = new Map((estados || []).map((estado: any) => [estado.id, estado.nombre]));
+      snapshotsRef.current.clear();
+      const initialItems = [...(list || [])].sort((a: any, b: any) => {
+        const aTime = new Date(a?.creacion || 0).getTime();
+        const bTime = new Date(b?.creacion || 0).getTime();
+        return aTime - bTime;
+      });
+      for (const item of initialItems) {
+        showNotification(item, false);
+        snapshotsRef.current.set(getNotificationKey(item), getSnapshot(item));
+      }
     };
 
     const poll = async () => {
       try {
-        const list = await getRequerimientosEnviados();
+        const list = await getRequerimientosRecibidosNotificaciones();
         if (!isMounted) return;
-        // eslint-disable-next-line no-console
-        console.log('[NotificationWatcher] poll list size:', Array.isArray(list) ? list.length : 'n/a');
-        for (const r of list) {
-          const id = (r as any).id ?? (r as any).requerimiento_id;
-          if (typeof id !== 'number') continue;
-          if (!seenIdsRef.current.has(id)) {
-            seenIdsRef.current.add(id);
-            lastSnapshotRef.current.set(id, {
-              estadoId: (r as any).requerimiento_estado_id,
-              avance: (r as any).porcentaje_avance,
-            });
-            continue;
-          }
 
-          const prev = lastSnapshotRef.current.get(id);
-          const nextEstadoId = (r as any).requerimiento_estado_id;
-          const nextAvance = (r as any).porcentaje_avance;
-          const estadoCambio = typeof nextEstadoId === 'number' && nextEstadoId !== prev?.estadoId;
-          const avanceCambio = typeof nextAvance === 'number' && nextAvance !== prev?.avance;
-          if (estadoCambio || avanceCambio) {
-            const nuevoEstado = getEstadoNombre(nextEstadoId);
-            const avanceLabel = typeof nextAvance === 'number' ? `${nextAvance}%` : 'N/A';
-            addNotification({
-              reqId: id,
-              title: `Requerimiento actualizado REQ-${id}`,
-              description: `Estado: ${nuevoEstado} • Avance: ${avanceLabel}`,
-            });
-            openNotificationWithIcon(
-              'info',
-              `Requerimiento actualizado REQ-${id}`,
-              (<>
-                Estado: {nuevoEstado}
-                <br />
-                Avance: {avanceLabel}
-              </>),
-              () => navigate(`/requerimientos/enviados`),
-            );
+        for (const item of list || []) {
+          const key = getNotificationKey(item);
+          const previous = snapshotsRef.current.get(key);
+          const current = getSnapshot(item);
+          const isNew = !previous;
+          const isReturnedChange =
+            item?.tipo_notificacion === 'retornado' &&
+            (previous?.estadoId !== current.estadoId || previous?.avance !== current.avance);
+
+          if (isNew || isReturnedChange) {
+            showNotification(item);
           }
-          lastSnapshotRef.current.set(id, {
-            estadoId: nextEstadoId,
-            avance: nextAvance,
-          });
+          snapshotsRef.current.set(key, current);
         }
-      } catch {}
+      } catch {
+        // The next polling cycle retries without interrupting the application.
+      }
     };
 
-    // Start if we have a logged-in indicator (prefer datosLogin, fallback to localStorage)
-    const hasToken = !!localStorage.getItem('token');
-    const userIdStr = localStorage.getItem('userId');
-    const canStart = !!datosLogin?.usuario_id || (hasToken && !!userIdStr);
-    if (canStart) {
-      // Debug: indicate watcher started
-      // eslint-disable-next-line no-console
-      console.log('[NotificationWatcher] starting polling');
-      loadInitial();
-      // Kick first poll sooner
-      timer = window.setInterval(poll, intervalMs) as unknown as number;
-      // Also poll immediately once after mount
-      poll();
+    const hasToken = Boolean(localStorage.getItem('token'));
+    const userId = Number(datosLogin?.usuario_id ?? localStorage.getItem('userId') ?? 0);
+    if (hasToken && userId > 0) {
+      void loadInitial().then(() => {
+        if (!isMounted) return;
+        timer = window.setInterval(poll, intervalMs);
+      });
     }
 
     return () => {
       isMounted = false;
       if (timer) window.clearInterval(timer);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [datosLogin?.usuario_id, intervalMs, location.pathname]);
+  }, [
+    addNotification,
+    datosLogin?.usuario_id,
+    getRequerimientoEstados,
+    getRequerimientosRecibidosNotificaciones,
+    intervalMs,
+    navigate,
+    selectedEmergenciaId,
+  ]);
 
   return null;
 };

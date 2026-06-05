@@ -27,7 +27,8 @@ export const NotificationsBell: React.FC = () => {
           renderItem={(item) => (
             <List.Item
               onClick={() => {
-                if (item.reqId) navigate(`/requerimientos/recibidos/nuevo?id=${item.reqId}`);
+                if (item.path) navigate(item.path);
+                else if (item.reqId) navigate(`/requerimientos/recibidos/nuevo?id=${item.reqId}`);
                 markRead(item.id);
                 setOpen(false);
               }}

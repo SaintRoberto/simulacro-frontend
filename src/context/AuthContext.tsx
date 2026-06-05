@@ -101,20 +101,6 @@ export interface RequerimientoRecursoRequest {
   usuario_emisor_id: number;
 }
 
-export interface RequerimientoEnviado {
-  id: number;
-  activo: boolean;
-  creacion: string;
-  creador: string;
-  emergencia_id: number;
-  fecha_fin: string;
-  fecha_inicio: string;
-  modificacion: string;
-  modificador: string;
-  usuario_emisor_id: number;
-  usuario_receptor_id: number;
-}
-
 export interface RequerimientoRecibido {
   id: number;
   activo: boolean;
@@ -134,14 +120,18 @@ export interface RequerimientoRecibidoNotificacion {
   activo: boolean;
   creacion: string;
   creador: string;
-  emergencia_id: number;
+  detalle: string;
+  fecha_fin: string;
+  fecha_inicio: string;
   porcentaje_avance: number;
   requerimiento_estado_id: number;
-  requerimiento_id: number;
+  requerimiento_numero: string;
+  requerimiento_recurso_id: number;
   usuario_emisor: string;
   usuario_emisor_id: number;
   usuario_receptor: string;
   usuario_receptor_id: number;
+  tipo_notificacion: 'recibido' | 'retornado';
 }
 
 
@@ -212,7 +202,6 @@ interface AuthContextValue {
   loadRecursoTipos: (grupoId: number) => Promise<void>;
   createRequerimiento: (data: RequerimientoRequest) => Promise<RequerimientoResponse | null>;
   createRequerimientoRecurso: (data: RequerimientoRecursoRequest) => Promise<boolean>;
-  getRequerimientosEnviados: () => Promise<RequerimientoEnviado[]>;
   getRequerimientosRecibidos: () => Promise<RequerimientoRecibido[]>;
   getRequerimientoEstados: () => Promise<RequerimientoEstado[]>;
   getRequerimientoById: (id: number) => Promise<RequerimientoByIdResponse | null>;
@@ -531,34 +520,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [apiBase, authFetch]);
 
-  const getRequerimientosEnviados = useCallback(async (): Promise<RequerimientoEnviado[]> => {
-    try {
-      const effectiveId = datosLogin?.usuario_id ?? Number(localStorage.getItem('userId') || 'NaN');
-      const perfilId = 3;
-      const coeId = datosLogin?.coe_id ?? 0;
-      const provinciaId = datosLogin?.provincia_id ?? 0;
-      const cantonId = datosLogin?.canton_id ?? 0;
-      const userId = Number(effectiveId);
-      const emergenciaFromStorage = Number(localStorage.getItem('selectedEmergenciaId') || 'NaN');
-      const effectiveEmergenciaId =
-        selectedEmergenciaId ??
-        datosLogin?.emergencia_id ??
-        (Number.isNaN(emergenciaFromStorage) ? null : emergenciaFromStorage);
-      if (isNaN(userId)) {
-        return [];
-      }
-      
-      const url = `${apiBase}/requerimientos/enviados/usuario/${userId}/perfil/${perfilId}/coe/${coeId}/provincia/${provinciaId}/canton/${cantonId}/emergencia/${effectiveEmergenciaId}`;
-      const res = await authFetch(url, { headers: { accept: 'application/json' } });
-      if (!res.ok) {
-        return [];
-      }
-      return (await res.json()) as RequerimientoEnviado[];
-    } catch (e) {
-      return [];
-    }
-  }, [apiBase, authFetch, datosLogin?.usuario_id, datosLogin?.perfil_id, datosLogin?.coe_id, datosLogin?.provincia_id, datosLogin?.canton_id]);
-
   const getRequerimientosRecibidos = useCallback(async (): Promise<RequerimientoRecibido[]> => {
     try {
       const effectiveId = datosLogin?.usuario_id ?? Number(localStorage.getItem('userId') || 'NaN');
@@ -590,19 +551,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const effectiveId = datosLogin?.usuario_id ?? Number(localStorage.getItem('userId') || 'NaN');
       const userId = Number(effectiveId);
-      if (isNaN(userId)) {
+      const emergenciaFromStorage = Number(localStorage.getItem('selectedEmergenciaId') || 'NaN');
+      const emergenciaId =
+        selectedEmergenciaId ??
+        datosLogin?.emergencia_id ??
+        (Number.isNaN(emergenciaFromStorage) ? null : emergenciaFromStorage);
+      if (isNaN(userId) || emergenciaId == null) {
         return [];
       }
-      const url = `${apiBase}/requerimientos/recibidos/notificacion/${userId}`;
-      const res = await authFetch(url, { headers: { accept: 'application/json' } });
-      if (!res.ok) {
-        return [];
-      }
-      return (await res.json()) as RequerimientoRecibidoNotificacion[];
+
+      const [recibidosRes, retornadosRes] = await Promise.all([
+        authFetch(
+          `${apiBase}/requerimiento-recursos/recibidos_notificacion/usuario_id/${userId}/emergencia_id/${emergenciaId}`,
+          { headers: { accept: 'application/json' } }
+        ),
+        authFetch(
+          `${apiBase}/requerimiento-recursos/retornados_notificacion/usuario_id/${userId}/emergencia_id/${emergenciaId}`,
+          { headers: { accept: 'application/json' } }
+        ),
+      ]);
+
+      const recibidosRaw = recibidosRes.ok ? await recibidosRes.json() : [];
+      const retornadosRaw = retornadosRes.ok ? await retornadosRes.json() : [];
+      const recibidos = Array.isArray(recibidosRaw)
+        ? recibidosRaw.map((item) => ({ ...item, tipo_notificacion: 'recibido' as const }))
+        : [];
+      const retornados = Array.isArray(retornadosRaw)
+        ? retornadosRaw.map((item) => ({ ...item, tipo_notificacion: 'retornado' as const }))
+        : [];
+
+      return [...recibidos, ...retornados] as RequerimientoRecibidoNotificacion[];
     } catch (e) {
       return [];
     }
-  }, [apiBase, authFetch]);
+  }, [apiBase, authFetch, datosLogin?.usuario_id, datosLogin?.emergencia_id, selectedEmergenciaId]);
 
 
   const value = useMemo<AuthContextValue>(() => ({
@@ -621,7 +603,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loadRecursoTipos,
     createRequerimiento,
     createRequerimientoRecurso,
-    getRequerimientosEnviados,
     getRequerimientosRecibidos,
     getRequerimientoEstados,
     getRequerimientoById,
@@ -635,7 +616,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (id == null) localStorage.removeItem('selectedEmergenciaId');
       else localStorage.setItem('selectedEmergenciaId', String(id));
     }
-  }), [loginResponse, datosLogin, receptores, receptoresStatus, recursoGrupos, recursoGruposStatus, recursoTipos, recursoTiposStatus, isRestoringSession, login, loadReceptores, loadRecursoGrupos, loadRecursoTipos, createRequerimiento, createRequerimientoRecurso, getRequerimientosEnviados, getRequerimientosRecibidos, getRequerimientoEstados, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, getRequerimientosRecibidosNotificaciones, authFetch, selectedEmergenciaId]);
+  }), [loginResponse, datosLogin, receptores, receptoresStatus, recursoGrupos, recursoGruposStatus, recursoTipos, recursoTiposStatus, isRestoringSession, login, loadReceptores, loadRecursoGrupos, loadRecursoTipos, createRequerimiento, createRequerimientoRecurso, getRequerimientosRecibidos, getRequerimientoEstados, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, getRequerimientosRecibidosNotificaciones, authFetch, selectedEmergenciaId]);
 
   return (
     <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

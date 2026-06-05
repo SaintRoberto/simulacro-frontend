@@ -6,6 +6,7 @@ export interface NotificationItem {
   title: string;
   description?: string;
   from?: string;
+  path?: string;
   createdAt: string; // ISO
   read: boolean;
 }
@@ -27,7 +28,22 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
   const addNotification = useCallback((n: Omit<NotificationItem, 'id' | 'read' | 'createdAt'> & { id?: string; createdAt?: string; read?: boolean }) => {
     const id = n.id ?? `${n.reqId ?? 'notif'}-${Date.now()}`;
     const createdAt = n.createdAt ?? new Date().toISOString();
-    setNotifications(prev => [{ id, title: n.title, description: n.description, from: n.from, reqId: n.reqId, createdAt, read: n.read ?? false }, ...prev]);
+    setNotifications(prev => {
+      const existing = prev.find(item => item.id === id);
+      const nextItem: NotificationItem = {
+        id,
+        title: n.title,
+        description: n.description,
+        from: n.from,
+        path: n.path,
+        reqId: n.reqId,
+        createdAt,
+        read: n.read ?? existing?.read ?? false,
+      };
+      return existing
+        ? prev.map(item => item.id === id ? nextItem : item)
+        : [nextItem, ...prev];
+    });
   }, []);
 
   const markAllRead = useCallback(() => {

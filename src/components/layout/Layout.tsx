@@ -5,6 +5,7 @@ import { MenuFoldOutlined, MenuUnfoldOutlined, UserOutlined, LogoutOutlined, Hom
 import { useAuth } from '../../context/AuthContext';
 import { useMenu, MenuItem } from '../../context/MenuContext';
 import { NotificationWatcher } from './NotificationWatcher';
+import { NOTIFICATIONS_POLL_INTERVAL_MS } from '../../config/notifications';
 import { NotificationsBell } from './NotificationsBell';
 import logo from '../../assets/logo.png';
 
@@ -90,7 +91,7 @@ export const Layout: React.FC = () => {
   return (
     <AntLayout style={{ minHeight: "100vh" }}>
       {/* Global notifications watcher */}
-      <NotificationWatcher intervalMs={5000} />
+      <NotificationWatcher intervalMs={NOTIFICATIONS_POLL_INTERVAL_MS} />
       <Sider
         width={216}
         collapsedWidth={60}
