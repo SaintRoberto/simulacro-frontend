@@ -99,7 +99,6 @@ export const RequerimientosRecibidos: React.FC = () => {
   const apiBase = process.env.REACT_APP_API_URL || '/api';
   const navigate = useNavigate();
   const { 
-    getRequerimientosRecibidos, 
     getRequerimientoEstados, 
     getRequerimientoById, 
     authFetch,
@@ -162,14 +161,10 @@ export const RequerimientosRecibidos: React.FC = () => {
       );
 
       // 2) Cargar lista general y estados (si falla, seguimos con fallback por ID)
-      const [dataResult, estadosResult] = await Promise.allSettled([
-        getRequerimientosRecibidos(),
+      const [ estadosResult] = await Promise.allSettled([
         getRequerimientoEstados(),
       ]);
-      const data =
-        dataResult.status === 'fulfilled'
-          ? (dataResult.value as unknown as RequerimientoRecibidoAPI[])
-          : [];
+    
       const estadosList =
         estadosResult.status === 'fulfilled'
           ? estadosResult.value
@@ -179,10 +174,7 @@ export const RequerimientosRecibidos: React.FC = () => {
       setRechazadoEstadoId(rejectedEstado ? Number((rejectedEstado as any).id) : null);
 
       const byId = new Map<number, RequerimientoRecibidoAPI>();
-      for (const req of data || []) {
-        const rid = Number((req as any).requerimiento_id ?? (req as any).id ?? 0);
-        if (rid > 0) byId.set(rid, req as RequerimientoRecibidoAPI);
-      }
+     
 
       const transformedData: RequerimientoRecibido[] = [];
       for (const recursosReq of Array.from(recursosPorClave.values())) {
@@ -274,7 +266,7 @@ export const RequerimientosRecibidos: React.FC = () => {
     } catch (error) {
       console.error('Error loading requerimientos:', error);
     }
-  }, [authFetch, apiBase, datosLogin?.usuario_id, getRequerimientosRecibidos, getRequerimientoEstados, getRequerimientoById, getRecursoTiposByGrupo, recursoGrupos]);
+  }, [authFetch, apiBase, datosLogin?.usuario_id, getRequerimientoEstados, getRequerimientoById, getRecursoTiposByGrupo, recursoGrupos]);
 
   useEffect(() => {
     loadRequerimientos();
@@ -447,7 +439,7 @@ export const RequerimientosRecibidos: React.FC = () => {
 
   const columns = [
     { field: 'id', header: 'Req ID', sortable: true },
-    { field: 'solicitante', header: 'Emisor', sortable: true },
+    { field: 'solicitante', header: 'Solicitado por', sortable: true },
     { field: 'grupoRequerimiento', header: 'Grupo recurso', sortable: true },
     { field: 'tipoRequerimiento', header: 'Tipo recurso', sortable: true },
     { field: 'cantidadSolicitada', header: 'Cantidad Solicitada', sortable: true },

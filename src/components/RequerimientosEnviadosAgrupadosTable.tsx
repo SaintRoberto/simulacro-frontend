@@ -274,7 +274,7 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
                                 <thead className="table-light">
                                   <tr>
                                     <th>ID</th>
-                                    <th>Receptor</th>
+                                    <th>Enviado a</th>
                                     <th>Grupo</th>
                                     <th>Tipo</th>
                                     <th>Cantidad</th>

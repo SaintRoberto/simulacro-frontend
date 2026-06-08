@@ -228,7 +228,7 @@ export const RequerimientosRechazados: React.FC = () => {
 
   const columns = [
     { field: 'id', header: 'Req ID', sortable: true },
-    { field: 'solicitante', header: 'Emisor', sortable: true },
+    { field: 'destinatario', header: 'Rechazado por', sortable: true },
     { field: 'grupoRequerimiento', header: 'Grupo recurso', sortable: true },
     { field: 'tipoRequerimiento', header: 'Tipo recurso', sortable: true },
     { field: 'cantidadSolicitada', header: 'Cantidad solicitada', sortable: true },

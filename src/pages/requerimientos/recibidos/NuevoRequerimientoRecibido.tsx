@@ -148,6 +148,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
   const [estados, setEstados] = useState<Array<{ id: number; nombre: string }>>([]);
   const [inventarioRows, setInventarioRows] = useState<InventarioAsignacionRow[]>([]);
   const [inventarioStatus, setInventarioStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [requerimientoEstadoId, setRequerimientoEstadoId] = useState<number | null>(null);
   const [isSavingRespuesta, setIsSavingRespuesta] = useState(false);
   const [messageApi, messageContextHolder] = message.useMessage();
 
@@ -225,8 +226,11 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
   }, [recursoInventarioSeleccionado, cantidadSolicitadaParam]);
 
   const diferenciaCantidad = useMemo(() => cantidadSolicitada - totalCantidadAsignada, [cantidadSolicitada, totalCantidadAsignada]);
-  const isEditing = Boolean(editId || editNumero);
-  const isBrechaEditing = isEditing && Number(datosLogin?.mesa_id ?? 0) === 13;
+  const isExistingRequirement = Boolean(editId || editNumero);
+  const isStartedRequirement = requerimientoEstadoId === 1;
+  const hasExistingResponse = Object.keys(respuestasPreviasByInventarioId).length > 0;
+  const isEditing = isExistingRequirement && !isStartedRequirement && hasExistingResponse;
+  const isBrechaEditing = isExistingRequirement && Number(datosLogin?.mesa_id ?? 0) === 13;
 
   useEffect(() => {
     if (isBrechaEditing) {
@@ -235,7 +239,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
     }
   }, [isBrechaEditing]);
 
-  const loadInventarioAsignacion = useCallback(async (recursoTipoId: number) => {
+  const loadInventarioAsignacion = useCallback(async (recursoTipoId: number, forceCreateResponse = false) => {
     if (!recursoTipoId || !datosLogin?.coe_id || !datosLogin?.mesa_id) {
       setInventarioRows([]);
       setInventarioStatus('idle');
@@ -257,12 +261,18 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
         parroquia: String(it?.parroquia ?? ''),
         existencias: Math.max(0, Number(it?.existencias ?? 0)),
         disponible: Math.max(0, Number(it?.disponible ?? 0)),
-        asignado_requerimiento: Math.max(0, Number(it?.asignado_requerimiento ?? 0)),
-        requerimiento_respuesta_id: Math.max(
-          0,
-          Number(it?.requerimiento_respuesta_id ?? it?.requerimiento_respuesta_ids?.[0] ?? 0)
-        ),
-        cantidadAsignada: Math.max(0, Number(it?.asignado_requerimiento ?? 0)),
+        asignado_requerimiento: forceCreateResponse
+          ? 0
+          : Math.max(0, Number(it?.asignado_requerimiento ?? 0)),
+        requerimiento_respuesta_id: forceCreateResponse
+          ? 0
+          : Math.max(
+              0,
+              Number(it?.requerimiento_respuesta_id ?? it?.requerimiento_respuesta_ids?.[0] ?? 0)
+            ),
+        cantidadAsignada: forceCreateResponse
+          ? 0
+          : Math.max(0, Number(it?.asignado_requerimiento ?? 0)),
         recurso_tipo_id: Number(it?.recurso_tipo_id ?? recursoTipoId),
         mesa_id: Number(it?.mesa_id ?? datosLogin.mesa_id),
         coe_id: Number(it?.coe_id ?? datosLogin.coe_id),
@@ -396,6 +406,9 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
         if (!recursosApi.length) return;
 
         const first = recursosApi[0];
+        const estadoRequerimientoActual = Number(first?.requerimiento_estado_id ?? 0);
+        const requiereCrearRespuesta = estadoRequerimientoActual === 1;
+        setRequerimientoEstadoId(estadoRequerimientoActual);
         const fechaCreacion = first?.creacion ? new Date(first.creacion) : null;
         const fechaModificacion = first?.modificacion ? new Date(first.modificacion) : null;
         setNumero(String(first?.requerimiento_numero || editNumero));
@@ -443,14 +456,15 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
         if (recursosRows.length) {
           setRecursos(recursosRows);
           if (!isBrechaEditing) {
-            await loadInventarioAsignacion(recursosRows[0].tipoId);
+            await loadInventarioAsignacion(recursosRows[0].tipoId, requiereCrearRespuesta);
           }
         }
 
-        if (editId) {
+        if (editId && !requiereCrearRespuesta) {
           await loadHistorial(editId);
         } else {
           setHistorial([]);
+          setRespuestasPreviasByInventarioId({});
         }
         return;
       }
@@ -474,6 +488,9 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
 
       // Load recursos for the requerimiento
       const recursosApi = await getRequerimientoRecursos(editId);
+      const estadoRequerimientoActual = Number((recursosApi[0] as any)?.requerimiento_estado_id ?? 0);
+      const requiereCrearRespuesta = estadoRequerimientoActual === 1;
+      setRequerimientoEstadoId(estadoRequerimientoActual);
       const recursosRows: Recurso[] = [];
 
       for (const r of recursosApi) {
@@ -513,10 +530,15 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
       }
       if (recursosRows.length > 0) {
         if (!isBrechaEditing) {
-          await loadInventarioAsignacion(recursosRows[0].tipoId);
+          await loadInventarioAsignacion(recursosRows[0].tipoId, requiereCrearRespuesta);
         }
       }
-      await loadHistorial(editId);
+      if (requiereCrearRespuesta) {
+        setHistorial([]);
+        setRespuestasPreviasByInventarioId({});
+      } else {
+        await loadHistorial(editId);
+      }
     };
 
     const currentLoadKey = `${editNumero ? `numero:${editNumero}` : `id:${editId}`}:mesa:${Number(datosLogin?.mesa_id ?? 0)}`;
@@ -620,21 +642,27 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
       let secuenciaLog = Number(historial.length ?? 0);
       let respuestasMap = respuestasPreviasByInventarioId;
       let respuestasPreviasRaw: any[] = [];
-      const resPrevias = await authFetch(`${apiBase}/requerimiento-respuestas/${editId}`, {
-        headers: { accept: 'application/json' },
-      });
-      if (resPrevias.ok) {
-        const rawPrevias = await resPrevias.json();
-        const dataPrevias = Array.isArray(rawPrevias)
-          ? rawPrevias
-          : (rawPrevias && typeof rawPrevias === 'object' ? [rawPrevias] : []);
-        respuestasPreviasRaw = dataPrevias;
-        respuestasMap = mapRespuestasPreviasByInventarioId(dataPrevias);
-        setRespuestasPreviasByInventarioId(respuestasMap);
+      if (isStartedRequirement) {
+        respuestasMap = {};
+        setRespuestasPreviasByInventarioId({});
+      } else {
+        const resPrevias = await authFetch(`${apiBase}/requerimiento-respuestas/${editId}`, {
+          headers: { accept: 'application/json' },
+        });
+        if (resPrevias.ok) {
+          const rawPrevias = await resPrevias.json();
+          const dataPrevias = Array.isArray(rawPrevias)
+            ? rawPrevias
+            : (rawPrevias && typeof rawPrevias === 'object' ? [rawPrevias] : []);
+          respuestasPreviasRaw = dataPrevias;
+          respuestasMap = mapRespuestasPreviasByInventarioId(dataPrevias);
+          setRespuestasPreviasByInventarioId(respuestasMap);
+        }
       }
 
       const hasExistingRespuesta = (row: InventarioAsignacionRow) =>
-        Number(row.requerimiento_respuesta_id) > 0 || Boolean(respuestasMap[row.id]);
+        !isStartedRequirement &&
+        (Number(row.requerimiento_respuesta_id) > 0 || Boolean(respuestasMap[row.id]));
 
       const patchEstadoRequerimientoRecurso = async (requerimientoRecursoId: number) => {
         const resEstado = await authFetch(
@@ -665,11 +693,13 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
           return;
         }
 
-        const respuestaExistente = respuestasPreviasRaw
-          .filter((item: any) =>
-            Number(item?.requerimiento_recurso_id ?? requerimientoRecursoId) === requerimientoRecursoId
-          )
-          .sort((a: any, b: any) => Number(b?.id ?? 0) - Number(a?.id ?? 0))[0];
+        const respuestaExistente = isStartedRequirement
+          ? undefined
+          : respuestasPreviasRaw
+              .filter((item: any) =>
+                Number(item?.requerimiento_recurso_id ?? requerimientoRecursoId) === requerimientoRecursoId
+              )
+              .sort((a: any, b: any) => Number(b?.id ?? 0) - Number(a?.id ?? 0))[0];
 
         const payloadBrecha = {
           activo: Boolean(respuestaExistente?.activo ?? true),
