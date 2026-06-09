@@ -1,8 +1,9 @@
 import React, { useEffect, useRef } from 'react';
-import { notification } from 'antd';
+import { notification, Tag } from 'antd';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useNotifications } from '../../context/NotificationsContext';
+import { getRequerimientoEstadoTagColor } from '../../utils/requerimientoEstado';
 
 interface NotificationSnapshot {
   estadoId: number;
@@ -47,10 +48,10 @@ export const NotificationWatcher: React.FC<{ intervalMs?: number }> = ({ interva
       const estadoNombre = getEstadoNombre(estadoId);
       const isRecibido = tipo === 'recibido';
       const title = isRecibido
-        ? `Nuevo requerimiento recibido ${numero}`
-        : `Requerimiento enviado actualizado ${numero}`;
+        ? `Nuevo requerimiento recibido por ${item?.usuario_emisor || item?.creador || '-'}`
+        : `Requerimiento enviado actualizado por ${item?.usuario_emisor || item?.creador || '-'}`;
       const description = isRecibido
-        ? `De: ${item?.usuario_emisor || item?.creador || '-'} | Estado: ${estadoNombre} | Avance: ${avance}%`
+        ? `Estado: ${estadoNombre} | Avance: ${avance}%`
         : `Estado: ${estadoNombre} | Avance: ${avance}%`;
       const path = isRecibido
         ? `/requerimientos/recibidos/nuevo?id=${recursoId}&requerimiento_numero=${encodeURIComponent(numero)}&requerimientoRecursoId=${recursoId}`
@@ -62,6 +63,8 @@ export const NotificationWatcher: React.FC<{ intervalMs?: number }> = ({ interva
         reqId: recursoId,
         title,
         description,
+        estado: estadoNombre,
+        avance,
         from: item?.usuario_emisor || item?.creador || '',
         createdAt: item?.creacion || new Date().toISOString(),
         path,
@@ -72,9 +75,12 @@ export const NotificationWatcher: React.FC<{ intervalMs?: number }> = ({ interva
           message: title,
           description: (
             <>
-              Estado: {estadoNombre}
+              Estado:{' '}
+              <Tag color={getRequerimientoEstadoTagColor(estadoNombre)}>
+                {estadoNombre}
+              </Tag>
               <br />
-              Avance: {avance}%
+              Avance: <strong>{avance}%</strong>
             </>
           ),
           onClick: () => navigate(path),

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Table, InputNumber, Button, Modal, Spin, Typography, Space, Select, Row, Col, message } from 'antd';
+import { Table, InputNumber, Button, Modal, Spin, Typography, Space, Select, Row, Col, Tour, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import type { TourProps } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 import { useAuth } from '../../context/AuthContext';
 
@@ -135,6 +136,12 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
   const [saving, setSaving] = useState(false);
   const [hasExisting, setHasExisting] = useState(false);
   const [opciones, setOpciones] = useState<Array<{ abreviatura: string; activo: boolean }>>([]);
+  const [tourOpen, setTourOpen] = useState(false);
+  const [tourCurrent, setTourCurrent] = useState(0);
+
+  const getTourTarget = useCallback((selector: string) => {
+    return document.querySelector(selector) as HTMLElement | null;
+  }, []);
 
   const opcionesActivas = useMemo(() => {
     const activas = opciones.filter(op => op.activo);
@@ -474,6 +481,52 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
     }));
   }, []);
 
+  const guidedVariable = useMemo(
+    () => variables.find(v => v.requiere_gis) ?? variables[0] ?? null,
+    [variables]
+  );
+
+  const tourSteps: TourProps['steps'] = useMemo(
+    () => [
+      {
+        title: 'Guia de afectaciones',
+        description: 'Este recorrido resume el uso básico de la matriz.',
+        target: () => getTourTarget('[data-tour="afectaciones-matrix-guia-btn"]'),
+      },
+      {
+        title: 'Provincia',
+        description: 'Si su perfil es nacional, seleccione provincia. En perfiles territorializados puede venir predefinida.',
+        target: () => getTourTarget('[data-tour="afectaciones-matrix-provincia"]'),
+      },
+      {
+        title: 'Cantón',
+        description: 'Luego seleccione el cantón. En perfil cantonal este filtro no requiere interacción.',
+        target: () => getTourTarget('[data-tour="afectaciones-matrix-canton"]'),
+      },
+      {
+        title: 'Matriz',
+        description: 'La matriz presenta por celda la cantidad y el costo de afectación.',
+        target: () => getTourTarget('[data-tour="afectaciones-matrix-celda"]') ?? getTourTarget('[data-tour="afectaciones-matrix-tabla"]'),
+      },
+      {
+        title: 'Cantidad y costo',
+        description: 'Edite aquí la cantidad afectada y el costo estimado para la variable seleccionada.',
+        target: () => getTourTarget('[data-tour="afectaciones-matrix-editor"]'),
+      },
+      {
+        title: 'Daños de infraestructura',
+        description: 'Cuando la variable lo amerita, use esta acción para registrar daños de infraestructura.',
+        target: () => getTourTarget('[data-tour="afectaciones-matrix-infra"]') ?? getTourTarget('[data-tour="afectaciones-matrix-editor"]'),
+      },
+      {
+        title: 'Guardar cambios',
+        description: 'Guarde para persistir la información registrada en la matriz.',
+        target: () => getTourTarget('[data-tour="afectaciones-matrix-guardar-btn"]'),
+      },
+    ],
+    [getTourTarget]
+  );
+
   type CellEditorProps = {
     rowKey: string;
     variable: AfectacionVariable;
@@ -497,7 +550,12 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
     }, [cantidad, costo, rowKey, variable.id]);
 
     return (
-      <Space size="small" wrap style={{ display: 'flex', alignItems: 'flex-end', padding: 6, borderRadius: 6, backgroundColor: hasValue ? rowColor : 'transparent' }}>
+      <Space
+        size="small"
+        wrap
+        data-tour={rowKey === `${rows[0]?.parroquia_id}-${rows[0]?.evento_id}` && variable.id === guidedVariable?.id ? 'afectaciones-matrix-editor' : undefined}
+        style={{ display: 'flex', alignItems: 'flex-end', padding: 6, borderRadius: 6, backgroundColor: hasValue ? rowColor : 'transparent' }}
+      >
         <div style={{ display: 'flex', flexDirection: 'row', gap: 8 }}>
           {/* Columna CANTIDAD */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -575,6 +633,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
             <div style={{ display: 'inline-flex', width: 200, alignItems: 'stretch' }}>
               <span style={{ fontSize: 12, fontWeight: 500, width: '60px', marginBottom: 2 }}>Infra.</span>
               <Button icon={<SettingOutlined />}
+                data-tour={rowKey === `${rows[0]?.parroquia_id}-${rows[0]?.evento_id}` && variable.id === guidedVariable?.id ? 'afectaciones-matrix-infra' : undefined}
                 onClick={() => openDetails(parroquia as Parroquia, variable, rowKey)}
                 hidden={!variable.requiere_gis}
                 disabled={isNacionalReadOnly}
@@ -782,31 +841,54 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
       dataIndex: `var_${v.id}`,
       key: `var_${v.id}`,
       width: 260,
-      render: (_: any, r: RowItem) => {
-        const rk = `${r.parroquia_id}-${r.evento_id}`;
-        return (
-          <CellEditor
-            rowKey={rk}
-            variable={v}
-            cell={matrix[rk]?.[v.id]}
-            parroquia={{ id: r.parroquia_id, nombre: r.parroquia_nombre }}
-          />
-        );
-      },
-    }));
+        render: (_: any, r: RowItem) => {
+          const rk = `${r.parroquia_id}-${r.evento_id}`;
+          return (
+            <div data-tour={r.parroquia_id === rows[0]?.parroquia_id && r.evento_id === rows[0]?.evento_id && v.id === guidedVariable?.id ? 'afectaciones-matrix-celda' : undefined}>
+              <CellEditor
+                rowKey={rk}
+                variable={v}
+                cell={matrix[rk]?.[v.id]}
+                parroquia={{ id: r.parroquia_id, nombre: r.parroquia_nombre }}
+              />
+            </div>
+          );
+        },
+      }));
 
     return [...base, ...variableColumns];
     // Only re-create columns when variables change (not on every keystroke)
-  }, [variables, matrix]);
+  }, [guidedVariable, matrix, rows, variables]);
 
   return (
-    <div>
+    <div data-tour="afectaciones-matrix-root">
       <div style={{ marginBottom: 12 }}>
-        <Title level={4} style={{ margin: 0 }}>{tableTitle}</Title>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <Title level={4} style={{ margin: 0 }}>{tableTitle}</Title>
+          <Button
+            data-tour="afectaciones-matrix-guia-btn"
+            onClick={() => {
+              setTourCurrent(0);
+              setTourOpen(true);
+            }}
+          >
+            Ver guia
+          </Button>
+        </div>
       </div>
+      <Tour
+        open={tourOpen}
+        current={tourCurrent}
+        steps={tourSteps}
+        onChange={(next) => setTourCurrent(next)}
+        onClose={() => {
+          setTourOpen(false);
+          setTourCurrent(0);
+        }}
+      />
       <Row gutter={[12, 12]} style={{ marginBottom: 8 }}>
         <Col xs={24} md={8}>
-          <Space direction="vertical" size={4} style={{ width: '100%' }}>
+          <Space direction="vertical" size={4} style={{ width: '100%' }} data-tour="afectaciones-matrix-provincia">
             <Text strong>Provincia</Text>
             <Select
               placeholder="Seleccione provincia"
@@ -819,7 +901,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
           </Space>
         </Col>
         <Col xs={24} md={8}>
-          <Space direction="vertical" size={4} style={{ width: '100%' }}>
+          <Space direction="vertical" size={4} style={{ width: '100%' }} data-tour="afectaciones-matrix-canton">
             <Text strong>Cantón</Text>
             <Select
               placeholder="Seleccione cantón"
@@ -837,23 +919,27 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
       <div style={{ marginBottom: 12 }}>
         <Space>
           {!puedeGuardar || !parroquias.length || !variables.length ? null : (
-            <Button type="primary" onClick={saveAll} loading={saving} disabled={isNacionalReadOnly || !puedeGuardar || !parroquias.length || !variables.length}>
-              {hasExisting ? 'Guardar cambios' : 'Guardar cambios'}
-            </Button>
+            <div data-tour="afectaciones-matrix-guardar-btn">
+              <Button type="primary" onClick={saveAll} loading={saving} disabled={isNacionalReadOnly || !puedeGuardar || !parroquias.length || !variables.length}>
+                {hasExisting ? 'Guardar cambios' : 'Guardar cambios'}
+              </Button>
+            </div>
           )}
         </Space>
       </div>
       <Spin spinning={loading}>
-        <Table<RowItem>
-          rowKey={(r) => `${r.parroquia_id}-${r.evento_id}`}
-          dataSource={rows}
-          columns={columns}
-          pagination={false}
-          scroll={{ x: 600 }}
-          sticky
-          bordered
-          size="middle"
-        />
+        <div data-tour="afectaciones-matrix-tabla">
+          <Table<RowItem>
+            rowKey={(r) => `${r.parroquia_id}-${r.evento_id}`}
+            dataSource={rows}
+            columns={columns}
+            pagination={false}
+            scroll={{ x: 600 }}
+            sticky
+            bordered
+            size="middle"
+          />
+        </div>
       </Spin>
   
     </div>

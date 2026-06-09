@@ -5,6 +5,8 @@ export interface NotificationItem {
   reqId?: number;
   title: string;
   description?: string;
+  estado?: string;
+  avance?: number;
   from?: string;
   path?: string;
   createdAt: string; // ISO
@@ -34,6 +36,8 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
         id,
         title: n.title,
         description: n.description,
+        estado: n.estado,
+        avance: n.avance,
         from: n.from,
         path: n.path,
         reqId: n.reqId,

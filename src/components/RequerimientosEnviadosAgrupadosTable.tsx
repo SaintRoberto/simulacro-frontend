@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Input, Progress, Tag } from 'antd';
+import { getRequerimientoEstadoTagColor } from '../utils/requerimientoEstado';
 
 export interface RequerimientoEnviadoGrupoRow {
   id?: number;
@@ -52,16 +53,6 @@ const formatDate = (value: string | null | undefined): string => {
 const progressPercent = (value: number | null | undefined): number => {
   const numeric = Number(value ?? 0);
   return Number.isFinite(numeric) ? numeric : 0;
-};
-
-const estadoTagColor = (estado: string): string => {
-  const normalized = estado.toLowerCase();
-  if (normalized.includes('rechaz')) return 'red';
-  if (normalized.includes('final') || normalized.includes('complet')) return 'green';
-  if (normalized.includes('proceso') || normalized.includes('seguim')) return 'gold';
-  if (normalized.includes('reasign') || normalized.includes('escal')) return 'purple';
-  if (normalized.includes('inici') || normalized.includes('solicit')) return 'blue';
-  return 'default';
 };
 
 export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviadosAgrupadosTableProps> = ({
@@ -302,7 +293,7 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
                                       </td>
                                       <td>
                                         {detalle.requerimiento_estado_nombre ? (
-                                          <Tag color={estadoTagColor(detalle.requerimiento_estado_nombre)}>
+                                          <Tag color={getRequerimientoEstadoTagColor(detalle.requerimiento_estado_nombre)}>
                                             {detalle.requerimiento_estado_nombre}
                                           </Tag>
                                         ) : (

@@ -14,7 +14,8 @@ import type { MenuItem } from 'primereact/menuitem';
 import { useAuth } from '../../../context/AuthContext';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { RequerimientoRequest, RequerimientoRecursoRequest } from '../../../context/AuthContext';
-import { Breadcrumb, Tag, Progress } from 'antd';
+import { Breadcrumb, Tag, Progress, Tour } from 'antd';
+import type { TourProps } from 'antd';
 import {
   HuellaAccionLogId,
   HuellaMotivoId,
@@ -22,6 +23,243 @@ import {
 } from '../../../utils/requerimientoHuellaLog';
 
 type WizardStep = 1 | 2 | 3;
+
+type GuideStepConfig = {
+  description: string;
+  selector?: string;
+  title: string;
+};
+
+type GuideContext = {
+  currentStep: WizardStep;
+  habilitarEndoso: boolean;
+  hasAddedResources: boolean;
+  hasSelectedGrupo: boolean;
+  hasSelectedTipo: boolean;
+  hasVisibleAvailabilityRows: boolean;
+  isEndosoToggleVisible: boolean;
+};
+
+const getGuideSteps = ({
+  currentStep,
+  habilitarEndoso,
+  hasAddedResources,
+  hasSelectedGrupo,
+  hasSelectedTipo,
+  hasVisibleAvailabilityRows,
+  isEndosoToggleVisible,
+}: GuideContext): GuideStepConfig[] => {
+  if (currentStep === 1) {
+    return [
+      {
+        title: 'Datos del requerimiento',
+        description: 'En este paso se ingresan los datos generales del requerimiento.',
+        selector: '[data-tour="req-step1-general"]',
+      },
+      {
+        title: 'Número de requerimiento',
+        description: 'El número de requerimiento identifica la solicitud.',
+        selector: '[data-tour="req-step1-numero"]',
+      },
+      {
+        title: 'Fecha inicio solicitud',
+        description: 'La fecha inicio indica desde cuándo se requiere la atención.',
+        selector: '[data-tour="req-step1-fecha-inicio"]',
+      },
+      {
+        title: 'Fecha fin solicitud',
+        description: 'La fecha fin indica hasta cuándo se requiere la atención.',
+        selector: '[data-tour="req-step1-fecha-fin"]',
+      },
+      {
+        title: 'Detalle del requerimiento',
+        description: 'En el detalle se debe describir claramente la necesidad.',
+        selector: '[data-tour="req-step1-detalle"]',
+      },
+      {
+        title: 'Continuar',
+        description: 'Presione Siguiente para continuar con la selección de recursos.',
+        selector: '[data-tour="req-nav-siguiente"]',
+      },
+    ];
+  }
+
+  if (currentStep === 2) {
+    const baseSteps: GuideStepConfig[] = [
+      {
+        title: 'Selección de recursos',
+        description: 'En este paso se selecciona el grupo y tipo de recurso que se necesita solicitar.',
+        selector: '[data-tour="req-step2-general"]',
+      },
+      {
+        title: 'Grupo recurso',
+        description: 'Seleccione el grupo de recurso para filtrar los tipos disponibles.',
+        selector: '[data-tour="req-step2-grupo"]',
+      },
+      {
+        title: 'Tipo recurso',
+        description: 'Luego seleccione el tipo de recurso que desea solicitar.',
+        selector: '[data-tour="req-step2-tipo"]',
+      },
+    ];
+
+    if (isEndosoToggleVisible && !habilitarEndoso) {
+      baseSteps.push({
+        title: 'Habilitar Endoso',
+        description: 'Habilitar Endoso permite enviar la solicitud a un nivel superior cuando la mesa actual no puede atenderla directamente o necesita escalar la gestión.',
+        selector: '[data-tour="req-step2-endoso-toggle"]',
+      });
+    }
+
+    if (habilitarEndoso) {
+      baseSteps.push(
+        {
+          title: 'Modo Endoso activo',
+          description: 'El modo Endoso está activo. En este modo, la solicitud se enviará a un nivel superior.',
+          selector: '[data-tour="req-step2-endoso-toggle"]',
+        },
+        {
+          title: 'Detalle obligatorio',
+          description: 'Debe ingresar el detalle obligatorio para justificar el endoso.',
+          selector: '[data-tour="req-step2-detalle-recurso"]',
+        },
+        {
+          title: 'Escalar recurso',
+          description: 'Use la acción Enviar a nivel superior para escalar el recurso seleccionado.',
+          selector: '[data-tour="req-step2-accion-recurso"]',
+        },
+        {
+          title: 'Volver al flujo normal',
+          description: 'Si desea volver al flujo normal, presione Deshabilitar Endoso.',
+          selector: '[data-tour="req-step2-endoso-toggle"]',
+        },
+        {
+          title: 'Volver',
+          description: 'Use Anterior para regresar a los datos generales del requerimiento.',
+          selector: '[data-tour="req-nav-anterior"]',
+        }
+      );
+      return baseSteps;
+    }
+
+    baseSteps.push({
+      title: 'Inventario por mesa',
+      description: 'Luego de seleccionar grupo y tipo, se muestra el inventario disponible por mesa.',
+      selector: '[data-tour="req-step2-tabla"]',
+    });
+
+    if (hasSelectedGrupo && hasSelectedTipo && hasVisibleAvailabilityRows) {
+      baseSteps.push(
+        {
+          title: 'Cantidad disponible',
+          description: 'La cantidad disponible muestra cuántos recursos tiene cada mesa.',
+          selector: '[data-tour="req-step2-cantidad-disponible"]',
+        },
+        {
+          title: 'Cantidad solicitada',
+          description: 'En cantidad solicitada se debe ingresar la cantidad que se desea pedir.',
+          selector: '[data-tour="req-step2-cantidad-solicitada"]',
+        },
+        {
+          title: 'Detalle de solicitud recurso',
+          description: 'El detalle adicional permite aclarar la solicitud del recurso.',
+          selector: '[data-tour="req-step2-detalle-recurso"]',
+        },
+        {
+          title: 'Agregar recurso',
+          description: 'Presione Agregar Recurso para incluir el recurso en el requerimiento.',
+          selector: '[data-tour="req-step2-accion-recurso"]',
+        }
+      );
+    } else {
+      baseSteps.push({
+        title: 'Flujo de selección',
+        description: 'Primero seleccione grupo y tipo. Cuando existan filas visibles, podrá ingresar cantidad, detalle y agregar el recurso.',
+        selector: '[data-tour="req-step2-tabla"]',
+      });
+    }
+
+    baseSteps.push(
+      {
+        title: 'Volver',
+        description: 'Use Anterior para regresar a los datos generales del requerimiento.',
+        selector: '[data-tour="req-nav-anterior"]',
+      },
+      {
+        title: 'Continuar',
+        description: hasAddedResources
+          ? 'Cuando haya agregado los recursos necesarios, presione Siguiente.'
+          : 'Cuando agregue al menos un recurso, podrá continuar con Siguiente.',
+        selector: '[data-tour="req-nav-siguiente"]',
+      }
+    );
+
+    return baseSteps;
+  }
+
+  return [
+    {
+      title: 'Detalle y resumen',
+      description: 'En este paso se revisan los recursos agregados antes de registrar el requerimiento.',
+      selector: '[data-tour="req-step3-general"]',
+    },
+    {
+      title: 'Tabla de recursos solicitados',
+      description: 'Verifique grupo, tipo, cantidad y mesa asignada.',
+      selector: '[data-tour="req-step3-tabla"]',
+    },
+    {
+      title: 'Grupo recurso',
+      description: 'Esta columna muestra el grupo del recurso solicitado.',
+      selector: '[data-tour="req-step3-grupo"]',
+    },
+    {
+      title: 'Tipo recurso',
+      description: 'Esta columna muestra el tipo específico de recurso solicitado.',
+      selector: '[data-tour="req-step3-tipo"]',
+    },
+    {
+      title: 'Cantidad',
+      description: 'Aquí se revisa la cantidad registrada para cada recurso.',
+      selector: '[data-tour="req-step3-cantidad"]',
+    },
+    {
+      title: 'Detalle de solicitud recurso',
+      description: 'Aquí se visualiza el detalle ingresado para cada recurso.',
+      selector: '[data-tour="req-step3-detalle-recurso"]',
+    },
+    {
+      title: '% avance',
+      description: 'Este campo muestra el porcentaje de avance asociado al recurso.',
+      selector: '[data-tour="req-step3-avance"]',
+    },
+    {
+      title: 'Mesa asignada',
+      description: 'Esta columna muestra la mesa que atenderá o gestionará el recurso.',
+      selector: '[data-tour="req-step3-mesa"]',
+    },
+    {
+      title: 'Eliminar recurso',
+      description: 'Use esta acción si necesita quitar un recurso antes de registrar el requerimiento.',
+      selector: '[data-tour="req-step3-eliminar"]',
+    },
+    {
+      title: 'Resumen final',
+      description: 'El resumen muestra los datos generales del requerimiento.',
+      selector: '[data-tour="req-step3-resumen"]',
+    },
+    {
+      title: 'Volver',
+      description: 'Si algún dato está incorrecto, puede regresar con el botón Anterior.',
+      selector: '[data-tour="req-nav-anterior"]',
+    },
+    {
+      title: 'Registrar requerimiento',
+      description: 'Si todo está correcto, presione Registrar Requerimiento.',
+      selector: '[data-tour="req-nav-registrar"]',
+    },
+  ];
+};
 
 interface RecursoSeleccionado {
   id: number;
@@ -135,6 +373,8 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
   const [isSendingEndoso, setIsSendingEndoso] = useState<boolean>(false);
   const [isRejecting, setIsRejecting] = useState<boolean>(false);
   const [isSavingEdit, setIsSavingEdit] = useState<boolean>(false);
+  const [tourOpen, setTourOpen] = useState(false);
+  const [tourCurrent, setTourCurrent] = useState(0);
   const [editContext, setEditContext] = useState<EditRecursoContext | null>(null);
 
   const [recursos, setRecursos] = useState<RecursoSeleccionado[]>([]);
@@ -187,6 +427,11 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     ],
     []
   );
+
+  const getTourTarget = useCallback((selector: string) => {
+    return document.querySelector(selector) as HTMLElement | null;
+  }, []);
+
 
   const mesasUnicas = useMemo(() => {
     const map = new Map<number, { mesaId: number; mesaNombre: string; siglas: string; usuarioId: number }>();
@@ -590,6 +835,35 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       },
     ];
   }, [isEndosoMode, selectedGrupoId, selectedTipoId, disponibilidadRows, datosLogin?.usuario_id, cantidadSolicitadaByKey, detalleSolicitudByKey]);
+
+  const guideStepConfigs = useMemo(() => {
+    return getGuideSteps({
+      currentStep: wizardStep,
+      habilitarEndoso: isEndosoMode,
+      hasAddedResources: recursos.some((recurso) => Number(recurso.cantidad ?? 0) > 0),
+      hasSelectedGrupo: Boolean(selectedGrupoId),
+      hasSelectedTipo: Boolean(selectedTipoId),
+      hasVisibleAvailabilityRows: disponibilidadRowsForStep2.length > 0,
+      isEndosoToggleVisible: !isUsuarioNacionalId13,
+    });
+  }, [
+    wizardStep,
+    isEndosoMode,
+    recursos,
+    selectedGrupoId,
+    selectedTipoId,
+    disponibilidadRowsForStep2.length,
+    isUsuarioNacionalId13,
+  ]);
+
+  const guideSteps = useMemo<TourProps['steps']>(() => {
+    return guideStepConfigs.map((step) => {
+      const target = step.selector ? getTourTarget(step.selector) : null;
+      return target
+        ? { title: step.title, description: step.description, target: () => target }
+        : { title: step.title, description: step.description };
+    });
+  }, [getTourTarget, guideStepConfigs]);
 
   const handleGrupoChange = (grupoId: number) => {
     setSelectedGrupoId(grupoId);
@@ -1315,24 +1589,47 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
 
       <div className="col-12">
         <Card>
-          <div className="mb-3">
-            <Steps
-              className="wizard-steps"
-              model={steps}
-              activeIndex={wizardStep - 1}
-              onSelect={(e) => handleWizardSelect(e.index)}
-              readOnly={false}
-            />
+          <div className="mb-3 d-flex align-items-start justify-content-between gap-2 flex-wrap">
+            <div style={{ flex: 1, minWidth: 280 }}>
+              <Steps
+                className="wizard-steps"
+                model={steps}
+                activeIndex={wizardStep - 1}
+                onSelect={(e) => handleWizardSelect(e.index)}
+                readOnly={false}
+              />
+            </div>
+            <div data-tour="req-guide-button">
+              <Button
+                label="Ver guía"
+                icon="pi pi-question-circle"
+                outlined
+                onClick={() => {
+                  setTourCurrent(0);
+                  setTourOpen(true);
+                }}
+              />
+            </div>
           </div>
+          <Tour
+            open={tourOpen}
+            current={tourCurrent}
+            steps={guideSteps}
+            onChange={(next) => setTourCurrent(next)}
+            onClose={() => {
+              setTourOpen(false);
+              setTourCurrent(0);
+            }}
+          />
 
           {wizardStep === 1 && (
             <>
-              <div className="mb-3">
+              <div className="mb-3" data-tour="req-step1-general">
                 <h3>Datos del Requerimiento</h3>
               </div>
               <div className="container-fluid">
                 <div className="row col-12 pb-2">
-                  <div className="col-lg-4 col-md-6 col-sm-12">
+                  <div className="col-lg-4 col-md-6 col-sm-12" data-tour="req-step1-numero">
                     <label className="label-uniform">Num. Requerimiento</label>
                     <InputText value={numero} onChange={(e) => setNumero(e.target.value)} className="w-full m-1" disabled={isEditMode} />
                   </div>
@@ -1340,15 +1637,15 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                     <label className="label-uniform">Fecha de Solicitud</label>
                     <Calendar value={fechaSolicitud} onChange={(e) => setFechaSolicitud(e.value as Date)} showIcon showTime dateFormat="dd/mm/yy" className="w-full m-1" disabled={isEditMode} />
                   </div>
-                  <div className="col-lg-4 col-md-6 col-sm-12">
+                  <div className="col-lg-4 col-md-6 col-sm-12" data-tour="req-step1-fecha-inicio">
                     <label className="label-uniform">Fecha Inicio solicitud</label>
                     <Calendar value={fechaInicio} onChange={(e) => setFechaInicio(e.value as Date)} showIcon showTime dateFormat="dd/mm/yy" className="w-full m-1" disabled={isEditMode} />
                   </div>
-                  <div className="col-lg-4 col-md-6 col-sm-12">
+                  <div className="col-lg-4 col-md-6 col-sm-12" data-tour="req-step1-fecha-fin">
                     <label className="label-uniform">Fecha Fin solicitud</label>
                     <Calendar value={fechaFin} onChange={(e) => setFechaFin(e.value as Date)} showIcon showTime dateFormat="dd/mm/yy" className="w-full m-1" disabled={isEditMode} />
                   </div>
-                  <div className="col-lg-12 col-md-6 col-sm-12 pt-2">
+                  <div className="col-lg-12 col-md-6 col-sm-12 pt-2" data-tour="req-step1-detalle">
                     <label className="label-uniform">Detalle de requerimiento</label>
                     <InputTextarea
                       value={detalleRequerimiento}
@@ -1365,12 +1662,12 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
 
           {wizardStep === 2 && (
             <>
-              <div className="mb-3">
+              <div className="mb-3" data-tour="req-step2-general">
                 <h3>Seleccion de Recursos y Mesa Asignada</h3>
               </div>
 
               <div className="row col-12 pb-2">
-                <div className="col-lg-4 col-md-6 col-sm-12">
+                <div className="col-lg-4 col-md-6 col-sm-12" data-tour="req-step2-grupo">
                   <label className="label-uniform">Grupo Recurso</label>
                   <Dropdown
                     value={selectedGrupoId}
@@ -1382,7 +1679,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                     className="w-full m-1"
                   />
                 </div>
-                <div className="col-lg-4 col-md-6 col-sm-12">
+                <div className="col-lg-4 col-md-6 col-sm-12" data-tour="req-step2-tipo">
                   <label className="label-uniform">Tipo Recurso</label>
                   <Dropdown
                     value={selectedTipoId}
@@ -1394,7 +1691,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                     className="w-full m-1"
                   />
                 </div>
-                <div className="col-lg-4 col-md-12 col-sm-12 d-flex align-items-end">
+                <div className="col-lg-4 col-md-12 col-sm-12 d-flex align-items-end" data-tour="req-step2-endoso-toggle">
                   {isUsuarioNacionalId13 ? (
                     <Button
                       label={isRejecting ? 'Rechazando...' : 'Rechazar'}
@@ -1430,21 +1727,22 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                   <Tag color="gold">{`Cantidad solicitada de referencia: ${cantidadSolicitadaReferencia}`}</Tag>
                 </div>
               )}
-
+              <div data-tour="req-step2-tabla">
               <DataTable value={disponibilidadRowsForStep2} emptyMessage={disponibilidadStatus === 'loading' ? 'Cargando disponibilidad...' : 'Seleccione grupo y tipo para visualizar inventario por mesa'} responsiveLayout="scroll">
                 <Column
-                  header="Mesa"
+                  header={<span data-tour="req-step2-mesa">Mesa</span>}
                   body={(row: DisponibilidadMesaRow) => `${row.mesaNombre}`}
                 />
-                <Column field="cantidadDisponible" header="Cantidad disponible" />
+                <Column field="cantidadDisponible" header={<span data-tour="req-step2-cantidad-disponible">Cantidad disponible</span>} />
                 <Column
                   header="Cantidad solicitada"
                   body={(row: DisponibilidadMesaRow) => {
                     const recursoYaAgregado = recursos.some(
                       (x) => x.grupoId === selectedGrupoId && x.tipoId === selectedTipoId && x.mesaId === row.mesaId
                     );
+                    const isGuideRow = row.mesaId === disponibilidadRowsForStep2[0]?.mesaId;
                     return (
-                      <div>
+                      <div data-tour={isGuideRow ? 'req-step2-cantidad-solicitada' : undefined}>
                         <InputNumber
                           value={row.cantidadSolicitada}
                           onValueChange={(e: InputNumberValueChangeEvent) =>
@@ -1469,7 +1767,8 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                     const recursoYaAgregado = recursos.some(
                       (x) => x.grupoId === selectedGrupoId && x.tipoId === selectedTipoId && x.mesaId === row.mesaId
                     );
-                    return (<div>
+                    const isGuideRow = row.mesaId === disponibilidadRowsForStep2[0]?.mesaId;
+                    return (<div data-tour={isGuideRow ? 'req-step2-detalle-recurso' : undefined}>
                       <InputText
                         className="w-full"
                         value={row.detalleSolicitudRecurso}
@@ -1487,8 +1786,9 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                     const recursoYaAgregado = recursos.some(
                       (x) => x.grupoId === selectedGrupoId && x.tipoId === selectedTipoId && x.mesaId === row.mesaId
                     );
+                    const isGuideRow = row.mesaId === disponibilidadRowsForStep2[0]?.mesaId;
                     return (
-                      <div>
+                      <div data-tour={isGuideRow ? 'req-step2-accion-recurso' : undefined}>
                         {!isEndosoMode ? (
                           <Button
                             label={recursoYaAgregado ? 'Recurso agregado' : 'Agregar Recurso'}
@@ -1515,22 +1815,24 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
 
 
               </DataTable>
+              </div>
             </>
           )}
 
           {wizardStep === 3 && (
             <>
-              <div className="mb-3">
+              <div className="mb-3" data-tour="req-step3-general">
                 <h3>Detalle de Recursos Solicitados</h3>
               </div>
 
+              <div data-tour="req-step3-tabla">
               <DataTable value={recursos} emptyMessage="Sin recursos seleccionados" responsiveLayout="scroll">
-                <Column field="grupo" header="Grupo Recurso" sortable />
-                <Column field="tipo" header="Tipo Recurso" sortable />
-                <Column field="cantidad" header="Cantidad" sortable />
-                <Column field="detalleSolicitudRecurso" header="Detalle de solicitud recurso" />
+                <Column field="grupo" header={<span data-tour="req-step3-grupo">Grupo Recurso</span>} sortable />
+                <Column field="tipo" header={<span data-tour="req-step3-tipo">Tipo Recurso</span>} sortable />
+                <Column field="cantidad" header={<span data-tour="req-step3-cantidad">Cantidad</span>} sortable />
+                <Column field="detalleSolicitudRecurso" header={<span data-tour="req-step3-detalle-recurso">Detalle de solicitud recurso</span>} />
                 <Column
-                  header="% avance"
+                  header={<span data-tour="req-step3-avance">% avance</span>}
                   body={(row: RecursoSeleccionado) => (
                     <div style={{ minWidth: 120 }}>
                       <Progress percent={Math.max(0, Math.min(100, Number(row.porcentajeAvance || 0)))} size="small" />
@@ -1538,13 +1840,13 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                   )}
                 />
                 <Column
-                  header="Mesa Asignada"
+                  header={<span data-tour="req-step3-mesa">Mesa Asignada</span>}
                   body={(row: RecursoSeleccionado) => `${row.mesaNombre}`}
                 />
                 <Column
                   header="Acciones"
                   body={(row: RecursoSeleccionado) => (
-                    <div className="flex gap-2">
+                    <div className="flex gap-2" data-tour={row.id === recursos[0]?.id ? 'req-step3-eliminar' : undefined}>
                       <Button
                         icon="pi pi-trash"
                         severity="danger"
@@ -1558,8 +1860,9 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                   style={{ width: '14rem' }}
                 />
               </DataTable>
+              </div>
 
-              <div className="mt-3 p-3 surface-100 border-round">
+              <div className="mt-3 p-3 surface-100 border-round" data-tour="req-step3-resumen">
                 <div><strong>Resumen</strong></div>
                 <div><strong>Numero:</strong> {numero}</div>
                 <div><strong>Fecha solicitud:</strong> {formatDateTime(fechaSolicitud)}</div>
@@ -1581,20 +1884,26 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
           <div className="row mt-4">
             <div className="col-12 text-end">
               {wizardStep > 1 && (
-                <Button label="Anterior" icon="pi pi-arrow-left" outlined className="m-1" onClick={handlePrevStep} />
+                <span data-tour="req-nav-anterior">
+                  <Button label="Anterior" icon="pi pi-arrow-left" outlined className="m-1" onClick={handlePrevStep} />
+                </span>
               )}
               {wizardStep < 3 && !(wizardStep === 2 && isEndosoMode) && (
-                <Button label="Siguiente" icon="pi pi-arrow-right" iconPos="right" className="m-1" onClick={handleNextStep} />
+                <span data-tour="req-nav-siguiente">
+                  <Button label="Siguiente" icon="pi pi-arrow-right" iconPos="right" className="m-1" onClick={handleNextStep} />
+                </span>
               )}
               {wizardStep === 3 && (
-                <Button
-                  label={isEditMode ? (isSavingEdit ? 'Guardando...' : 'Guardar Cambios') : 'Registrar Requerimiento'}
-                  icon={isEditMode ? 'pi pi-save' : 'pi pi-send'}
-                  severity="success"
-                  className="m-1"
-                  onClick={isEditMode ? handleGuardarEdicion : () => handleRegistrarRequerimiento()}
-                  disabled={isSavingEdit}
-                />
+                <span data-tour="req-nav-registrar">
+                  <Button
+                    label={isEditMode ? (isSavingEdit ? 'Guardando...' : 'Guardar Cambios') : 'Registrar Requerimiento'}
+                    icon={isEditMode ? 'pi pi-save' : 'pi pi-send'}
+                    severity="success"
+                    className="m-1"
+                    onClick={isEditMode ? handleGuardarEdicion : () => handleRegistrarRequerimiento()}
+                    disabled={isSavingEdit}
+                  />
+                </span>
               )}
             </div>
           </div>

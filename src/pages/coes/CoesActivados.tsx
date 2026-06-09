@@ -1,489 +1,474 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card } from 'primereact/card';
-import { InputText } from 'primereact/inputtext';
-import { Dropdown } from 'primereact/dropdown';
 import { Calendar } from 'primereact/calendar';
-import { InputTextarea } from 'primereact/inputtextarea';
-import { MultiSelect } from 'primereact/multiselect';
+import { Dropdown } from 'primereact/dropdown';
 import { BaseCRUD } from '../../components/crud/BaseCRUD';
-import { Tag } from 'primereact/tag';
+import { useAuth } from '../../context/AuthContext';
 
-interface COEActivado {
+interface CoeActivadoRow {
+  activo: boolean;
+  canton_id: number;
+  canton_nombre: string;
+  coe_id: number;
+  coe_nombre: string;
+  coe_siglas: string;
+  creacion: string;
+  creador: string;
+  emergencia_id: number;
+  estado_activacion: number;
+  estado_activacion_nombre: string;
+  fecha_activacion: string;
   id: number;
-  codigo: string;
-  fechaActivacion: Date;
-  horaActivacion: string;
-  motivoActivacion: string;
-  nivelAlerta: string;
-  ubicacion: string;
-  coordenadas: string;
-  descripcionSituacion: string;
-  impactoPotencial: string;
-  recursosMovilizados: string[];
-  responsables: string[];
-  estado: string;
-  fechaDesactivacion: Date | null;
-  motivoDesactivacion: string;
-  leccionesAprendidas: string;
-  recomendaciones: string;
+  modificacion: string;
+  modificador: string;
+  parroquia_id: number;
+  parroquia_nombre: string;
+  provincia_id: number;
+  provincia_nombre: string;
 }
 
-const nivelesAlerta = [
-  { label: 'Nivel 1 - Alerta Temprana', value: 'Nivel 1' },
-  { label: 'Nivel 2 - Alerta', value: 'Nivel 2' },
-  { label: 'Nivel 3 - Alerta Máxima', value: 'Nivel 3' },
-];
+interface CoeActivadoForm {
+  id?: number | null;
+  activo: boolean;
+  canton_id: number;
+  coe_id: number | null;
+  creador?: string;
+  emergencia_id: number;
+  estado_activacion: number | null;
+  fecha_activacion: Date | string | null;
+  modificador?: string;
+  provincia_id: number;
+}
 
-const estadosCOE = [
-  { label: 'En Evaluación', value: 'En Evaluación' },
-  { label: 'Activado', value: 'Activado' },
-  { label: 'En Curso', value: 'En Curso' },
-  { label: 'En Transición', value: 'En Transición' },
-  { label: 'Desactivado', value: 'Desactivado' },
-  { label: 'Cancelado', value: 'Cancelado' },
-];
+interface CatalogOption {
+  id: number;
+  nombre: string;
+  siglas?: string;
+}
 
-const recursosDisponibles = [
-  'Equipos de Respuesta Inmediata (ERI)',
-  'Unidades de Búsqueda y Rescate (USAR)',
-  'Equipos Médicos',
-  'Equipos de Logística',
-  'Equipos de Comunicaciones',
-  'Unidades de Transporte',
-  'Equipos de Evaluación de Daños',
-  'Equipos de Albergue',
-  'Equipos de Agua y Saneamiento',
-  'Equipos de Seguridad',
-];
+interface ProvinciaOption {
+  id: number;
+  nombre: string;
+}
 
-const rolesResponsables = [
-  'Coordinador General',
-  'Coordinador Operativo',
-  'Coordinador Logístico',
-  'Coordinador de Comunicaciones',
-  'Coordinador de Salud',
-  'Coordinador de Seguridad',
-  'Coordinador de Albergues',
-  'Coordinador de Evaluación de Daños',
-  'Coordinador de Agua y Saneamiento',
-  'Coordinador de Búsqueda y Rescate',
-];
+interface CantonOption {
+  id: number;
+  nombre: string;
+  provincia_id: number;
+}
 
 export const CoesActivados: React.FC = () => {
-  const [coes, setCoes] = useState<COEActivado[]>([]);
-  
-  const handleSave = (coe: Partial<COEActivado>) => {
-    if (coe.id) {
-      setCoes(coes.map(c => c.id === coe.id ? coe as COEActivado : c));
-    } else {
-      const newId = Math.max(...coes.map(c => c.id), 0) + 1;
-      setCoes([...coes, {
-        ...coe as COEActivado,
-        id: newId,
-        codigo: `COE-${new Date().getFullYear()}-${String(newId).padStart(4, '0')}`,
-        fechaActivacion: new Date(),
-        recursosMovilizados: [],
-        responsables: []
-      }]);
+  const { authFetch, datosLogin, selectedEmergenciaId } = useAuth();
+  const [rows, setRows] = useState<CoeActivadoRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [coes, setCoes] = useState<CatalogOption[]>([]);
+  const [estados, setEstados] = useState<CatalogOption[]>([]);
+  const [provincias, setProvincias] = useState<ProvinciaOption[]>([]);
+  const [cantones, setCantones] = useState<CantonOption[]>([]);
+
+  const apiBase = process.env.REACT_APP_API_URL || '/api';
+  const emergenciaId = Number(selectedEmergenciaId ?? 0);
+  const usuarioId = useMemo(() => {
+    const effective = datosLogin?.usuario_id ?? Number(localStorage.getItem('userId') || 'NaN');
+    return Number(effective) || 0;
+  }, [datosLogin]);
+  const actor = useMemo(() => {
+    return datosLogin?.usuario_login || datosLogin?.usuario_descripcion || 'usuario';
+  }, [datosLogin]);
+  const loginProvinciaId = Number(datosLogin?.provincia_id ?? 0);
+  const loginCantonId = Number(datosLogin?.canton_id ?? 0);
+
+  const fetchFirstArray = useCallback(async (urls: string[]) => {
+    for (const url of urls) {
+      try {
+        const res = await authFetch(url, { headers: { accept: 'application/json' } });
+        if (!res.ok) continue;
+        const data = await res.json();
+        if (Array.isArray(data)) return data;
+      } catch {
+        // probar siguiente endpoint
+      }
+    }
+    return [];
+  }, [authFetch]);
+
+  const loadCantones = useCallback(async (provinciaId: number) => {
+    if (!provinciaId) {
+      setCantones([]);
+      return [];
+    }
+    const data = await fetchFirstArray([
+      `${apiBase}/provincia/${provinciaId}/cantones/emergencia/${emergenciaId}`,
+      `${apiBase}/provincia/${provinciaId}/cantones/`,
+    ]);
+    const mapped = data
+      .map((item: any) => ({
+        id: Number(item.id),
+        nombre: String(item.nombre ?? item.canton_nombre ?? `Cantón ${item.id}`),
+        provincia_id: Number(item.provincia_id ?? provinciaId),
+      }))
+      .filter((item: CantonOption) => Number.isFinite(item.id) && item.id > 0);
+    setCantones(mapped);
+    return mapped;
+  }, [apiBase, emergenciaId, fetchFirstArray]);
+
+  const fetchRows = useCallback(async () => {
+    if (!emergenciaId || !usuarioId) {
+      setRows([]);
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await authFetch(`${apiBase}/coes_activados/emergencia/${emergenciaId}`, {
+        headers: { accept: 'application/json' },
+      });
+      if (!res.ok) {
+        setRows([]);
+        return;
+      }
+      const data = await res.json();
+      setRows(Array.isArray(data) ? data as CoeActivadoRow[] : []);
+    } catch {
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [apiBase, authFetch, emergenciaId, usuarioId]);
+
+  useEffect(() => {
+    fetchRows();
+  }, [fetchRows]);
+
+  useEffect(() => {
+    const loadCatalogs = async () => {
+      const [coesData, estadosData] = await Promise.all([
+        fetchFirstArray([
+          `${apiBase}/coes`,
+          `${apiBase}/coe`,
+        ]),
+        fetchFirstArray([
+          `${apiBase}/coes_activados_estados`,
+        ]),
+      ]);
+
+      setCoes(
+        coesData
+          .map((item: any) => ({
+            id: Number(item.id),
+            nombre: String(item.nombre ?? item.coe_nombre ?? `COE ${item.id}`),
+            siglas: String(item.siglas ?? item.coe_siglas ?? ''),
+          }))
+          .filter((item: CatalogOption) => Number.isFinite(item.id) && item.id > 0)
+      );
+
+      setEstados(
+        estadosData
+          .map((item: any) => ({
+            id: Number(item.id),
+            nombre: String(item.nombre ?? item.descripcion ?? item.estado_activacion_nombre ?? `Estado ${item.id}`),
+          }))
+          .filter((item: CatalogOption) => Number.isFinite(item.id) && item.id >= 0)
+      );
+    };
+
+    loadCatalogs();
+  }, [apiBase, fetchFirstArray]);
+
+  useEffect(() => {
+    const loadGeo = async () => {
+      if (!emergenciaId) {
+        setProvincias([]);
+        setCantones([]);
+        return;
+      }
+
+      const data = await fetchFirstArray([
+        `${apiBase}/provincias/emergencia/${emergenciaId}`,
+        `${apiBase}/provincias`,
+      ]);
+      const mapped = data
+        .map((item: any) => ({
+          id: Number(item.id),
+          nombre: String(item.nombre ?? item.provincia_nombre ?? `Provincia ${item.id}`),
+        }))
+        .filter((item: ProvinciaOption) => Number.isFinite(item.id) && item.id > 0);
+      setProvincias(mapped);
+
+      if (loginProvinciaId > 0) {
+        await loadCantones(loginProvinciaId);
+      } else {
+        setCantones([]);
+      }
+    };
+
+    loadGeo();
+  }, [apiBase, emergenciaId, fetchFirstArray, loadCantones, loginProvinciaId]);
+
+  const coeOptions = useMemo(() => {
+    const fromRows = rows.map((row) => ({
+      id: Number(row.coe_id),
+      nombre: String(row.coe_nombre ?? `COE ${row.coe_id}`),
+      siglas: String(row.coe_siglas ?? ''),
+    }));
+    const merged = new Map<number, CatalogOption>();
+    [...coes, ...fromRows].forEach((item) => {
+      if (item.id > 0 && !merged.has(item.id)) merged.set(item.id, item);
+    });
+    return Array.from(merged.values());
+  }, [coes, rows]);
+
+  const estadoOptions = useMemo(() => {
+    const fromRows = rows.map((row) => ({
+      id: Number(row.estado_activacion),
+      nombre: String(row.estado_activacion_nombre ?? `Estado ${row.estado_activacion}`),
+    }));
+    const merged = new Map<number, CatalogOption>();
+    [...estados, ...fromRows].forEach((item) => {
+      if (item.id >= 0 && !merged.has(item.id)) merged.set(item.id, item);
+    });
+    return Array.from(merged.values());
+  }, [estados, rows]);
+
+  const handleSave = async (item: Partial<CoeActivadoForm>) => {
+    const resolvedProvinciaId = Number(item.provincia_id ?? loginProvinciaId ?? 0);
+    const resolvedCantonId = Number(item.canton_id ?? loginCantonId ?? 0);
+    const isEdit = Number(item.id ?? 0) > 0;
+
+    const payload = {
+      activo: isEdit ? (item.activo ?? true) : true,
+      canton_id: resolvedCantonId,
+      coe_id: Number(item.coe_id ?? 0),
+      emergencia_id: emergenciaId,
+      estado_activacion: Number(item.estado_activacion ?? 0),
+      fecha_activacion: item.fecha_activacion
+        ? new Date(item.fecha_activacion).toISOString()
+        : new Date().toISOString(),
+      modificador: actor,
+      parroquia_id: 0,
+      provincia_id: resolvedProvinciaId,
+    };
+
+    const url = isEdit
+      ? `${apiBase}/coes_activados/${item.id}`
+      : `${apiBase}/coes_activados`;
+
+    const body = isEdit
+      ? payload
+      : { ...payload, creador: actor };
+
+    const res = await authFetch(url, {
+      method: isEdit ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (res.ok) {
+      await fetchRows();
     }
   };
 
-  const handleDelete = (coe: COEActivado) => {
-    setCoes(coes.filter(c => c.id !== coe.id));
+  const handleDelete = async (row: CoeActivadoRow) => {
+    if (!row.id) return;
+    try {
+      const putBody = {
+        activo: false,
+        canton_id: Number(row.canton_id ?? 0),
+        coe_id: Number(row.coe_id ?? 0),
+        emergencia_id: Number(row.emergencia_id ?? emergenciaId),
+        estado_activacion: Number(row.estado_activacion ?? 0),
+        fecha_activacion: row.fecha_activacion
+          ? new Date(row.fecha_activacion).toISOString()
+          : new Date().toISOString(),
+        modificador: actor,
+        parroquia_id: 0,
+        provincia_id: Number(row.provincia_id ?? 0),
+      };
+
+      let res = await authFetch(`${apiBase}/coes_activados/${row.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify(putBody),
+      });
+
+      if (!res.ok) {
+        res = await authFetch(`${apiBase}/coes_activados/${row.id}`, {
+          method: 'DELETE',
+          headers: { accept: 'application/json' },
+        });
+      }
+
+      if (res.ok) {
+        await fetchRows();
+      }
+    } catch {
+      // sin acción
+    }
   };
 
-  const renderForm = (coe: Partial<COEActivado>, onChange: (e: any) => void) => {
-    const onDateChange = (date: string | Date | Date[] | null, field: string) => {
-      if (!date) return;
-      let value: Date | Date[] | null = null;
-      if (Array.isArray(date)) {
-        value = date as Date[];
-      } else if (typeof date === 'string') {
-        const parsed = new Date(date);
-        if (!isNaN(parsed.getTime())) {
-          value = parsed;
-        } else {
-          return; // ignore invalid date strings
-        }
-      } else {
-        value = date;
+  const resolveItemForEdit = async (row: CoeActivadoRow): Promise<Partial<CoeActivadoForm>> => {
+    const provinciaId = Number(row.provincia_id ?? loginProvinciaId ?? 0);
+    const cantonId = Number(row.canton_id ?? loginCantonId ?? 0);
+
+    if (provinciaId > 0) {
+      await loadCantones(provinciaId);
+    }
+
+    return {
+      id: row.id,
+      activo: row.activo ?? true,
+      canton_id: cantonId,
+      coe_id: Number(row.coe_id ?? 0),
+      emergencia_id: Number(row.emergencia_id ?? emergenciaId),
+      estado_activacion: Number(row.estado_activacion ?? 0),
+      fecha_activacion: row.fecha_activacion ? new Date(row.fecha_activacion) : new Date(),
+      provincia_id: provinciaId,
+    };
+  };
+
+  const renderForm = (item: Partial<CoeActivadoForm>, onChange: (e: any) => void, readOnly?: boolean) => {
+    const isEdit = Number(item.id ?? 0) > 0;
+    const effectiveProvinciaId = Number(item.provincia_id ?? loginProvinciaId ?? 0);
+    const effectiveCantonId = Number(item.canton_id ?? loginCantonId ?? 0);
+
+    const onDropdownChange = (e: { value: any }, field: keyof CoeActivadoForm) => {
+      onChange({ target: { name: field, value: e.value } });
+    };
+
+    const handleProvinciaChange = async (provinciaId: number | null) => {
+      onChange({ target: { name: 'provincia_id', value: provinciaId ?? 0 } });
+      onChange({ target: { name: 'canton_id', value: 0 } });
+      if (!provinciaId) {
+        setCantones([]);
+        return;
       }
-      onChange({ target: { name: field, value } });
+      await loadCantones(provinciaId);
     };
 
-    const onDropdownChange = (e: { value: any }, field: string) => {
-      onChange({ target: { name: field, value: e.value } });
-    };
-
-    const onMultiSelectChange = (e: { value: any[] }, field: string) => {
-      onChange({ target: { name: field, value: e.value } });
-    };
-
-    const onTimeChange = (e: React.ChangeEvent<HTMLInputElement>, field: string) => {
-      onChange({ target: { name: field, value: e.target.value } });
+    const handleCantonChange = async (cantonId: number | null) => {
+      onChange({ target: { name: 'canton_id', value: cantonId ?? 0 } });
     };
 
     return (
       <div className="grid p-fluid">
-        <div className="field col-12">
-          <h4>Información Básica</h4>
-        </div>
-        
         <div className="field col-12 md:col-6">
-          <label htmlFor="nivelAlerta">Nivel de Alerta</label>
-          <Dropdown 
-            id="nivelAlerta" 
-            name="nivelAlerta"
-            value={coe.nivelAlerta} 
-            options={nivelesAlerta} 
-            onChange={(e) => onDropdownChange(e, 'nivelAlerta')} 
-            placeholder="Seleccione nivel de alerta" 
-            className="w-full" 
-            required
-          />
-        </div>
-        
-        <div className="field col-12 md:col-6">
-          <label htmlFor="fechaActivacion">Fecha de Activación</label>
-          <Calendar 
-            id="fechaActivacion" 
-            name="fechaActivacion"
-            value={coe.fechaActivacion || new Date()} 
-            onChange={(e) => onDateChange(e.value, 'fechaActivacion')} 
-            showIcon 
-            dateFormat="dd/mm/yy" 
-            className="w-full"
-            required 
-          />
-        </div>
-        
-        <div className="field col-12 md:col-6">
-          <label htmlFor="horaActivacion">Hora de Activación</label>
-          <input 
-            type="time" 
-            id="horaActivacion" 
-            name="horaActivacion"
-            value={coe.horaActivacion || ''} 
-            onChange={(e) => onTimeChange(e, 'horaActivacion')} 
-            className="p-inputtext p-component w-full"
-            required 
-          />
-        </div>
-        
-        <div className="field col-12 md:col-6">
-          <label htmlFor="ubicacion">Ubicación del COE</label>
-          <InputText 
-            id="ubicacion" 
-            name="ubicacion"
-            value={coe.ubicacion || ''} 
-            onChange={onChange} 
-            placeholder="Ej: Edificio Principal, Piso 3"
-            required 
-          />
-        </div>
-        
-        <div className="field col-12 md:col-6">
-          <label htmlFor="coordenadas">Coordenadas (opcional)</label>
-          <InputText 
-            id="coordenadas" 
-            name="coordenadas"
-            value={coe.coordenadas || ''} 
-            onChange={onChange} 
-            placeholder="Ej: -12.123456, -77.123456"
-          />
-        </div>
-        
-        <div className="field col-12">
-          <label htmlFor="motivoActivacion">Motivo de la Activación</label>
-          <InputText 
-            id="motivoActivacion" 
-            name="motivoActivacion"
-            value={coe.motivoActivacion || ''} 
-            onChange={onChange} 
-            required 
-          />
-        </div>
-        
-        <div className="field col-12">
-          <label htmlFor="descripcionSituacion">Descripción de la Situación</label>
-          <InputTextarea 
-            id="descripcionSituacion" 
-            name="descripcionSituacion"
-            value={coe.descripcionSituacion || ''} 
-            onChange={onChange} 
-            rows={3}
-            autoResize
-            required
-          />
-        </div>
-        
-        <div className="field col-12">
-          <label htmlFor="impactoPotencial">Impacto Potencial</label>
-          <InputTextarea 
-            id="impactoPotencial" 
-            name="impactoPotencial"
-            value={coe.impactoPotencial || ''} 
-            onChange={onChange} 
-            rows={2}
-            autoResize
-            required
-          />
-        </div>
-        
-        <div className="field col-12">
-          <h4>Recursos Movilizados</h4>
-          <MultiSelect 
-            value={coe.recursosMovilizados || []} 
-            options={recursosDisponibles}
-            onChange={(e) => onMultiSelectChange(e, 'recursosMovilizados')}
-            placeholder="Seleccione recursos"
-            display="chip"
-            className="w-full"
+          <label>COE *</label>
+          <Dropdown
+            value={typeof item.coe_id === 'number' && item.coe_id > 0 ? item.coe_id : null}
+            options={coeOptions.map((option) => ({
+              label: option.siglas ? `${option.siglas} - ${option.nombre}` : option.nombre,
+              value: option.id,
+            }))}
+            onChange={(e) => onDropdownChange(e, 'coe_id')}
+            placeholder="Seleccionar COE"
             filter
-          />
-        </div>
-        
-        <div className="field col-12">
-          <h4>Equipo de Respuesta</h4>
-          <MultiSelect 
-            value={coe.responsables || []} 
-            options={rolesResponsables}
-            onChange={(e) => onMultiSelectChange(e, 'responsables')}
-            placeholder="Seleccione responsables"
-            display="chip"
             className="w-full"
-            filter
           />
         </div>
-        
-        <div className="field col-12">
-          <h4>Información de Cierre</h4>
-        </div>
-        
+
         <div className="field col-12 md:col-6">
-          <label htmlFor="estado">Estado Actual</label>
-          <Dropdown 
-            id="estado" 
-            name="estado"
-            value={coe.estado} 
-            options={estadosCOE} 
-            onChange={(e) => onDropdownChange(e, 'estado')} 
-            placeholder="Seleccione estado" 
-            className="w-full" 
-            required
+          <label>Estado activación *</label>
+          <Dropdown
+            value={typeof item.estado_activacion === 'number' ? item.estado_activacion : null}
+            options={estadoOptions.map((option) => ({
+              label: option.nombre,
+              value: option.id,
+            }))}
+            onChange={(e) => onDropdownChange(e, 'estado_activacion')}
+            placeholder="Seleccionar estado"
+            filter
+            className="w-full"
           />
         </div>
-        
-        {(coe.estado === 'Desactivado' || coe.estado === 'Cancelado') && (
-          <>
-            <div className="field col-12 md:col-6">
-              <label htmlFor="fechaDesactivacion">Fecha de {coe.estado === 'Desactivado' ? 'Desactivación' : 'Cancelación'}</label>
-              <Calendar 
-                id="fechaDesactivacion" 
-                name="fechaDesactivacion"
-                value={coe.fechaDesactivacion || new Date()} 
-                onChange={(e) => onDateChange(e.value, 'fechaDesactivacion')} 
-                showIcon 
-                dateFormat="dd/mm/yy" 
-                className="w-full"
-                required={coe.estado === 'Desactivado' || coe.estado === 'Cancelado'}
-              />
-            </div>
-            
-            <div className="field col-12">
-              <label htmlFor="motivoDesactivacion">Motivo de {coe.estado === 'Desactivado' ? 'Desactivación' : 'Cancelación'}</label>
-              <InputTextarea 
-                id="motivoDesactivacion" 
-                name="motivoDesactivacion"
-                value={coe.motivoDesactivacion || ''} 
-                onChange={onChange} 
-                rows={2}
-                autoResize
-                required={coe.estado === 'Desactivado' || coe.estado === 'Cancelado'}
-              />
-            </div>
-            
-            {coe.estado === 'Desactivado' && (
-              <>
-                <div className="field col-12">
-                  <label htmlFor="leccionesAprendidas">Lecciones Aprendidas</label>
-                  <InputTextarea 
-                    id="leccionesAprendidas" 
-                    name="leccionesAprendidas"
-                    value={coe.leccionesAprendidas || ''} 
-                    onChange={onChange} 
-                    rows={3}
-                    autoResize
-                  />
-                </div>
-                
-                <div className="field col-12">
-                  <label htmlFor="recomendaciones">Recomendaciones</label>
-                  <InputTextarea 
-                    id="recomendaciones" 
-                    name="recomendaciones"
-                    value={coe.recomendaciones || ''} 
-                    onChange={onChange} 
-                    rows={3}
-                    autoResize
-                  />
-                </div>
-              </>
-            )}
-          </>
-        )}
-      </div>
-    );
-  };
 
-  const nivelAlertaTemplate = (rowData: COEActivado) => {
-    const getSeverity = (nivel: string) => {
-      switch (nivel) {
-        case 'Nivel 1':
-          return 'info';
-        case 'Nivel 2':
-          return 'warning';
-        case 'Nivel 3':
-          return 'danger';
-        default:
-          return null;
-      }
-    };
+        <div className="field col-12 md:col-6">
+          <label>Fecha activación *</label>
+          <Calendar
+            value={item.fecha_activacion ? new Date(item.fecha_activacion) : new Date()}
+            onChange={(e) => onChange({ target: { name: 'fecha_activacion', value: e.value } })}
+            showTime
+            showSeconds
+            dateFormat="dd/mm/yy"
+            className="w-full"
+            disabled={Boolean(readOnly) || isEdit}
+          />
+        </div>
 
-    return <Tag value={rowData.nivelAlerta} severity={getSeverity(rowData.nivelAlerta)} />;
-  };
+        <div className="field col-12 md:col-6">
+          <label>Provincia *</label>
+          <Dropdown
+            value={effectiveProvinciaId || null}
+            options={provincias.map((option) => ({ label: option.nombre, value: option.id }))}
+            onChange={(e) => handleProvinciaChange(e.value ?? null)}
+            placeholder="Seleccionar provincia"
+            filter
+            className="w-full"
+          />
+        </div>
 
-  const estadoTemplate = (rowData: COEActivado) => {
-    const getSeverity = (estado: string) => {
-      switch (estado) {
-        case 'Activado':
-        case 'En Curso':
-          return 'danger';
-        case 'En Evaluación':
-          return 'warning';
-        case 'En Transición':
-          return 'info';
-        case 'Desactivado':
-          return 'success';
-        case 'Cancelado':
-          return 'danger';
-        default:
-          return null;
-      }
-    };
-
-    return <Tag value={rowData.estado} severity={getSeverity(rowData.estado)} />;
-  };
-
-  const fechaTemplate = (rowData: COEActivado, field: string) => {
-    const date = rowData[field as keyof COEActivado];
-    return date ? new Date(date as string).toLocaleDateString() : '-';
-  };
-
-  const recursosTemplate = (rowData: COEActivado) => {
-    if (!rowData.recursosMovilizados || rowData.recursosMovilizados.length === 0) {
-      return <span className="text-500">Sin recursos</span>;
-    }
-    
-    return (
-      <div>
-        <Tag 
-          value={rowData.recursosMovilizados.length} 
-          icon="pi pi-box" 
-          className="mr-2"
-        />
-      </div>
-    );
-  };
-
-  const responsablesTemplate = (rowData: COEActivado) => {
-    if (!rowData.responsables || rowData.responsables.length === 0) {
-      return <span className="text-500">Sin asignar</span>;
-    }
-    
-    return (
-      <div>
-        <Tag 
-          value={rowData.responsables.length} 
-          icon="pi pi-users" 
-          className="mr-2"
-        />
+        <div className="field col-12 md:col-6">
+          <label>Cantón *</label>
+          <Dropdown
+            value={effectiveCantonId || null}
+            options={cantones
+              .filter((option) => !effectiveProvinciaId || option.provincia_id === effectiveProvinciaId)
+              .map((option) => ({ label: option.nombre, value: option.id }))}
+            onChange={(e) => handleCantonChange(e.value ?? null)}
+            placeholder="Seleccionar cantón"
+            disabled={!effectiveProvinciaId}
+            filter
+            className="w-full"
+          />
+        </div>
       </div>
     );
   };
 
   const columns = [
-    { field: 'codigo', header: 'Código COE', sortable: true },
-    { 
-      field: 'nivelAlerta', 
-      header: 'Nivel', 
+    { field: 'id', header: 'ID', sortable: true },
+    { field: 'coe_nombre', header: 'COE', sortable: true },
+    { field: 'coe_siglas', header: 'Siglas', sortable: true },
+    { field: 'provincia_nombre', header: 'Provincia', sortable: true },
+    { field: 'canton_nombre', header: 'Cantón', sortable: true },
+    { field: 'parroquia_nombre', header: 'Parroquia', sortable: true },
+    { field: 'estado_activacion_nombre', header: 'Estado', sortable: true },
+    {
+      field: 'fecha_activacion',
+      header: 'Fecha activación',
       sortable: true,
-      body: nivelAlertaTemplate 
+      body: (row: CoeActivadoRow) => row.fecha_activacion ? new Date(row.fecha_activacion).toLocaleString() : '',
     },
-    { 
-      field: 'fechaActivacion', 
-      header: 'Fecha Activación', 
+    {
+      field: 'activo',
+      header: 'Activo',
       sortable: true,
-      body: (rowData: COEActivado) => fechaTemplate(rowData, 'fechaActivacion')
-    },
-    { field: 'ubicacion', header: 'Ubicación', sortable: true },
-    { 
-      field: 'recursosMovilizados', 
-      header: 'Recursos', 
-      sortable: false,
-      body: recursosTemplate,
-      style: { width: '100px' }
-    },
-    { 
-      field: 'responsables', 
-      header: 'Equipo', 
-      sortable: false,
-      body: responsablesTemplate,
-      style: { width: '100px' }
-    },
-    { 
-      field: 'estado', 
-      header: 'Estado', 
-      sortable: true,
-      body: estadoTemplate 
-    },
-    { 
-      field: 'fechaDesactivacion', 
-      header: 'Fecha Cierre', 
-      sortable: true,
-      body: (rowData: COEActivado) => fechaTemplate(rowData, 'fechaDesactivacion')
+      body: (row: CoeActivadoRow) => row.activo ? 'Sí' : 'No',
     },
   ];
 
   return (
-    <Card title="COEs Activados">
-      <BaseCRUD<COEActivado>
+    <Card title="COEs activados">
+      <BaseCRUD<CoeActivadoForm>
         title=""
-        items={coes}
-        columns={columns}
+        items={rows as any}
+        columns={columns as any}
         renderForm={renderForm}
         onSave={handleSave}
-        onDelete={handleDelete}
+        onDelete={handleDelete as any}
+        resolveItemForEdit={resolveItemForEdit as any}
         initialItem={{
-          id: 0,
-          codigo: '',
-          fechaActivacion: new Date(),
-          horaActivacion: '',
-          motivoActivacion: '',
-          nivelAlerta: 'Nivel 1',
-          ubicacion: '',
-          coordenadas: '',
-          descripcionSituacion: '',
-          impactoPotencial: '',
-          recursosMovilizados: [],
-          responsables: [],
-          estado: 'En Evaluación',
-          fechaDesactivacion: null,
-          motivoDesactivacion: '',
-          leccionesAprendidas: '',
-          recomendaciones: ''
+          id: null,
+          activo: true,
+          canton_id: loginCantonId || 0,
+          coe_id: null,
+          emergencia_id: emergenciaId,
+          estado_activacion: null,
+          fecha_activacion: new Date(),
+          provincia_id: loginProvinciaId || 0,
         }}
+        idField="id"
+        showDeleteButton={true}
       />
+      {loading && <div className="mt-2">Cargando...</div>}
     </Card>
   );
 };

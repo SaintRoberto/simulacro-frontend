@@ -202,7 +202,6 @@ interface AuthContextValue {
   loadRecursoTipos: (grupoId: number) => Promise<void>;
   createRequerimiento: (data: RequerimientoRequest) => Promise<RequerimientoResponse | null>;
   createRequerimientoRecurso: (data: RequerimientoRecursoRequest) => Promise<boolean>;
-  getRequerimientosRecibidos: () => Promise<RequerimientoRecibido[]>;
   getRequerimientoEstados: () => Promise<RequerimientoEstado[]>;
   getRequerimientoById: (id: number) => Promise<RequerimientoByIdResponse | null>;
   getRequerimientoRecursos: (requerimientoId: number) => Promise<RequerimientoRecursoResponse[]>;
@@ -520,33 +519,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [apiBase, authFetch]);
 
-  const getRequerimientosRecibidos = useCallback(async (): Promise<RequerimientoRecibido[]> => {
-    try {
-      const effectiveId = datosLogin?.usuario_id ?? Number(localStorage.getItem('userId') || 'NaN');
-      const perfilId = 3;
-      const coeId = datosLogin?.coe_id ?? 0;
-      const provinciaId = datosLogin?.provincia_id ?? 0;
-      const cantonId = datosLogin?.canton_id ?? 0;
-      const emergenciaFromStorage = Number(localStorage.getItem('selectedEmergenciaId') || 'NaN');
-      const effectiveEmergenciaId =
-        selectedEmergenciaId ??
-        datosLogin?.emergencia_id ??
-        (Number.isNaN(emergenciaFromStorage) ? null : emergenciaFromStorage);
-      const userId = Number(effectiveId);
-      if (isNaN(userId) || effectiveEmergenciaId == null) {
-        return [];
-      }
-      const url = `${apiBase}/requerimientos/recibidos/usuario/${userId}/perfil/${perfilId}/coe/${coeId}/provincia/${provinciaId}/canton/${cantonId}/emergencia/${effectiveEmergenciaId}`;
-      const res = await authFetch(url, { headers: { accept: 'application/json' } });
-      if (!res.ok) {
-        return [];
-      }
-      return (await res.json()) as RequerimientoRecibido[];
-    } catch (e) {
-      return [];
-    }
-  }, [apiBase, authFetch, datosLogin?.usuario_id, datosLogin?.perfil_id, datosLogin?.coe_id, datosLogin?.provincia_id, datosLogin?.canton_id, datosLogin?.emergencia_id, selectedEmergenciaId]);
-
+ 
   const getRequerimientosRecibidosNotificaciones = useCallback(async (): Promise<RequerimientoRecibidoNotificacion[]> => {
     try {
       const effectiveId = datosLogin?.usuario_id ?? Number(localStorage.getItem('userId') || 'NaN');
@@ -603,7 +576,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loadRecursoTipos,
     createRequerimiento,
     createRequerimientoRecurso,
-    getRequerimientosRecibidos,
     getRequerimientoEstados,
     getRequerimientoById,
     getRequerimientoRecursos,
@@ -616,7 +588,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (id == null) localStorage.removeItem('selectedEmergenciaId');
       else localStorage.setItem('selectedEmergenciaId', String(id));
     }
-  }), [loginResponse, datosLogin, receptores, receptoresStatus, recursoGrupos, recursoGruposStatus, recursoTipos, recursoTiposStatus, isRestoringSession, login, loadReceptores, loadRecursoGrupos, loadRecursoTipos, createRequerimiento, createRequerimientoRecurso, getRequerimientosRecibidos, getRequerimientoEstados, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, getRequerimientosRecibidosNotificaciones, authFetch, selectedEmergenciaId]);
+  }), [loginResponse, datosLogin, receptores, receptoresStatus, recursoGrupos, recursoGruposStatus, recursoTipos, recursoTiposStatus, isRestoringSession, login, loadReceptores, loadRecursoGrupos, loadRecursoTipos, createRequerimiento, createRequerimientoRecurso, getRequerimientoEstados, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, getRequerimientosRecibidosNotificaciones, authFetch, selectedEmergenciaId]);
 
   return (
     <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

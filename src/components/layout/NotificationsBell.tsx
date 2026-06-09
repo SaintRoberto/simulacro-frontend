@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Badge, Button, List, Typography, Popover } from 'antd';
+import { Badge, Button, List, Typography, Popover, Tag } from 'antd';
 import { BellOutlined } from '@ant-design/icons';
 import { useNotifications } from '../../context/NotificationsContext';
 import { useNavigate } from 'react-router-dom';
+import { getRequerimientoEstadoTagColor } from '../../utils/requerimientoEstado';
 
 export const NotificationsBell: React.FC = () => {
   const { notifications, unreadCount, markAllRead, markRead } = useNotifications();
@@ -38,7 +39,17 @@ export const NotificationsBell: React.FC = () => {
                 title={<span style={{ fontWeight: item.read ? 400 : 600 }}>{item.title}</span>}
                 description={
                   <div>
-                    {item.description && <div>{item.description}</div>}
+                    {item.estado !== undefined && item.avance !== undefined ? (
+                      <div>
+                        Estado:{' '}
+                        <Tag color={getRequerimientoEstadoTagColor(item.estado)}>
+                          {item.estado}
+                        </Tag>
+                        <span>Avance: <strong>{item.avance}%</strong></span>
+                      </div>
+                    ) : item.description ? (
+                      <div>{item.description}</div>
+                    ) : null}
                     <small style={{ color: '#888' }}>{new Date(item.createdAt).toLocaleString()}</small>
                   </div>
                 }
