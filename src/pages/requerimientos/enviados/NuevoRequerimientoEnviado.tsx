@@ -38,6 +38,7 @@ type GuideContext = {
   hasSelectedTipo: boolean;
   hasVisibleAvailabilityRows: boolean;
   isEndosoToggleVisible: boolean;
+  isEndosoWithoutInventory: boolean;
 };
 
 const getGuideSteps = ({
@@ -48,6 +49,7 @@ const getGuideSteps = ({
   hasSelectedTipo,
   hasVisibleAvailabilityRows,
   isEndosoToggleVisible,
+  isEndosoWithoutInventory,
 }: GuideContext): GuideStepConfig[] => {
   if (currentStep === 1) {
     return [
@@ -64,12 +66,12 @@ const getGuideSteps = ({
       {
         title: 'Fecha inicio solicitud',
         description: 'La fecha inicio indica desde cuándo se requiere la atención.',
-        selector: '[data-tour="req-step1-fecha-inicio"]',
+        selector: '[data-tour="req-step1-fecha-inicio"] .p-calendar',
       },
       {
         title: 'Fecha fin solicitud',
         description: 'La fecha fin indica hasta cuándo se requiere la atención.',
-        selector: '[data-tour="req-step1-fecha-fin"]',
+        selector: '[data-tour="req-step1-fecha-fin"] .p-calendar',
       },
       {
         title: 'Detalle del requerimiento',
@@ -117,6 +119,18 @@ const getGuideSteps = ({
           title: 'Modo Endoso activo',
           description: 'El modo Endoso está activo. En este modo, la solicitud se enviará a un nivel superior.',
           selector: '[data-tour="req-step2-endoso-toggle"]',
+        },
+        {
+          title: isEndosoWithoutInventory ? 'Endoso sin inventario' : 'Inventario por mesa',
+          description: isEndosoWithoutInventory
+            ? 'Cuando no existe inventario disponible, la grilla muestra la fila Sin mesa disponible para registrar y escalar la solicitud.'
+            : 'La grilla muestra el inventario disponible por mesa para el recurso seleccionado.',
+          selector: '[data-tour="req-step2-tabla"]',
+        },
+        {
+          title: 'Cantidad solicitada obligatoria',
+          description: 'Para realizar el Endoso debe ingresar obligatoriamente una cantidad solicitada mayor a cero.',
+          selector: '[data-tour="req-step2-cantidad-solicitada"]',
         },
         {
           title: 'Detalle obligatorio',
@@ -702,7 +716,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       }
 
       const mesaParam = Number(datosLogin?.mesa_id ?? mesasUnicas[0]?.mesaId ?? 0);
-      const endpoint = `${apiBase}/recursos_inventario/coe/${coeId}/mesa/${mesaParam}/recurso_tipo/${selectedTipoId}/`;
+      const endpoint = `${apiBase}/recursos_inventario/coe/${coeId}/mesa/${mesaParam}/recurso_tipo/${selectedTipoId}/provincia/${datosLogin?.provincia_id ?? 0}/canton/${datosLogin?.canton_id ?? 0}`;
       const res = await authFetch(endpoint, { headers: { accept: 'application/json' } });
       if (!res.ok) throw new Error('inventario_not_ok');
 
@@ -845,6 +859,11 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       hasSelectedTipo: Boolean(selectedTipoId),
       hasVisibleAvailabilityRows: disponibilidadRowsForStep2.length > 0,
       isEndosoToggleVisible: !isUsuarioNacionalId13,
+      isEndosoWithoutInventory:
+        isEndosoMode &&
+        Boolean(selectedGrupoId) &&
+        Boolean(selectedTipoId) &&
+        disponibilidadRows.length === 0,
     });
   }, [
     wizardStep,
@@ -853,16 +872,18 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     selectedGrupoId,
     selectedTipoId,
     disponibilidadRowsForStep2.length,
+    disponibilidadRows.length,
     isUsuarioNacionalId13,
   ]);
 
   const guideSteps = useMemo<TourProps['steps']>(() => {
-    return guideStepConfigs.map((step) => {
-      const target = step.selector ? getTourTarget(step.selector) : null;
-      return target
-        ? { title: step.title, description: step.description, target: () => target }
-        : { title: step.title, description: step.description };
-    });
+    return guideStepConfigs.map((step) => ({
+      title: step.title,
+      description: step.description,
+      ...(step.selector
+        ? { target: () => getTourTarget(step.selector as string) }
+        : {}),
+    }));
   }, [getTourTarget, guideStepConfigs]);
 
   const handleGrupoChange = (grupoId: number) => {

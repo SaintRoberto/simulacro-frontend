@@ -248,7 +248,7 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
 
     setInventarioStatus('loading');
     try {
-      const endpoint = `${apiBase}/recursos_inventario/coe_id/${datosLogin.coe_id}/mesa_id/${datosLogin.mesa_id}/recurso_tipo_id/${recursoTipoId}/recurso_requerimiento_id/${requerimientoRecursoIdParam}`;
+      const endpoint = `${apiBase}/recursos_inventario/coe_id/${datosLogin.coe_id}/mesa_id/${datosLogin.mesa_id}/recurso_tipo_id/${recursoTipoId}/recurso_requerimiento_id/${requerimientoRecursoIdParam}/provincia_id/${datosLogin.provincia_id}/canton_id/${datosLogin.canton_id}`;
       const res = await authFetch(endpoint, { headers: { accept: 'application/json' } });
       if (!res.ok) throw new Error('inventario_not_ok');
       const data = await res.json();

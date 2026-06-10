@@ -38,6 +38,11 @@ interface EventoItem {
   evento_subtipo_id?: number;
 }
 
+type GeoOption = {
+  id: number;
+  nombre: string;
+};
+
 export const Eventos: React.FC = () => {
   const { authFetch, selectedEmergenciaId, datosLogin, loginResponse } = useAuth();
   const [items, setItems] = useState<EventoItem[]>([]);
@@ -50,8 +55,13 @@ export const Eventos: React.FC = () => {
   const [origenes, setOrigenes] = useState<{ id: number; nombre: string }[]>([]);
   const [tipos, setTipos] = useState<{ id: number; nombre: string }[]>([]);
   const [subtipos, setSubtipos] = useState<{ id: number; nombre: string }[]>([]);
-  const [parroquias, setParroquias] = useState<{ id: number; nombre: string }[]>([]);
+  const [provincias, setProvincias] = useState<GeoOption[]>([]);
+  const [cantones, setCantones] = useState<GeoOption[]>([]);
+  const [parroquias, setParroquias] = useState<GeoOption[]>([]);
   const [atencionEstados, setAtencionEstados] = useState<{ id: number; nombre: string }[]>([]);
+  const loginProvinciaId = Number(datosLogin?.provincia_id ?? 0);
+  const loginCantonId = Number(datosLogin?.canton_id ?? 0);
+  const isUsuarioNacional = loginProvinciaId === 0 && loginCantonId === 0;
 
   const load = useCallback(async () => {
     if (!selectedEmergenciaId) {
@@ -60,7 +70,7 @@ export const Eventos: React.FC = () => {
     }
     try {
       setLoading(true);
-      const url = `${apiBase}/eventos/emergencia/${selectedEmergenciaId}/provincia/${datosLogin.provincia_id}/canton/${datosLogin.canton_id}`;
+      const url = `${apiBase}/eventos/emergencia/${selectedEmergenciaId}/provincia/${loginProvinciaId}/canton/${loginCantonId}`;
       const res = await authFetch(url, { headers: { accept: 'application/json' } });
       if (!res.ok) {
         setItems([]);
@@ -90,8 +100,8 @@ export const Eventos: React.FC = () => {
         tipo: String(it.evento_tipo ?? ''),
         subtipo: String(it.evento_subtipo ?? ''),
         emergencia_id: selectedEmergenciaId,
-        provincia_id: datosLogin?.provincia_id,
-        canton_id: datosLogin?.canton_id,
+        provincia_id: it.provincia_id != null ? Number(it.provincia_id) : loginProvinciaId,
+        canton_id: it.canton_id != null ? Number(it.canton_id) : loginCantonId,
         // synthetic key support via id if present
       }});
       setItems(mapped);
@@ -100,7 +110,7 @@ export const Eventos: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [apiBase, authFetch, selectedEmergenciaId, datosLogin?.provincia_id, datosLogin?.canton_id]);
+  }, [apiBase, authFetch, selectedEmergenciaId, loginProvinciaId, loginCantonId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -125,17 +135,65 @@ export const Eventos: React.FC = () => {
     run();
   }, [apiBase, authFetch]);
 
+  const loadCantones = useCallback(async (provinciaId?: number) => {
+    if (!provinciaId || !selectedEmergenciaId) {
+      setCantones([]);
+      return [];
+    }
+    try {
+      const res = await authFetch(`${apiBase}/provincia/${provinciaId}/cantones/emergencia/${selectedEmergenciaId}`);
+      const data = res.ok ? await res.json() : [];
+      const nextCantones = Array.isArray(data) ? data : [];
+      setCantones(nextCantones);
+      return nextCantones;
+    } catch {
+      setCantones([]);
+      return [];
+    }
+  }, [apiBase, authFetch, selectedEmergenciaId]);
+
+  const loadParroquias = useCallback(async (cantonId?: number) => {
+    if (!cantonId || !selectedEmergenciaId) {
+      setParroquias([]);
+      return [];
+    }
+    try {
+      const res = await authFetch(`${apiBase}/canton/${cantonId}/parroquias/emergencia/${selectedEmergenciaId}`);
+      const data = res.ok ? await res.json() : [];
+      const nextParroquias = Array.isArray(data) ? data : [];
+      setParroquias(nextParroquias);
+      return nextParroquias;
+    } catch {
+      setParroquias([]);
+      return [];
+    }
+  }, [apiBase, authFetch, selectedEmergenciaId]);
+
   useEffect(() => {
-    const cantonId = datosLogin?.canton_id;
-    if (!cantonId || !selectedEmergenciaId) return;
+    if (!isUsuarioNacional || !selectedEmergenciaId) {
+      setProvincias([]);
+      return;
+    }
     const run = async () => {
       try {
-        const res = await authFetch(`${apiBase}/canton/${cantonId}/parroquias/emergencia/${selectedEmergenciaId}`);
-        setParroquias(res.ok ? await res.json() : []);
-      } catch {}
+        const res = await authFetch(`${apiBase}/provincias/emergencia/${selectedEmergenciaId}`);
+        const data = res.ok ? await res.json() : [];
+        setProvincias(Array.isArray(data) ? data : []);
+      } catch {
+        setProvincias([]);
+      }
     };
     run();
-  }, [apiBase, authFetch, datosLogin?.canton_id, selectedEmergenciaId]);
+  }, [apiBase, authFetch, isUsuarioNacional, selectedEmergenciaId]);
+
+  useEffect(() => {
+    if (isUsuarioNacional) {
+      setCantones([]);
+      setParroquias([]);
+      return;
+    }
+    loadParroquias(loginCantonId);
+  }, [isUsuarioNacional, loadParroquias, loginCantonId]);
 
   const fetchSubtipos = useCallback(async (tipoId?: number) => {
     try {
@@ -217,11 +275,12 @@ export const Eventos: React.FC = () => {
             if (c6 && (c6 as Response).ok) setAtencionEstados(await (c6 as Response).json());
           } catch {}
         }
-        if (needsParroquias && datosLogin?.canton_id && selectedEmergenciaId) {
-          try {
-            const res = await authFetch(`${apiBase}/canton/${datosLogin.canton_id}/parroquias/emergencia/${selectedEmergenciaId}`);
-            if (res.ok) setParroquias(await res.json());
-          } catch {}
+        if (needsParroquias) {
+          const cantonId = Number(row.canton_id ?? loginCantonId);
+          if (isUsuarioNacional) {
+            await loadCantones(Number(row.provincia_id ?? 0));
+          }
+          await loadParroquias(cantonId);
         }
       };
       await ensureCatalogs();
@@ -249,6 +308,10 @@ export const Eventos: React.FC = () => {
         sector: d.sector ?? '',
         situacion: d.situacion ?? ''
       };
+      if (isUsuarioNacional) {
+        await loadCantones(mapped.provincia_id);
+        await loadParroquias(mapped.canton_id);
+      }
       // Ensure current IDs exist in option arrays so Select shows value
       try {
         if (mapped.evento_tipo_id != null && !tipos.some(t => Number(t.id) === mapped.evento_tipo_id)) {
@@ -305,8 +368,8 @@ export const Eventos: React.FC = () => {
     sector: '',
     situacion: '',
     emergencia_id: selectedEmergenciaId ?? undefined,
-    provincia_id: datosLogin?.provincia_id ?? undefined,
-    canton_id: datosLogin?.canton_id ?? undefined,
+    provincia_id: loginProvinciaId || undefined,
+    canton_id: loginCantonId || undefined,
   };
 
   const renderForm = (item: Partial<EventoItem>, onChange: (e: any) => void) => (
@@ -371,6 +434,54 @@ export const Eventos: React.FC = () => {
         </div>
       </div>
 
+      {isUsuarioNacional && (
+        <div className="row g-3">
+          <div className="col-12 col-md-6">
+            <label className="form-label">Provincia</label>
+            <Select
+              className="w-100"
+              value={item.provincia_id ? Number(item.provincia_id) : undefined}
+              onChange={async (value) => {
+                onChange({ target: { name: 'provincia_id', value } });
+                onChange({ target: { name: 'canton_id', value: undefined } });
+                onChange({ target: { name: 'parroquia_id', value: undefined } });
+                setParroquias([]);
+                await loadCantones(value);
+              }}
+              options={provincias.map((provincia) => ({
+                value: Number(provincia.id),
+                label: provincia.nombre,
+              }))}
+              placeholder="Seleccione provincia"
+              showSearch
+              optionFilterProp="label"
+              allowClear
+            />
+          </div>
+          <div className="col-12 col-md-6">
+            <label className="form-label">Cantón</label>
+            <Select
+              className="w-100"
+              value={item.canton_id ? Number(item.canton_id) : undefined}
+              onChange={async (value) => {
+                onChange({ target: { name: 'canton_id', value } });
+                onChange({ target: { name: 'parroquia_id', value: undefined } });
+                await loadParroquias(value);
+              }}
+              options={cantones.map((canton) => ({
+                value: Number(canton.id),
+                label: canton.nombre,
+              }))}
+              placeholder={item.provincia_id ? 'Seleccione cantón' : 'Seleccione primero una provincia'}
+              disabled={!item.provincia_id}
+              showSearch
+              optionFilterProp="label"
+              allowClear
+            />
+          </div>
+        </div>
+      )}
+
       {/* Tercera fila: Origen y Parroquia */}
       <div className="row g-3">
         <div className="col-12 col-md-6">
@@ -390,7 +501,11 @@ export const Eventos: React.FC = () => {
             value={item.parroquia_id != null ? Number(item.parroquia_id) : undefined}
             onChange={(v) => onChange({ target: { name: 'parroquia_id', value: v } })}
             options={parroquias.map(p => ({ value: Number(p.id), label: p.nombre }))}
-            placeholder="Seleccione parroquia"
+            placeholder={isUsuarioNacional && !item.canton_id ? 'Seleccione primero un cantón' : 'Seleccione parroquia'}
+            disabled={isUsuarioNacional && !item.canton_id}
+            showSearch
+            optionFilterProp="label"
+            allowClear
           />
         </div>
       </div>

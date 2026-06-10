@@ -303,7 +303,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
   ): Promise<ParroquiaExistenciaDetalleLocal[]> => {
     if (!selectedGrupoId || !effectiveMesaId || !coeId) return [];
     try {
-      const url = `${apiBase}/recursos_inventario/recurso_grupo/${selectedGrupoId}/coe/${coeId}/mesa/${effectiveMesaId}/`;
+      const url = `${apiBase}/recursos_inventario/recurso_grupo/${selectedGrupoId}/coe/${coeId}/mesa/${effectiveMesaId}/provincia/${loginProvinciaId}/canton/${loginCantonId}`;
       const res = await withTimeout(authFetch(url, { headers: { accept: 'application/json' } }), 4000);
       if (!res.ok) return [];
       const data = await res.json();
@@ -343,7 +343,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     } catch {
       return [];
     }
-  }, [apiBase, authFetch, coeId, effectiveMesaId, instituciones, selectedGrupoId]);
+  }, [apiBase, authFetch, coeId, effectiveMesaId, instituciones, loginCantonId, loginProvinciaId, selectedGrupoId]);
 
   const loadMatrixByGrupo = useCallback(async () => {
     if (!selectedGrupoId || !effectiveMesaId || !coeId) return;
@@ -358,7 +358,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
 
       const fresh: Record<number, Record<number, InventarioCellPayload>> = {};
       try {
-        const url = `${apiBase}/recursos_inventario/recurso_grupo/${selectedGrupoId}/coe/${coeId}/mesa/${effectiveMesaId}/`;
+        const url = `${apiBase}/recursos_inventario/recurso_grupo/${selectedGrupoId}/coe/${coeId}/mesa/${effectiveMesaId}/provincia/${loginProvinciaId}/canton/${loginCantonId}`;
         const res = await withTimeout(authFetch(url, { headers: { accept: 'application/json' } }), 4000);
         if (!res.ok) throw new Error('inventario_not_ok');
         const data = await res.json();
@@ -433,7 +433,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     } finally {
       setLoading(false);
     }
-  }, [apiBase, authFetch, coeId, effectiveMesaId, getRecursoTiposByGrupo, instituciones, selectedGrupoId]);
+  }, [apiBase, authFetch, coeId, effectiveMesaId, getRecursoTiposByGrupo, instituciones, loginCantonId, loginProvinciaId, selectedGrupoId]);
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -860,7 +860,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     }
     setDetalleExistenciasStatus('loading');
     try {
-      const endpoint = `${apiBase}/recursos_inventario/coe_id/${coeId}/mesa_id/${effectiveMesaId}/recurso_tipo_id/${selectedRow.recurso_tipo_id}/institucion_duena_id/${selectedInstitucion.id}`;
+      const endpoint = `${apiBase}/recursos_inventario/coe_id/${coeId}/mesa_id/${effectiveMesaId}/recurso_tipo_id/${selectedRow.recurso_tipo_id}/institucion_duena_id/${selectedInstitucion.id}/provincia_id/${isUsuarioNacional ? drawerProvinciaId ?? 0 : loginProvinciaId ?? 0}/canton_id/${isUsuarioCantonal ? loginCantonId ?? 0 : drawerCantonId ?? 0}`;
       const res = await withTimeout(authFetch(endpoint, { headers: { accept: 'application/json' } }), 4500);
       if (!res.ok) throw new Error('detalle_not_ok');
       const data = await res.json();
