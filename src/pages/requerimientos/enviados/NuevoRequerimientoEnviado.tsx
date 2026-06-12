@@ -107,8 +107,8 @@ const getGuideSteps = ({
 
     if (isEndosoToggleVisible && !habilitarEndoso) {
       baseSteps.push({
-        title: 'Habilitar Endoso',
-        description: 'Habilitar Endoso permite enviar la solicitud a un nivel superior cuando la mesa actual no puede atenderla directamente o necesita escalar la gestión.',
+        title: 'Habilitar Delegacion',
+        description: 'Habilitar Delegacion permite enviar la solicitud a un nivel superior cuando la mesa actual no puede atenderla directamente o necesita escalar la gestión.',
         selector: '[data-tour="req-step2-endoso-toggle"]',
       });
     }
@@ -144,7 +144,7 @@ const getGuideSteps = ({
         },
         {
           title: 'Volver al flujo normal',
-          description: 'Si desea volver al flujo normal, presione Deshabilitar Endoso.',
+          description: 'Si desea volver al flujo normal, presione Deshabilitar Delegación.',
           selector: '[data-tour="req-step2-endoso-toggle"]',
         },
         {
@@ -518,7 +518,6 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         const encodedNumero = encodeURIComponent(editNumero);
         const endpoints = [
           `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}/usuario_emisor_id/${datosLogin?.usuario_id ?? 0}`,
-          `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}/usuario_emisor_id/${datosLogin?.usuario_id ?? 0}`,
         ];
 
         let recursosApi: any[] = [];
@@ -806,7 +805,6 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       const encodedNumero = encodeURIComponent(requerimientoNumero);
       const endpoints = [
         `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}/usuario_emisor_id/${usuarioEmisorId}`,
-        `${apiBase}/requerimiento-recursos/requerimiento_numero/${encodedNumero}/usuario_emisor_id/${usuarioEmisorId}`,
       ];
       for (const url of endpoints) {
         const res = await authFetch(url, { headers: { accept: 'application/json' } });
@@ -1061,7 +1059,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         }
       }
 
-      const usuarioReceptorId = Number(row.usuarioId || datosLogin?.usuario_id || 0);
+      const usuarioReceptorId = 0;
       const requerimientoNumero = generateUuid();
       const grupo = recursoGrupos.find((g) => g.id === selectedGrupoId);
       const tipo = recursoTipos.find((t) => t.id === selectedTipoId);
@@ -1723,7 +1721,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                     />
                   ) : (
                     <Button
-                      label={isEndosoMode ? 'Deshabilitar Endoso' : 'Habilitar Endoso'}
+                      label={isEndosoMode ? 'Deshabilitar Delegación' : 'Habilitar Delegación'}
                       severity={isEndosoMode ? 'warning' : 'help'}
                       outlined={!isEndosoMode}
                       className="m-1"

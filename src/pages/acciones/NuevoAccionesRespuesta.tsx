@@ -125,7 +125,7 @@ export const NuevoAccionesRespuesta: React.FC = () => {
         ...prev,
         detalle: data.detalle || '',
         fecha_final: data.fecha_final ? new Date(data.fecha_final) : new Date(),
-        respuesta_estado_id: data.accion_respuesta_estado_id || 0,
+        respuesta_estado_id: Number(data.accion_respuesta_estado_id ?? data.respuesta_estado_id ?? 0),
         emergencia_id: data.emergencia_id || 4,
         usuario_id: data.usuario_id || (datosLogin?.usuario_id || 0),
         creador: data.creador || (datosLogin?.usuario_login || '')
@@ -487,6 +487,7 @@ export const NuevoAccionesRespuesta: React.FC = () => {
         detalle: accionRespuesta.detalle,
         fecha_final: accionRespuesta.fecha_final.toISOString(),
         accion_respuesta_estado_id: accionRespuesta.respuesta_estado_id,
+        modificador: editId ? (datosLogin?.usuario_login || accionRespuesta.creador) : undefined,
         usuario_id: accionRespuesta.usuario_id,
         // Valores por defecto que pueden ser necesarios
         resolucion_id: 0,
@@ -560,7 +561,7 @@ export const NuevoAccionesRespuesta: React.FC = () => {
                   onChange={(e) => setAccionRespuesta({ ...accionRespuesta, detalle: e.target.value })}
                   className="w-full m-1"
                   rows={3}
-                  disabled={isReadOnly}
+                  disabled={isLoading}
                 />
               </div>
 
@@ -588,29 +589,27 @@ export const NuevoAccionesRespuesta: React.FC = () => {
                   ]}
                   onChange={(e) => setAccionRespuesta({ ...accionRespuesta, respuesta_estado_id: e.value })}
                   className="w-full m-1"
-                  disabled={isLoading || isReadOnly}
+                  disabled={isLoading}
                   filter
                 />
               </div>              
             </div>
-            {editId === null && (
-              <div className="flex justify-content-end mt-4 gap-2">
-                <Button
-                  label="Cancelar"
-                  icon="pi pi-times"
-                  className="p-button-text"
-                  onClick={() => navigate('/acciones')}
-                  disabled={isLoading}
-                />
-                <Button
-                  label={'Guardar Acción'}
-                  icon="pi pi-save"
-                  onClick={guardarAccion}
-                  loading={isLoading}
-                  disabled={isLoading}
-                />
-              </div>
-            )}
+            <div className="flex justify-content-end mt-4 gap-2">
+              <Button
+                label="Cancelar"
+                icon="pi pi-times"
+                className="p-button-text"
+                onClick={() => navigate('/acciones')}
+                disabled={isLoading}
+              />
+              <Button
+                label={editId ? 'Actualizar Acción' : 'Guardar Acción'}
+                icon="pi pi-save"
+                onClick={guardarAccion}
+                loading={isLoading}
+                disabled={isLoading}
+              />
+            </div>
           </div>
         </Card>
       </div>

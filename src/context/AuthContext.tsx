@@ -131,7 +131,7 @@ export interface RequerimientoRecibidoNotificacion {
   usuario_emisor_id: number;
   usuario_receptor: string;
   usuario_receptor_id: number;
-  tipo_notificacion: 'recibido' | 'retornado';
+  tipo_notificacion: 'recibido' | 'retornado' | 'delegado';
 }
 
 
@@ -533,7 +533,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return [];
       }
 
-      const [recibidosRes, retornadosRes] = await Promise.all([
+      const [recibidosRes, retornadosRes, delegadosRes] = await Promise.all([
         authFetch(
           `${apiBase}/requerimiento-recursos/recibidos_notificacion/usuario_id/${userId}/emergencia_id/${emergenciaId}`,
           { headers: { accept: 'application/json' } }
@@ -542,18 +542,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           `${apiBase}/requerimiento-recursos/retornados_notificacion/usuario_id/${userId}/emergencia_id/${emergenciaId}`,
           { headers: { accept: 'application/json' } }
         ),
+        authFetch(
+          `${apiBase}/requerimiento-recursos/delegado_notificacion/usuario_id/${userId}/emergencia_id/${emergenciaId}`,
+          { headers: { accept: 'application/json' } }
+        ),
       ]);
 
       const recibidosRaw = recibidosRes.ok ? await recibidosRes.json() : [];
       const retornadosRaw = retornadosRes.ok ? await retornadosRes.json() : [];
+      const delegadosRaw = delegadosRes.ok ? await delegadosRes.json() : [];
       const recibidos = Array.isArray(recibidosRaw)
         ? recibidosRaw.map((item) => ({ ...item, tipo_notificacion: 'recibido' as const }))
         : [];
       const retornados = Array.isArray(retornadosRaw)
         ? retornadosRaw.map((item) => ({ ...item, tipo_notificacion: 'retornado' as const }))
         : [];
+      const delegados = Array.isArray(delegadosRaw)
+        ? delegadosRaw.map((item) => ({ ...item, tipo_notificacion: 'delegado' as const }))
+        : [];
 
-      return [...recibidos, ...retornados] as RequerimientoRecibidoNotificacion[];
+      return [...recibidos, ...retornados, ...delegados] as RequerimientoRecibidoNotificacion[];
     } catch (e) {
       return [];
     }
