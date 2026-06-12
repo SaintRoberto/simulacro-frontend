@@ -199,7 +199,7 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
                         >
                           <i className={`pi ${isExpanded ? 'pi-chevron-down' : 'pi-chevron-right'}`} />
                         </button>
-                        <span title={numero}>{numero.slice(0, 8)}</span>
+                        <span title={numero}>REQ-{numero.slice(0, 4).toUpperCase()}</span>
                       </td>
                       <td>{Number(item.cantidad_solicitada ?? 0)}</td>
                       <td>{item.detalle || '-'}</td>

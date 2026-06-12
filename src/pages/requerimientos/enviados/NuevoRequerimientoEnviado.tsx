@@ -1383,6 +1383,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         return;
       }
 
+      let delegatedOriginalDeactivated = false;
       for (const recursoEditado of recursos) {
         const editKey = `${recursoEditado.grupoId}-${recursoEditado.tipoId}-${recursoEditado.mesaUsuarioId}`;
         const original = recursoEditado.original ?? editOriginalByKeyRef.current[editKey];
@@ -1415,6 +1416,27 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
           if (!created) {
             alert(`No se pudo crear el recurso adicional asignado a ${recursoEditado.mesaNombre}.`);
             return;
+          }
+
+          const delegatedOriginal =
+            editOriginalByKeyRef.current[`${payload.recurso_grupo_id}-${payload.recurso_tipo_id}-0`] ??
+            (Number(editContext.original?.usuario_receptor_id ?? 0) === 0 ? editContext.original : undefined);
+          const delegatedOriginalId = Number(delegatedOriginal?.id ?? 0);
+          const delegatedOriginalReceiverId = Number(delegatedOriginal?.usuario_receptor_id ?? 0);
+          if (!delegatedOriginalDeactivated && delegatedOriginalId > 0 && delegatedOriginalReceiverId === 0) {
+            const deactivateRes = await authFetch(`${apiBase}/requerimiento-recursos/deshabilitar-requerimiento/${delegatedOriginalId}`, {
+              method: 'PATCH',
+              headers: {
+                accept: 'application/json',
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ activo: false }),
+            });
+            if (!deactivateRes.ok) {
+              alert('El recurso fue creado, pero no se pudo desactivar el registro original delegado.');
+              return;
+            }
+            delegatedOriginalDeactivated = true;
           }
 
           const nuevoRequerimientoRecursoId = await resolveCreatedRequerimientoRecursoId({
