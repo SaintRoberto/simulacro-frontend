@@ -1,12 +1,9 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet';
-import { OpenStreetMapProvider } from 'leaflet-geosearch';
+import React, { FormEvent, useEffect, useRef, useState } from 'react';
+import { MapContainer, Marker, Popup, TileLayer, useMapEvents } from 'react-leaflet';
 import { LatLng, Map as LeafletMap } from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-import 'leaflet-geosearch/dist/geosearch.css';
-
-// Fix for default markers in react-leaflet
 import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: require('leaflet/dist/images/marker-icon-2x.png'),
@@ -15,151 +12,193 @@ L.Icon.Default.mergeOptions({
 });
 
 interface MapSelectorProps {
-  latitud?: number;
-  longitud?: number;
+  latitud?: number | null;
+  longitud?: number | null;
   onLocationChange: (lat: number, lng: number) => void;
   height?: string;
   placeholder?: string;
+  initializeWithDefault?: boolean;
 }
+
+type SearchResult = {
+  x: number;
+  y: number;
+  label: string;
+};
+
+const MITAD_DEL_MUNDO: [number, number] = [-0.0022, -78.4558];
+const searchCache = new Map<string, SearchResult[]>();
+
+const hasCoordinates = (latitud?: number | null, longitud?: number | null) =>
+  Number.isFinite(latitud) && Number.isFinite(longitud);
+
+const LocationMarker: React.FC<{
+  latitud: number;
+  longitud: number;
+  onLocationChange: (lat: number, lng: number) => void;
+}> = ({ latitud, longitud, onLocationChange }) => {
+  const [position, setPosition] = useState<LatLng>(new LatLng(latitud, longitud));
+
+  useEffect(() => {
+    setPosition(new LatLng(latitud, longitud));
+  }, [latitud, longitud]);
+
+  useMapEvents({
+    click(event) {
+      setPosition(event.latlng);
+      onLocationChange(event.latlng.lat, event.latlng.lng);
+    },
+  });
+
+  return (
+    <Marker position={position}>
+      <Popup>
+        Coordenadas: {position.lat.toFixed(6)}, {position.lng.toFixed(6)}
+      </Popup>
+    </Marker>
+  );
+};
 
 const MapSelector: React.FC<MapSelectorProps> = ({
   latitud,
   longitud,
   onLocationChange,
   height = '400px',
-  placeholder = 'Buscar dirección...'
+  placeholder = 'Buscar dirección...',
+  initializeWithDefault = false,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchMessage, setSearchMessage] = useState('');
   const mapRef = useRef<LeafletMap | null>(null);
+  const initializedDefaultRef = useRef(false);
 
-  // Centro inicial (Quito, Ecuador)
-  const defaultCenter: [number, number] = latitud && longitud
-    ? [latitud, longitud]
-    : [-0.0014, -78.4678]; // Centro de Quito, Ecuador
+  const coordinatesAreValid = hasCoordinates(latitud, longitud);
+  const effectivePosition: [number, number] = coordinatesAreValid
+    ? [Number(latitud), Number(longitud)]
+    : MITAD_DEL_MUNDO;
+  const defaultZoom = coordinatesAreValid || initializeWithDefault ? 15 : 13;
 
-  const defaultZoom = latitud && longitud ? 14 : 13;
-
-  // Componente para manejar clics en el mapa
-  const LocationMarker = () => {
-    const [position, setPosition] = useState<LatLng | null>(
-      latitud && longitud ? new LatLng(latitud, longitud) : null
-    );
-
-    useMapEvents({
-      click(e) {
-        setPosition(e.latlng);
-        onLocationChange(e.latlng.lat, e.latlng.lng);
-      },
-    });
-
-    return position === null ? null : (
-      <Marker position={position}>
-        <Popup>
-          Coordenadas: {position.lat.toFixed(6)}, {position.lng.toFixed(6)}
-        </Popup>
-      </Marker>
-    );
-  };
-
-  // Función de búsqueda
-  const handleSearch = async (query: string) => {
-    if (!query.trim()) {
+  const handleSearch = async (event?: FormEvent) => {
+    event?.preventDefault();
+    const query = searchQuery.trim();
+    if (query.length < 3) {
       setSearchResults([]);
+      setSearchMessage('Ingrese al menos 3 caracteres para buscar.');
+      return;
+    }
+
+    const cacheKey = query.toLocaleLowerCase();
+    const cachedResults = searchCache.get(cacheKey);
+    if (cachedResults) {
+      setSearchResults(cachedResults);
+      setSearchMessage(cachedResults.length ? '' : 'No se encontraron lugares.');
       return;
     }
 
     setIsSearching(true);
+    setSearchMessage('');
     try {
-      const provider = new OpenStreetMapProvider();
-      const results = await provider.search({ query });
+      const params = new URLSearchParams({
+        q: query,
+        format: 'jsonv2',
+        limit: '5',
+        countrycodes: 'ec',
+        'accept-language': 'es',
+      });
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
+        headers: { accept: 'application/json' },
+      });
+      if (response.status === 429) throw new Error('rate_limit');
+      if (!response.ok) throw new Error('search_failed');
+
+      const data = await response.json();
+      const results: SearchResult[] = (Array.isArray(data) ? data : [])
+        .map((result: any) => ({
+          x: Number(result.lon),
+          y: Number(result.lat),
+          label: String(result.display_name ?? ''),
+        }))
+        .filter((result: SearchResult) => Number.isFinite(result.x) && Number.isFinite(result.y));
+
+      searchCache.set(cacheKey, results);
       setSearchResults(results);
+      setSearchMessage(results.length ? '' : 'No se encontraron lugares.');
     } catch (error) {
       console.error('Error en búsqueda:', error);
       setSearchResults([]);
+      setSearchMessage(
+        error instanceof Error && error.message === 'rate_limit'
+          ? 'El servicio de búsqueda está temporalmente ocupado. Espere unos segundos e intente nuevamente.'
+          : 'No se pudo consultar el lugar. Intente nuevamente.'
+      );
     } finally {
       setIsSearching(false);
     }
   };
 
-  // Manejar selección de resultado de búsqueda
-  const handleResultSelect = (result: any) => {
-    if (mapRef.current) {
-      const lat = result.y;
-      const lng = result.x;
-      mapRef.current.setView([lat, lng], 16);
-      onLocationChange(lat, lng);
-      setSearchQuery(result.label);
-      setSearchResults([]);
-    }
+  const handleResultSelect = (result: SearchResult) => {
+    mapRef.current?.setView([result.y, result.x], 11);
+    onLocationChange(result.y, result.x);
+    setSearchQuery(result.label);
+    setSearchResults([]);
+    setSearchMessage('');
   };
 
-  // Efecto para actualizar el mapa cuando cambian las coordenadas externas
   useEffect(() => {
-    if (latitud && longitud && mapRef.current) {
-      mapRef.current.setView([latitud, longitud], 16);
-      // Forzar re-render del mapa
-      setTimeout(() => {
-        mapRef.current?.invalidateSize();
-      }, 100);
-    }
-  }, [latitud, longitud]);
+    if (!coordinatesAreValid || !mapRef.current) return;
+    mapRef.current.setView([Number(latitud), Number(longitud)], 16);
+    const timeoutId = window.setTimeout(() => mapRef.current?.invalidateSize(), 100);
+    return () => window.clearTimeout(timeoutId);
+  }, [coordinatesAreValid, latitud, longitud]);
+
+  useEffect(() => {
+    if (!initializeWithDefault || coordinatesAreValid || initializedDefaultRef.current) return;
+    initializedDefaultRef.current = true;
+    onLocationChange(MITAD_DEL_MUNDO[0], MITAD_DEL_MUNDO[1]);
+  }, [coordinatesAreValid, initializeWithDefault, onLocationChange]);
 
   return (
     <div className="map-selector">
-      {/* Campo de búsqueda */}
-      <div className="mb-2 position-relative">
-        <input
-          type="text"
-          className="form-control"
-          placeholder={placeholder}
-          value={searchQuery}
-          onChange={(e) => {
-            setSearchQuery(e.target.value);
-            handleSearch(e.target.value);
-          }}
-          style={{ borderRadius: '4px' }}
-        />
-        {isSearching && (
-          <div className="position-absolute top-50 end-0 translate-middle-y me-2">
-            <div className="spinner-border spinner-border-sm" role="status">
-              <span className="visually-hidden">Buscando...</span>
-            </div>
-          </div>
-        )}
+      <form className="mb-2 position-relative" onSubmit={handleSearch}>
+        <div className="input-group">
+          <input
+            type="text"
+            className="form-control"
+            placeholder={placeholder}
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+          />
+          <button className="btn btn-outline-secondary" type="submit" disabled={isSearching}>
+            {isSearching ? 'Buscando...' : 'Buscar'}
+          </button>
+        </div>
 
-        {/* Resultados de búsqueda */}
+        {searchMessage && <small className="d-block mt-1 text-muted">{searchMessage}</small>}
+
         {searchResults.length > 0 && (
           <div
             className="position-absolute bg-white border rounded shadow-sm mt-1"
-            style={{
-              zIndex: 1000,
-              maxHeight: '200px',
-              overflowY: 'auto',
-              width: '100%'
-            }}
+            style={{ zIndex: 1000, maxHeight: '200px', overflowY: 'auto', width: '100%' }}
           >
-            {searchResults.map((result, index) => (
-              <div
-                key={index}
-                className="p-2 border-bottom cursor-pointer hover-bg-light"
-                style={{ cursor: 'pointer' }}
+            {searchResults.map((result) => (
+              <button
+                key={`${result.y}-${result.x}`}
+                type="button"
+                className="d-block w-100 p-2 border-0 border-bottom bg-white text-start"
                 onClick={() => handleResultSelect(result)}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8f9fa'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
               >
                 <small className="text-muted">{result.label}</small>
-              </div>
+              </button>
             ))}
           </div>
         )}
-      </div>
+      </form>
 
-      {/* Mapa */}
       <div style={{ height, borderRadius: '4px', overflow: 'hidden' }}>
         <MapContainer
-          center={defaultCenter}
+          center={effectivePosition}
           zoom={defaultZoom}
           style={{ height: '100%', width: '100%' }}
           ref={(map) => {
@@ -170,13 +209,15 @@ const MapSelector: React.FC<MapSelectorProps> = ({
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           />
-          <LocationMarker />
+          {(coordinatesAreValid || initializeWithDefault) && (
+            <LocationMarker
+              latitud={effectivePosition[0]}
+              longitud={effectivePosition[1]}
+              onLocationChange={onLocationChange}
+            />
+          )}
         </MapContainer>
       </div>
-
-    
-
-      
     </div>
   );
 };

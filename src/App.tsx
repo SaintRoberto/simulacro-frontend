@@ -26,6 +26,7 @@ import { NuevoAccionesRespuesta } from './pages/acciones/NuevoAccionesRespuesta'
 import EmergencySelection from './pages/EmergencySelection';
 import { Eventos } from './pages/eventos/Eventos';
 import { Inventario } from './pages/inventario/Inventario';
+import { Barridos } from './pages/barridos/Barridos';
 import { SeccionEnConstruccion } from './pages/SeccionEnConstruccion';
 
 const App: React.FC = () => {
@@ -46,6 +47,7 @@ const App: React.FC = () => {
           <Route path="afectaciones" element={<Afectaciones />} />
           <Route path="inventario" element={<Inventario />} />
           <Route path="eventos" element={<Eventos />} />
+          <Route path="barridos" element={<Barridos />} />
           <Route path="acciones" element={<AccionesRespuestas />} />
           <Route path="acciones/nueva" element={<NuevoAccionesRespuesta />} />
           <Route path="actas" element={<ActasCOE />} />

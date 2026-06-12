@@ -30,7 +30,7 @@ interface BaseCRUDProps<T> {
     headerClassName?: string;
   }[];
   renderForm?: (item: Partial<T>, onChange: (e: any) => void, readOnly?: boolean) => ReactNode;
-  onSave: (item: Partial<T>) => void;
+  onSave: (item: Partial<T>) => void | boolean | Promise<void | boolean>;
   onDelete: (item: T) => void;
   initialItem: Partial<T>;
   idField?: string;
@@ -180,9 +180,9 @@ export function BaseCRUD<T extends Record<string, any>>({
     setDeleteDialog(false);
   };
 
-  const saveItem = () => {
-    onSave(item);
-    hideDialog();
+  const saveItem = async () => {
+    const result = await onSave(item);
+    if (result !== false) hideDialog();
   };
 
   const editItem = (itemToEdit: T) => {

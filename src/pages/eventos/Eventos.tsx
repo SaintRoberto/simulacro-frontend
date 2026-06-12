@@ -516,6 +516,7 @@ export const Eventos: React.FC = () => {
         <MapSelector
           latitud={item.latitud}
           longitud={item.longitud}
+          initializeWithDefault={!item.id}
           onLocationChange={(lat, lng) => {
             onChange({ target: { name: 'latitud', value: lat } });
             onChange({ target: { name: 'longitud', value: lng } });
