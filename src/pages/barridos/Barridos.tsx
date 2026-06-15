@@ -4,7 +4,6 @@ import { Calendar } from 'primereact/calendar';
 import { Dropdown } from 'primereact/dropdown';
 import { InputNumber } from 'primereact/inputnumber';
 import { InputText } from 'primereact/inputtext';
-import { InputTextarea } from 'primereact/inputtextarea';
 import { Tag, message } from 'antd';
 import { BaseCRUD } from '../../components/crud/BaseCRUD';
 import MapSelector from '../../components/map/MapSelector';
@@ -15,33 +14,51 @@ type CatalogOption = {
   nombre: string;
 };
 
+type AccidenteGeograficoOption = CatalogOption & {
+  latitud?: number | null;
+  longitud?: number | null;
+};
+
 type Barrido = {
   id?: number;
   emergencia_id?: number;
   evento_tipo_id?: number;
   evento_tipo?: string;
+  evento_tipo_nombre?: string;
   evento_fecha?: string;
   provincia_id?: number;
   provincia?: string;
+  provincia_nombre?: string;
   canton_id?: number;
   canton?: string;
+  canton_nombre?: string;
   parroquia_id?: number;
   parroquia?: string;
+  parroquia_nombre?: string;
   sector?: string;
   longitud?: number | null;
   latitud?: number | null;
-  parametro_0?: number;
-  parametro_1?: number;
-  parametro_2?: number;
-  parametro_3?: string;
+  accidente_geografico_id?: number;
+  volcan_id?: number;
+  volcan_nombre?: string;
+  magnitud?: number;
+  profundidad?: number;
+  epicentro?: string;
   barrido_estado_id?: number;
   barrido_estado?: string;
+  barrido_estado_codigo?: string;
+  barrido_estado_nombre?: string;
   activo?: boolean;
   creador?: string;
   creacion?: string;
   modificador?: string | null;
   modificacion?: string | null;
 };
+
+const EVENTO_ERUPCION_VOLCANICA_ID = 35;
+
+const normalizeText = (value: string) =>
+  value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
 const getArray = (value: unknown): any[] => {
   if (Array.isArray(value)) return value;
@@ -72,8 +89,13 @@ const mapCatalog = (items: any[], fallback: string): CatalogOption[] =>
       nombre: String(
         item?.nombre ??
         item?.descripcion ??
+        item?.evento_tipo_nombre ??
         item?.evento_tipo ??
+        item?.barrido_estado_nombre ??
         item?.barrido_estado ??
+        item?.provincia_nombre ??
+        item?.canton_nombre ??
+        item?.parroquia_nombre ??
         `${fallback} ${item?.id ?? ''}`
       ),
     }))
@@ -99,6 +121,7 @@ export const Barridos: React.FC = () => {
   const [provincias, setProvincias] = useState<CatalogOption[]>([]);
   const [cantones, setCantones] = useState<CatalogOption[]>([]);
   const [parroquias, setParroquias] = useState<CatalogOption[]>([]);
+  const [accidentesGeograficos, setAccidentesGeograficos] = useState<AccidenteGeograficoOption[]>([]);
 
   const fetchArray = useCallback(async (urls: string[]) => {
     for (const url of urls) {
@@ -161,6 +184,26 @@ export const Barridos: React.FC = () => {
     return mapped;
   }, [apiBase, emergenciaId, fetchArray]);
 
+  const loadAccidentesGeograficos = useCallback(async (eventoTipoId?: number) => {
+    if (Number(eventoTipoId) !== EVENTO_ERUPCION_VOLCANICA_ID) {
+      setAccidentesGeograficos([]);
+      return [];
+    }
+    const data = await fetchArray([
+      `${apiBase}/accidentes_geograficos/volcanes/evento_tipo/${eventoTipoId}`,
+    ]);
+    const mapped = data
+      .map((item) => ({
+        id: Number(item?.id ?? 0),
+        nombre: String(item?.nombre ?? `Accidente geográfico ${item?.id ?? ''}`),
+        latitud: item?.latitud == null ? null : Number(item.latitud),
+        longitud: item?.longitud == null ? null : Number(item.longitud),
+      }))
+      .filter((item) => Number.isFinite(item.id) && item.id > 0);
+    setAccidentesGeograficos(mapped);
+    return mapped;
+  }, [apiBase, fetchArray]);
+
   useEffect(() => {
     loadRows();
   }, [loadRows]);
@@ -169,7 +212,7 @@ export const Barridos: React.FC = () => {
     const loadCatalogs = async () => {
       const [tiposData, estadosData, provinciasData] = await Promise.all([
         fetchArray([`${apiBase}/evento_tipos`]),
-        fetchArray([`${apiBase}/barrido_estados`, `${apiBase}/barridos_estados`]),
+        fetchArray([`${apiBase}/barrido_estado`, `${apiBase}/barridos_estado`]),
         emergenciaId
           ? fetchArray([
               `${apiBase}/provincias/emergencia/${emergenciaId}`,
@@ -193,14 +236,15 @@ export const Barridos: React.FC = () => {
     const detail = getObject(await response.json());
     await loadCantones(Number(detail.provincia_id ?? 0));
     await loadParroquias(Number(detail.canton_id ?? 0));
+    await loadAccidentesGeograficos(Number(detail.evento_tipo_id ?? 0));
     return {
       ...detail,
       activo: detail.activo ?? true,
       emergencia_id: Number(detail.emergencia_id ?? emergenciaId),
-      parametro_0: Number(detail.parametro_0 ?? 0),
-      parametro_1: Number(detail.parametro_1 ?? 0),
-      parametro_2: Number(detail.parametro_2 ?? 0),
-      parametro_3: String(detail.parametro_3 ?? ''),
+      accidente_geografico_id: Number(detail.accidente_geografico_id ?? detail.volcan_id ?? 0),
+      magnitud: Number(detail.magnitud ?? 0),
+      profundidad: Number(detail.profundidad ?? 0),
+      epicentro: String(detail.epicentro ?? ''),
     };
   };
 
@@ -239,26 +283,27 @@ export const Barridos: React.FC = () => {
     }
 
     const commonPayload = {
+      accidente_geografico_id: Number(item.accidente_geografico_id ?? 0),
       activo: item.activo ?? true,
       barrido_estado_id: Number(item.barrido_estado_id),
       canton_id: Number(item.canton_id),
       emergencia_id: emergenciaId,
+      epicentro: String(item.epicentro ?? '').trim(),
       evento_fecha: new Date(String(item.evento_fecha)).toISOString(),
       evento_tipo_id: Number(item.evento_tipo_id),
       latitud: Number(item.latitud ?? 0),
       longitud: Number(item.longitud ?? 0),
-      parametro_0: Number(item.parametro_0 ?? 0),
-      parametro_1: Number(item.parametro_1 ?? 0),
-      parametro_2: Number(item.parametro_2 ?? 0),
-      parametro_3: String(item.parametro_3 ?? ''),
+      magnitud: Number(item.magnitud ?? 0),
+      profundidad: Number(item.profundidad ?? 0),
       parroquia_id: Number(item.parroquia_id),
       provincia_id: Number(item.provincia_id),
       sector: String(item.sector ?? '').trim(),
     };
     const isEdit = Number(item.id ?? 0) > 0;
+    const usuario = String(datosLogin?.usuario_login ?? '');
     const payload = isEdit
-      ? { ...commonPayload, modificador: String(datosLogin?.usuario_login ?? '') }
-      : { ...commonPayload, creador: String(datosLogin?.usuario_login ?? '') };
+      ? { ...commonPayload, modificador: usuario }
+      : { ...commonPayload, creador: usuario, modificador: usuario };
 
     try {
       const response = await authFetch(
@@ -289,22 +334,35 @@ export const Barridos: React.FC = () => {
     item: Partial<Barrido>,
     onChange: (event: any) => void,
     readOnly = false
-  ) => (
-    <div className="d-flex flex-column gap-3">
+  ) => {
+    const selectedEvento = eventoTipos.find((option) => option.id === Number(item.evento_tipo_id));
+    const selectedEventoNombre = selectedEvento?.nombre ?? item.evento_tipo_nombre ?? item.evento_tipo ?? '';
+    const isErupcionVolcanica = Number(item.evento_tipo_id) === EVENTO_ERUPCION_VOLCANICA_ID;
+    const isSismo = normalizeText(selectedEventoNombre).includes('sismo');
+
+    return (
+      <div className="d-flex flex-column gap-3">
       <div className="row g-3">
-        <div className="col-12 col-md-6">
+        <div className="col-12 col-lg-4">
           <label className="form-label">Tipo de evento *</label>
           <Dropdown
             value={item.evento_tipo_id ?? null}
             options={eventoTipos.map((option) => ({ value: option.id, label: option.nombre }))}
-            onChange={(event) => onChange({ target: { name: 'evento_tipo_id', value: event.value } })}
+            onChange={async (event) => {
+              onChange({ target: { name: 'evento_tipo_id', value: event.value } });
+              onChange({ target: { name: 'accidente_geografico_id', value: 0 } });
+              onChange({ target: { name: 'magnitud', value: 0 } });
+              onChange({ target: { name: 'profundidad', value: 0 } });
+              onChange({ target: { name: 'epicentro', value: '' } });
+              await loadAccidentesGeograficos(Number(event.value));
+            }}
             placeholder="Seleccione tipo de evento"
             className="w-full"
             filter
             disabled={readOnly}
           />
         </div>
-        <div className="col-12 col-md-6">
+        <div className="col-12 col-lg-4">
           <label className="form-label">Fecha del evento *</label>
           <Calendar
             value={item.evento_fecha ? new Date(item.evento_fecha) : null}
@@ -322,68 +380,7 @@ export const Barridos: React.FC = () => {
             disabled={readOnly}
           />
         </div>
-      </div>
-
-      <div className="row g-3">
-        <div className="col-12 col-md-4">
-          <label className="form-label">Provincia *</label>
-          <Dropdown
-            value={item.provincia_id ?? null}
-            options={provincias.map((option) => ({ value: option.id, label: option.nombre }))}
-            onChange={async (event) => {
-              onChange({ target: { name: 'provincia_id', value: event.value } });
-              onChange({ target: { name: 'canton_id', value: undefined } });
-              onChange({ target: { name: 'parroquia_id', value: undefined } });
-              setParroquias([]);
-              await loadCantones(event.value);
-            }}
-            placeholder="Seleccione provincia"
-            className="w-full"
-            filter
-            disabled={readOnly}
-          />
-        </div>
-        <div className="col-12 col-md-4">
-          <label className="form-label">Cantón *</label>
-          <Dropdown
-            value={item.canton_id ?? null}
-            options={cantones.map((option) => ({ value: option.id, label: option.nombre }))}
-            onChange={async (event) => {
-              onChange({ target: { name: 'canton_id', value: event.value } });
-              onChange({ target: { name: 'parroquia_id', value: undefined } });
-              await loadParroquias(event.value);
-            }}
-            placeholder={item.provincia_id ? 'Seleccione cantón' : 'Seleccione primero una provincia'}
-            className="w-full"
-            filter
-            disabled={readOnly || !item.provincia_id}
-          />
-        </div>
-        <div className="col-12 col-md-4">
-          <label className="form-label">Parroquia *</label>
-          <Dropdown
-            value={item.parroquia_id ?? null}
-            options={parroquias.map((option) => ({ value: option.id, label: option.nombre }))}
-            onChange={(event) => onChange({ target: { name: 'parroquia_id', value: event.value } })}
-            placeholder={item.canton_id ? 'Seleccione parroquia' : 'Seleccione primero un cantón'}
-            className="w-full"
-            filter
-            disabled={readOnly || !item.canton_id}
-          />
-        </div>
-      </div>
-
-      <div className="row g-3">
-        <div className="col-12 col-md-7">
-          <label className="form-label">Sector *</label>
-          <InputText
-            value={item.sector ?? ''}
-            onChange={(event) => onChange({ target: { name: 'sector', value: event.target.value } })}
-            className="w-full"
-            disabled={readOnly}
-          />
-        </div>
-        <div className="col-12 col-md-5">
+        <div className="col-12 col-lg-4">
           <label className="form-label">Estado del barrido *</label>
           {barridoEstados.length > 0 ? (
             <Dropdown
@@ -407,6 +404,117 @@ export const Barridos: React.FC = () => {
         </div>
       </div>
 
+      {isErupcionVolcanica && (
+        <div>
+          <label className="form-label">Accidente geográfico</label>
+          <Dropdown
+            value={item.accidente_geografico_id ?? null}
+            options={accidentesGeograficos.map((option) => ({ value: option.id, label: option.nombre }))}
+            onChange={(event) => onChange({
+              target: { name: 'accidente_geografico_id', value: event.value },
+            })}
+            placeholder="Seleccione accidente geográfico"
+            className="w-full"
+            filter
+            disabled={readOnly}
+          />
+        </div>
+      )}
+
+      {isSismo && (
+        <div className="barridos-sismo-row">
+          <div className="barridos-sismo-field">
+            <label className="form-label">Magnitud</label>
+            <InputNumber
+              value={Number(item.magnitud ?? 0)}
+              onValueChange={(event) => onChange({ target: { name: 'magnitud', value: event.value ?? 0 } })}
+              className="w-full"
+              min={0}
+              maxFractionDigits={2}
+              disabled={readOnly}
+            />
+          </div>
+          <div className="barridos-sismo-field">
+            <label className="form-label">Profundidad</label>
+            <InputNumber
+              value={Number(item.profundidad ?? 0)}
+              onValueChange={(event) => onChange({ target: { name: 'profundidad', value: event.value ?? 0 } })}
+              className="w-full"
+              min={0}
+              maxFractionDigits={2}
+              disabled={readOnly}
+            />
+          </div>
+          <div className="barridos-sismo-field">
+            <label className="form-label">Epicentro</label>
+            <InputText
+              value={item.epicentro ?? ''}
+              onChange={(event) => onChange({ target: { name: 'epicentro', value: event.target.value } })}
+              className="w-full"
+              disabled={readOnly}
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="row g-3">
+        <div className="col-12 col-lg-3">
+          <label className="form-label">Provincia *</label>
+          <Dropdown
+            value={item.provincia_id ?? null}
+            options={provincias.map((option) => ({ value: option.id, label: option.nombre }))}
+            onChange={async (event) => {
+              onChange({ target: { name: 'provincia_id', value: event.value } });
+              onChange({ target: { name: 'canton_id', value: undefined } });
+              onChange({ target: { name: 'parroquia_id', value: undefined } });
+              setParroquias([]);
+              await loadCantones(event.value);
+            }}
+            placeholder="Seleccione provincia"
+            className="w-full"
+            filter
+            disabled={readOnly}
+          />
+        </div>
+        <div className="col-12 col-lg-3">
+          <label className="form-label">Cantón *</label>
+          <Dropdown
+            value={item.canton_id ?? null}
+            options={cantones.map((option) => ({ value: option.id, label: option.nombre }))}
+            onChange={async (event) => {
+              onChange({ target: { name: 'canton_id', value: event.value } });
+              onChange({ target: { name: 'parroquia_id', value: undefined } });
+              await loadParroquias(event.value);
+            }}
+            placeholder={item.provincia_id ? 'Seleccione cantón' : 'Seleccione primero una provincia'}
+            className="w-full"
+            filter
+            disabled={readOnly || !item.provincia_id}
+          />
+        </div>
+        <div className="col-12 col-lg-3">
+          <label className="form-label">Parroquia *</label>
+          <Dropdown
+            value={item.parroquia_id ?? null}
+            options={parroquias.map((option) => ({ value: option.id, label: option.nombre }))}
+            onChange={(event) => onChange({ target: { name: 'parroquia_id', value: event.value } })}
+            placeholder={item.canton_id ? 'Seleccione parroquia' : 'Seleccione primero un cantón'}
+            className="w-full"
+            filter
+            disabled={readOnly || !item.canton_id}
+          />
+        </div>
+        <div className="col-12 col-lg-3">
+          <label className="form-label">Sector *</label>
+          <InputText
+            value={item.sector ?? ''}
+            onChange={(event) => onChange({ target: { name: 'sector', value: event.target.value } })}
+            className="w-full"
+            disabled={readOnly}
+          />
+        </div>
+      </div>
+
       <div>
         <label className="form-label">Ubicación en el mapa</label>
         <MapSelector
@@ -424,7 +532,7 @@ export const Barridos: React.FC = () => {
       </div>
 
       <div className="row g-3">
-        <div className="col-12 col-md-6">
+        <div className="col-12 col-md-6 col-lg-6">
           <label className="form-label">Latitud</label>
           <InputNumber
             value={typeof item.latitud === 'number' ? item.latitud : null}
@@ -438,7 +546,7 @@ export const Barridos: React.FC = () => {
             disabled={readOnly}
           />
         </div>
-        <div className="col-12 col-md-6">
+        <div className="col-12 col-md-6 col-lg-6">
           <label className="form-label">Longitud</label>
           <InputNumber
             value={typeof item.longitud === 'number' ? item.longitud : null}
@@ -451,38 +559,12 @@ export const Barridos: React.FC = () => {
             useGrouping={false}
             disabled={readOnly}
           />
-        </div>
+        </div>       
       </div>
 
-      <div className="row g-3">
-        {[0, 1, 2].map((index) => {
-          const field = `parametro_${index}` as 'parametro_0' | 'parametro_1' | 'parametro_2';
-          return (
-            <div className="col-12 col-md-4" key={field}>
-              <label className="form-label">{`Parámetro ${index}`}</label>
-              <InputNumber
-                value={Number(item[field] ?? 0)}
-                onValueChange={(event) => onChange({ target: { name: field, value: event.value ?? 0 } })}
-                className="w-full"
-                disabled={readOnly}
-              />
-            </div>
-          );
-        })}
       </div>
-
-      <div>
-        <label className="form-label">Parámetro 3</label>
-        <InputTextarea
-          value={item.parametro_3 ?? ''}
-          onChange={(event) => onChange({ target: { name: 'parametro_3', value: event.target.value } })}
-          className="w-full"
-          rows={3}
-          disabled={readOnly}
-        />
-      </div>
-    </div>
-  );
+    );
+  };
 
   const eventoTipoNameById = useMemo(
     () => new Map(eventoTipos.map((item) => [item.id, item.nombre])),
@@ -496,8 +578,19 @@ export const Barridos: React.FC = () => {
   const normalizedRows = useMemo(
     () => rows.map((row) => ({
       ...row,
-      evento_tipo: row.evento_tipo || eventoTipoNameById.get(Number(row.evento_tipo_id)) || '',
-      barrido_estado: row.barrido_estado || estadoNameById.get(Number(row.barrido_estado_id)) || '',
+      evento_tipo:
+        row.evento_tipo_nombre ||
+        row.evento_tipo ||
+        eventoTipoNameById.get(Number(row.evento_tipo_id)) ||
+        '',
+      provincia: row.provincia_nombre || row.provincia || '',
+      canton: row.canton_nombre || row.canton || '',
+      parroquia: row.parroquia_nombre || row.parroquia || '',
+      barrido_estado:
+        row.barrido_estado_nombre ||
+        row.barrido_estado ||
+        estadoNameById.get(Number(row.barrido_estado_id)) ||
+        '',
     })),
     [estadoNameById, eventoTipoNameById, rows]
   );
@@ -540,12 +633,12 @@ export const Barridos: React.FC = () => {
           emergencia_id: emergenciaId || undefined,
           evento_fecha: new Date().toISOString(),
           evento_tipo_id: undefined,
+          accidente_geografico_id: 0,
+          epicentro: '',
           latitud: null,
           longitud: null,
-          parametro_0: 0,
-          parametro_1: 0,
-          parametro_2: 0,
-          parametro_3: '',
+          magnitud: 0,
+          profundidad: 0,
           parroquia_id: undefined,
           provincia_id: undefined,
           sector: '',
@@ -555,6 +648,7 @@ export const Barridos: React.FC = () => {
         showEditAction={isUsuarioNacional}
         showDeleteButton={false}
         showDeleteAction={false}
+        modalWidth={600}
         emptyMessage={loading ? 'Cargando barridos...' : emergenciaId ? 'No existen barridos.' : 'Seleccione una emergencia.'}
       />
       {loading && <div className="mt-2">Cargando...</div>}

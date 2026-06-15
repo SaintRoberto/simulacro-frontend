@@ -57,6 +57,7 @@ interface BaseCRUDProps<T> {
   deleteDialogOkText?: string;
   forceDeleteAction?: boolean;
   useMenuPermissions?: boolean;
+  modalWidth?: number | string;
 }
 
 export function BaseCRUD<T extends Record<string, any>>({
@@ -91,6 +92,7 @@ export function BaseCRUD<T extends Record<string, any>>({
   deleteDialogOkText = 'Sí',
   forceDeleteAction = false,
   useMenuPermissions = true,
+  modalWidth,
 }: BaseCRUDProps<T>) {
   const { authFetch, datosLogin } = useAuth();
   const { getMenuIdByRoute } = useMenu();
@@ -432,8 +434,8 @@ export function BaseCRUD<T extends Record<string, any>>({
   };
 
   const header = showHeader && (
-    <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-      <h4 className="m-0">{title}</h4>
+    <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3 base-crud-header">
+      <h4 className="m-0 base-crud-title">{title}</h4>
       {rightToolbarTemplate ? rightToolbarTemplate() : defaultRightToolbarTemplate()}
     </div>
   );
@@ -520,7 +522,7 @@ export function BaseCRUD<T extends Record<string, any>>({
 
       {/* Pagination Controls */}
       {filteredItems.length > 0 && (
-        <div className="d-flex align-items-center justify-content-between mt-3 p-3 bg-light border-top">
+        <div className="d-flex align-items-center justify-content-between mt-3 p-3 base-crud-pagination">
           <div>
             <span className="text-muted">
               Mostrando {filteredItems.length === 0 ? 0 : first + 1} a {Math.min(first + rows, filteredItems.length)} de {filteredItems.length} registros
@@ -566,6 +568,7 @@ export function BaseCRUD<T extends Record<string, any>>({
 
       <Modal
         open={showDialog}
+        width={modalWidth}
         title={
           isReadOnly 
             ? `Consultar ${title}` 

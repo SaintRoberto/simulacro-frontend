@@ -420,6 +420,7 @@ export const AsistenciaEntregada: React.FC = () => {
           <MapSelector
             latitud={item.latitud}
             longitud={item.longitud}
+            initializeWithDefault={!((item as any).id || (item as any).asistencia_id)}
             onLocationChange={(lat, lng) => {
               onChange({ target: { name: 'latitud', value: lat } });
               onChange({ target: { name: 'longitud', value: lng } });
