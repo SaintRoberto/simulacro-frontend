@@ -27,6 +27,7 @@ import EmergencySelection from './pages/EmergencySelection';
 import { Eventos } from './pages/eventos/Eventos';
 import { Inventario } from './pages/inventario/Inventario';
 import { Barridos } from './pages/barridos/Barridos';
+import { BarridosMonitoreo } from './pages/barridos_monitoreo/BarridosMonitoreo';
 import { SeccionEnConstruccion } from './pages/SeccionEnConstruccion';
 
 const App: React.FC = () => {
@@ -48,6 +49,9 @@ const App: React.FC = () => {
           <Route path="inventario" element={<Inventario />} />
           <Route path="eventos" element={<Eventos />} />
           <Route path="barridos" element={<Barridos />} />
+          <Route path="barridos-monitoreo" element={<BarridosMonitoreo />} />
+          <Route path="barridos_monitoreo" element={<BarridosMonitoreo />} />
+          <Route path="barrido_monitoreo" element={<BarridosMonitoreo />} />
           <Route path="acciones" element={<AccionesRespuestas />} />
           <Route path="acciones/nueva" element={<NuevoAccionesRespuesta />} />
           <Route path="actas" element={<ActasCOE />} />

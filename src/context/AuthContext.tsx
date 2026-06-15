@@ -28,6 +28,28 @@ export interface DatosLogin {
   usuario_id: number;
 }
 
+export interface BarridoActivo {
+  id: number;
+  emergencia_id?: number;
+  emergencia_nombre?: string;
+  evento_tipo_id?: number;
+  evento_tipo_nombre?: string;
+  evento_fecha?: string;
+  provincia_id?: number;
+  provincia_nombre?: string;
+  canton_id?: number;
+  canton_nombre?: string;
+  parroquia_id?: number;
+  parroquia_nombre?: string;
+  sector?: string | null;
+  longitud?: number | null;
+  latitud?: number | null;
+  barrido_estado_id?: number;
+  barrido_estado_codigo?: string;
+  barrido_estado_nombre?: string;
+  activo?: boolean;
+}
+
 export interface ReceptorItem {
   coe_id: number;
   mesa_id: number;
@@ -210,6 +232,8 @@ interface AuthContextValue {
   authFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
   selectedEmergenciaId: number | null;
   setSelectedEmergenciaId: (id: number | null) => void;
+  barridoActivo: BarridoActivo | null;
+  barridoActivoStatus: 'idle' | 'loading' | 'succeeded' | 'failed';
 
 }
 
@@ -224,6 +248,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [recursoGruposStatus, setRecursoGruposStatus] = useState<'idle' | 'loading' | 'succeeded' | 'failed'>('idle');
   const [recursoTipos, setRecursoTipos] = useState<RecursoTipo[]>([]);
   const [recursoTiposStatus, setRecursoTiposStatus] = useState<'idle' | 'loading' | 'succeeded' | 'failed'>('idle');
+  const [barridoActivo, setBarridoActivo] = useState<BarridoActivo | null>(null);
+  const [barridoActivoStatus, setBarridoActivoStatus] = useState<'idle' | 'loading' | 'succeeded' | 'failed'>('idle');
   const [isRestoringSession, setIsRestoringSession] = useState<boolean>(true);
   const [selectedEmergenciaId, _setSelectedEmergenciaId] = useState<number | null>(() => {
     const v = localStorage.getItem('selectedEmergenciaId');
@@ -309,6 +335,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     []
   );
 
+  const loadBarridoActivo = useCallback(async (emergenciaId: number | null) => {
+    if (!emergenciaId) {
+      setBarridoActivo(null);
+      setBarridoActivoStatus('idle');
+      return;
+    }
+
+    setBarridoActivo(null);
+    setBarridoActivoStatus('loading');
+    try {
+      const response = await authFetch(`${apiBase}/barridos/emergencia/${emergenciaId}`, {
+        headers: { accept: 'application/json' },
+      });
+      if (!response.ok) {
+        setBarridoActivo(null);
+        setBarridoActivoStatus('failed');
+        return;
+      }
+
+      const data = await response.json();
+      const barridos = (Array.isArray(data) ? data : [])
+        .filter((item: BarridoActivo) => Number(item?.id) > 0 && item?.activo !== false)
+        .sort((a: BarridoActivo, b: BarridoActivo) => {
+          const dateDifference =
+            new Date(b.evento_fecha ?? 0).getTime() - new Date(a.evento_fecha ?? 0).getTime();
+          return dateDifference || Number(b.id) - Number(a.id);
+        });
+
+      setBarridoActivo(barridos[0] ?? null);
+      setBarridoActivoStatus('succeeded');
+    } catch (error) {
+      console.error('Error al cargar el barrido activo:', error);
+      setBarridoActivo(null);
+      setBarridoActivoStatus('failed');
+    }
+  }, [apiBase, authFetch]);
+
+  useEffect(() => {
+    loadBarridoActivo(selectedEmergenciaId);
+  }, [loadBarridoActivo, selectedEmergenciaId]);
+
   const login = useCallback(async (usuario: string, clave: string) => {
     // Limpiar estados
     setReceptoresStatus('idle');
@@ -317,6 +384,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setRecursoGrupos([]);
     setRecursoTiposStatus('idle');
     setRecursoTipos([]);
+    setBarridoActivo(null);
+    setBarridoActivoStatus('idle');
     _setSelectedEmergenciaId(null);
     localStorage.removeItem('selectedEmergenciaId');
     
@@ -591,12 +660,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     getRequerimientosRecibidosNotificaciones,
     authFetch,
     selectedEmergenciaId,
+    barridoActivo,
+    barridoActivoStatus,
     setSelectedEmergenciaId: (id: number | null) => {
       _setSelectedEmergenciaId(id);
       if (id == null) localStorage.removeItem('selectedEmergenciaId');
       else localStorage.setItem('selectedEmergenciaId', String(id));
     }
-  }), [loginResponse, datosLogin, receptores, receptoresStatus, recursoGrupos, recursoGruposStatus, recursoTipos, recursoTiposStatus, isRestoringSession, login, loadReceptores, loadRecursoGrupos, loadRecursoTipos, createRequerimiento, createRequerimientoRecurso, getRequerimientoEstados, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, getRequerimientosRecibidosNotificaciones, authFetch, selectedEmergenciaId]);
+  }), [loginResponse, datosLogin, receptores, receptoresStatus, recursoGrupos, recursoGruposStatus, recursoTipos, recursoTiposStatus, barridoActivo, barridoActivoStatus, isRestoringSession, login, loadReceptores, loadRecursoGrupos, loadRecursoTipos, createRequerimiento, createRequerimientoRecurso, getRequerimientoEstados, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, getRequerimientosRecibidosNotificaciones, authFetch, selectedEmergenciaId]);
 
   return (
     <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

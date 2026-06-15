@@ -50,7 +50,16 @@ interface ActaCOE {
 export const NuevoAccionesRespuesta: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { authFetch, datosLogin } = useAuth();
+  const { authFetch, datosLogin, selectedEmergenciaId } = useAuth();
+  const emergenciaId = useMemo(() => {
+    const storedId = Number(localStorage.getItem('selectedEmergenciaId') || '0');
+    return Number(
+      selectedEmergenciaId ??
+      datosLogin?.emergencia_id ??
+      storedId ??
+      0
+    );
+  }, [datosLogin?.emergencia_id, selectedEmergenciaId]);
 
   const editId = useMemo(() => {
     const idStr = searchParams.get('id');
@@ -64,7 +73,7 @@ export const NuevoAccionesRespuesta: React.FC = () => {
     fecha_final: new Date(),
     respuesta_estado_id: 0,
     resoluciones: [],
-    emergencia_id: datosLogin?.emergencia_id || 4,
+    emergencia_id: emergenciaId,
     usuario_id: datosLogin?.usuario_id || 0,
     creador: datosLogin?.usuario_login || ''
   });
@@ -126,7 +135,7 @@ export const NuevoAccionesRespuesta: React.FC = () => {
         detalle: data.detalle || '',
         fecha_final: data.fecha_final ? new Date(data.fecha_final) : new Date(),
         respuesta_estado_id: Number(data.accion_respuesta_estado_id ?? data.respuesta_estado_id ?? 0),
-        emergencia_id: data.emergencia_id || 4,
+        emergencia_id: Number(data.emergencia_id ?? emergenciaId),
         usuario_id: data.usuario_id || (datosLogin?.usuario_id || 0),
         creador: data.creador || (datosLogin?.usuario_login || '')
       }));
@@ -141,7 +150,7 @@ export const NuevoAccionesRespuesta: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [authFetch, navigate, datosLogin]);
+  }, [apiBase, authFetch, datosLogin, emergenciaId, navigate]);
 
   // Cargar datos iniciales
   useEffect(() => {
@@ -180,6 +189,7 @@ export const NuevoAccionesRespuesta: React.FC = () => {
         if (datosLogin?.usuario_id && !editId) {
           setAccionRespuesta(prev => ({
             ...prev,
+            emergencia_id: emergenciaId,
             usuario_id: datosLogin.usuario_id,
             creador: datosLogin.usuario_login
           }));
@@ -193,7 +203,7 @@ export const NuevoAccionesRespuesta: React.FC = () => {
     };
 
     cargarDatosIniciales();
-  }, [authFetch, datosLogin]);
+  }, [apiBase, authFetch, datosLogin, editId, emergenciaId]);
 
   // Cargar datos de la acción de respuesta cuando el ID de edición cambia
   useEffect(() => {
@@ -481,16 +491,22 @@ export const NuevoAccionesRespuesta: React.FC = () => {
         return;
       }
 
+      const payloadEmergenciaId = Number(accionRespuesta.emergencia_id || emergenciaId);
+      if (!payloadEmergenciaId) {
+        alert('Debe seleccionar una emergencia antes de guardar la acción');
+        return;
+      }
+
       const accionData = {
         activo: true,
         creador: accionRespuesta.creador,
         detalle: accionRespuesta.detalle,
+        emergencia_id: payloadEmergenciaId,
         fecha_final: accionRespuesta.fecha_final.toISOString(),
         accion_respuesta_estado_id: accionRespuesta.respuesta_estado_id,
         modificador: editId ? (datosLogin?.usuario_login || accionRespuesta.creador) : undefined,
         usuario_id: accionRespuesta.usuario_id,
-        // Valores por defecto que pueden ser necesarios
-        resolucion_id: 0,
+        coe_acta_resolucion_mesa_id: 0,
         accion_respuesta_origen_id: 0
       };
 
