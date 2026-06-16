@@ -233,12 +233,17 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
 
     const coeId = Number(searchParams.get('coe_id') || datosLogin?.coe_id || 0);
     const mesaId = Number(searchParams.get('mesa_id') || datosLogin?.mesa_id || 0);
-    const usuarioId = Number(searchParams.get('usuario_id') || datosLogin?.usuario_id || 0);
-    const requerimientoEstadoId = Number(
+    const provinciaId = Number(searchParams.get('provincia_id') || datosLogin?.provincia_id || 0);
+    const cantonId = Number(searchParams.get('canton_id') || datosLogin?.canton_id || 0);
+    const usuarioEmisorId = Number(
+      searchParams.get('usuario_emisor_id') || searchParams.get('usuario_id') || datosLogin?.usuario_id || 0
+    );
+    const requerimientoEstadoRechazado = Number(
       searchParams.get('requerimiento_estado_id') || prefilledEstadoId || RECHAZADO_ESTADO_ID_DEFAULT
     );
+    const emergenciaId = Number(searchParams.get('emergencia_id') || emergenciaGlobalId || 0);
 
-    if (!coeId || !mesaId || !usuarioId || !requerimientoEstadoId) {
+    if (!coeId || !mesaId || !usuarioEmisorId || !requerimientoEstadoRechazado || !emergenciaId) {
       setInventarioRows([]);
       setInventarioStatus('error');
       return;
@@ -246,7 +251,7 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
 
     setInventarioStatus('loading');
     try {
-      const endpoint = `${apiBase}/recursos_inventario/no-rechazados/coe/${coeId}/mesa/${mesaId}/recurso_tipo/${selectedTipoId}/usuario/${usuarioId}/requerimiento_estado/${requerimientoEstadoId}`;
+      const endpoint = `${apiBase}/recursos_inventario/mesas-restantes/coe/${coeId}/mesa/${mesaId}/recurso_tipo/${selectedTipoId}/provincia/${provinciaId}/canton/${cantonId}/usuario_emisor/${usuarioEmisorId}/requerimiento_estado_rechazado/${requerimientoEstadoRechazado}/emergencia/${emergenciaId}`;
       const res = await authFetch(endpoint, { headers: { accept: 'application/json' } });
       if (!res.ok) {
         setInventarioRows([]);
@@ -268,7 +273,7 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
           mesaId: rowMesaId,
           mesaNombre: String(it?.mesa_nombre ?? receptorRef?.mesa_nombre ?? `Mesa ${rowMesaId}`),
           siglas: String(receptorRef?.siglas ?? receptorRef?.mesa_siglas ?? ''),
-          usuarioId: Number(receptorRef?.usuario_id ?? usuarioId),
+          usuarioId: Number(receptorRef?.usuario_id ?? usuarioEmisorId),
           cantidadDisponible: Math.max(0, Number(it?.existencias ?? 0)),
           cantidadSolicitada: initialCantidad,
           detalleSolicitudRecurso: String(detalleSolicitudByKeyRef.current[key] ?? ''),
@@ -282,7 +287,22 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
       setInventarioRows([]);
       setInventarioStatus('error');
     }
-  }, [selectedTipoId, searchParams, datosLogin?.coe_id, datosLogin?.mesa_id, datosLogin?.usuario_id, prefilledEstadoId, prefilledCantidadSolicitada, apiBase, authFetch, receptores, selectedGrupoId]);
+  }, [
+    selectedTipoId,
+    searchParams,
+    datosLogin?.coe_id,
+    datosLogin?.mesa_id,
+    datosLogin?.provincia_id,
+    datosLogin?.canton_id,
+    datosLogin?.usuario_id,
+    prefilledEstadoId,
+    prefilledCantidadSolicitada,
+    emergenciaGlobalId,
+    apiBase,
+    authFetch,
+    receptores,
+    selectedGrupoId,
+  ]);
 
   useEffect(() => {
     if (wizardStep === 2 && selectedTipoId) {

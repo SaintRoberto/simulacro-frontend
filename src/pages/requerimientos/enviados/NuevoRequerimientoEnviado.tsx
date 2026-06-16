@@ -848,6 +848,11 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     ];
   }, [isEndosoMode, selectedGrupoId, selectedTipoId, disponibilidadRows, datosLogin?.usuario_id, cantidadSolicitadaByKey, detalleSolicitudByKey]);
 
+  const canEnableDelegacion =
+    Boolean(selectedTipoId) &&
+    disponibilidadStatus === 'ready' &&
+    disponibilidadRows.length === 0;
+
   const guideStepConfigs = useMemo(() => {
     return getGuideSteps({
       currentStep: wizardStep,
@@ -856,7 +861,9 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
       hasSelectedGrupo: Boolean(selectedGrupoId),
       hasSelectedTipo: Boolean(selectedTipoId),
       hasVisibleAvailabilityRows: disponibilidadRowsForStep2.length > 0,
-      isEndosoToggleVisible: !isUsuarioNacionalId13,
+      isEndosoToggleVisible:
+        !isUsuarioNacionalId13 &&
+        (isEndosoMode || canEnableDelegacion),
       isEndosoWithoutInventory:
         isEndosoMode &&
         Boolean(selectedGrupoId) &&
@@ -871,6 +878,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     selectedTipoId,
     disponibilidadRowsForStep2.length,
     disponibilidadRows.length,
+    canEnableDelegacion,
     isUsuarioNacionalId13,
   ]);
 
@@ -1741,7 +1749,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                       onClick={handleRechazarDesdeNacional}
                       disabled={isRejecting}
                     />
-                  ) : (
+                  ) : isEndosoMode || canEnableDelegacion ? (
                     <Button
                       label={isEndosoMode ? 'Deshabilitar Delegación' : 'Habilitar Delegación'}
                       severity={isEndosoMode ? 'warning' : 'help'}
@@ -1749,7 +1757,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
                       className="m-1"
                       onClick={() => setIsEndosoMode((prev) => !prev)}
                     />
-                  )}
+                  ) : null}
                 </div>
 
               </div>
