@@ -982,6 +982,19 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
     addRecursoDesdeMesa(row);
   };
 
+  const resolveOriginalRequerimientoRecursoId = (row: DisponibilidadMesaRow): number => {
+    const keys = [
+      `${selectedGrupoId ?? 0}-${selectedTipoId ?? 0}-${row.usuarioId}`,
+      `${selectedGrupoId ?? 0}-${selectedTipoId ?? 0}-${editContext?.usuarioReceptorId ?? 0}`,
+      `${selectedGrupoId ?? 0}-${selectedTipoId ?? 0}-0`,
+    ];
+    for (const key of keys) {
+      const id = Number(editOriginalByKeyRef.current[key]?.id ?? 0);
+      if (id > 0) return id;
+    }
+    return Number(editContext?.requerimientoRecursoId ?? reqIdParam ?? 0);
+  };
+
   const handleEnviarNivelSuperiorDesdeMesa = async (row: DisponibilidadMesaRow) => {
     if (!selectedGrupoId || !selectedTipoId) {
       alert('Seleccione grupo y tipo de recurso.');
@@ -1096,6 +1109,30 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         alert('No se pudo enviar a nivel superior.');
         return;
       }
+
+      const originalRequerimientoRecursoId = resolveOriginalRequerimientoRecursoId(row);
+      if (originalRequerimientoRecursoId > 0) {
+        const desactivarOriginalRes = await authFetch(
+          `${apiBase}/requerimiento-recursos/${originalRequerimientoRecursoId}`,
+          {
+            method: 'PUT',
+            headers: {
+              accept: 'application/json',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              activo: false,
+              modificador: datosLogin.usuario_login,
+              requerimiento_estado_id: 5,
+            }),
+          }
+        );
+        if (!desactivarOriginalRes.ok) {
+          alert('El requerimiento fue enviado a nivel superior, pero no se pudo desactivar el requerimiento original.');
+          return;
+        }
+      }
+
       const requerimientoRecursoIdLog = await resolveCreatedRequerimientoRecursoId({
         requerimientoNumero,
         usuarioEmisorId: Number(usuarioEmisorId ?? 0),
@@ -1144,6 +1181,9 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         },
       ]);
       alert('Solicitud enviada a nivel superior correctamente.');
+      if (originalRequerimientoRecursoId > 0) {
+        navigateToEnviadosWithRefresh();
+      }
     } catch (error) {
       console.error(error);
       alert('Error al enviar a nivel superior.');

@@ -9,39 +9,60 @@ import MapSelector from '../../components/map/MapSelector';
 import { useAuth } from '../../context/AuthContext';
 
 interface AsistenciaListItem {
-  asistencia_id: number;
-  asistencia_grupo: string;
-  asistencia_item: string;
-  cantidad: number;
-  familias: number;
-  fecha_entrega: string | null;
-  institucion_donante: string | null;
-  latitud: number | null;
-  longitud: number | null;
-  parroquia_nombre: string | null;
-  personas: number;
-  sector: string | null;
-}
-
-interface AsistenciaPostPayload {
   activo: boolean;
-  asistencia_categoria_id: number;
-  asistencia_grupo_id: number;
-  asistencia_item_id: number;
-  cantidad: number;
-  canton_id: number;
+  cantidad_entregada: number;
+  canton_destino: string | null;
+  canton_destino_id: number;
+  creacion: string;
   creador: string;
   emergencia_id: number;
-  familias: number;
+  familias_beneficiadas: number;
+  fecha_entrega: string | null;
+  id: number;
+  institucion_donante: string | null;
+  institucion_donante_id: number;
+  latitud_destino: number | null;
+  longitud_destino: number | null;
+  modificacion: string;
+  modificador: string;
+  parroquia_destino: string | null;
+  parroquia_destino_id: number;
+  personas_beneficiadas: number;
+  provincia_destino: string | null;
+  provincia_destino_id: number;
+  recurso_categoria: string | null;
+  recurso_categoria_id: number;
+  recurso_grupo: string | null;
+  recurso_grupo_id: number;
+  recurso_tipo: string | null;
+  recurso_tipo_id: number;
+  sector_destino: string | null;
+}
+
+interface AsistenciaSavePayload {
+  activo: boolean;
+  cantidad_entregada: number;
+  canton_destino_id: number;
+  creador: string;
+  emergencia_id: number;
+  familias_beneficiadas: number;
   fecha_entrega: string | null;
   institucion_donante_id: number;
-  latitud: number | null;
-  longitud: number | null;
-  parroquia_id: number;
-  personas: number;
-  provincia_id: number;
-  sector: string;
+  latitud_destino: number;
+  longitud_destino: number;
+  modificador: string;
+  parroquia_destino_id: number;
+  personas_beneficiadas: number;
+  provincia_destino_id: number;
+  recurso_tipo_id: number;
+  sector_destino: string;
 }
+
+type AsistenciaFormItem = Partial<AsistenciaSavePayload> & {
+  id?: number;
+  recurso_categoria_id?: number;
+  recurso_grupo_id?: number;
+};
 
 export const AsistenciaEntregada: React.FC = () => {
   const { authFetch, datosLogin, selectedEmergenciaId } = useAuth();
@@ -202,7 +223,7 @@ export const AsistenciaEntregada: React.FC = () => {
     if (!emergenciaId || !usuarioId) return;
     setLoading(true);
     try {
-      const url = `${apiBase}/asistencia_entregada/emergencia/${emergenciaId}/usuario/${usuarioId}`;
+      const url = `${apiBase}/asistencia_humanitaria_entregada/emergencia/${emergenciaId}/usuario/${usuarioId}`;
       const res = await authFetch(url, { headers: { accept: 'application/json' } });
       if (!res.ok) { setRows([]); }
       else {
@@ -221,36 +242,33 @@ export const AsistenciaEntregada: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [emergenciaId, usuarioId]);
 
-  const handleSave = async (payload: Partial<AsistenciaPostPayload> & { id?: number; asistencia_id?: number }) => {
+  const handleSave = async (payload: AsistenciaFormItem) => {
     const creator = datosLogin?.usuario_login || datosLogin?.usuario_descripcion || 'usuario';
-    const selectedItem = itemsAll.find(i => i.id === Number(payload.asistencia_item_id));
-    const resolvedGrupoId = selectedItem?.recurso_grupo_id ?? Number(payload.asistencia_grupo_id ?? 0);
     const resolvedProvinciaId = isUsuarioNacional
-      ? Number(selectedProvinciaId ?? payload.provincia_id ?? 0)
-      : Number(loginProvinciaId || payload.provincia_id || 0);
-    const resolvedCantonId = Number(selectedCantonId ?? payload.canton_id ?? loginCantonId ?? 0);
-    const body: AsistenciaPostPayload = {
+      ? Number(selectedProvinciaId ?? payload.provincia_destino_id ?? 0)
+      : Number(loginProvinciaId || payload.provincia_destino_id || 0);
+    const resolvedCantonId = Number(selectedCantonId ?? payload.canton_destino_id ?? loginCantonId ?? 0);
+    const id = payload.id;
+    const isEdit = !!id;
+    const baseBody = {
       activo: payload.activo ?? true,
-      asistencia_categoria_id: 1,
-      asistencia_grupo_id: resolvedGrupoId,
-      asistencia_item_id: Number(payload.asistencia_item_id ?? 0),
-      cantidad: Number(payload.cantidad ?? 0),
-      canton_id: resolvedCantonId,
-      creador: payload.creador ?? creator,
+      cantidad_entregada: Number(payload.cantidad_entregada ?? 0),
+      canton_destino_id: resolvedCantonId,
       emergencia_id: selectedEmergenciaId || 0,
-      familias: Number(payload.familias ?? 0),
+      familias_beneficiadas: Number(payload.familias_beneficiadas ?? 0),
       fecha_entrega: payload.fecha_entrega ?? new Date().toISOString().substring(0, 19),
       institucion_donante_id: Number(payload.institucion_donante_id ?? 0),
-      latitud: payload.latitud ?? null,
-      longitud: payload.longitud ?? null,
-      parroquia_id: Number(payload.parroquia_id ?? 0),
-      personas: Number(payload.personas ?? 0),
-      provincia_id: resolvedProvinciaId,
-      sector: String(payload.sector ?? ''),
+      latitud_destino: Number(payload.latitud_destino ?? 0),
+      longitud_destino: Number(payload.longitud_destino ?? 0),
+      modificador: creator,
+      parroquia_destino_id: Number(payload.parroquia_destino_id ?? 0),
+      personas_beneficiadas: Number(payload.personas_beneficiadas ?? 0),
+      provincia_destino_id: resolvedProvinciaId,
+      recurso_tipo_id: Number(payload.recurso_tipo_id ?? 0),
+      sector_destino: String(payload.sector_destino ?? ''),
     };
-    const id = (payload as any)?.id ?? (payload as any)?.asistencia_id;
-    const isEdit = !!id;
-    const url = isEdit ? `${apiBase}/asistencia_entregada/${id}` : `${apiBase}/asistencia_entregada`;
+    const body = isEdit ? baseBody : { ...baseBody, creador: payload.creador ?? creator };
+    const url = isEdit ? `${apiBase}/asistencia_humanitaria_entregada/${id}` : `${apiBase}/asistencia_humanitaria_entregada`;
     const res = await authFetch(url, {
       method: isEdit ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json', accept: 'application/json' },
@@ -260,16 +278,16 @@ export const AsistenciaEntregada: React.FC = () => {
   };
 
   const handleDelete = async (row: AsistenciaListItem) => {
-    const id = (row as any).id ?? (row as any).asistencia_id;
+    const id = row.id;
     if (!id) return;
     try {
-      const res = await authFetch(`${apiBase}/asistencia_entregada/${id}`, { method: 'DELETE', headers: { accept: 'application/json' } });
+      const res = await authFetch(`${apiBase}/asistencia_humanitaria_entregada/${id}`, { method: 'DELETE', headers: { accept: 'application/json' } });
       if (res.ok) await fetchRows();
     } catch { }
   };
 
-  const renderForm = (item: Partial<AsistenciaPostPayload>, onChange: (e: any) => void) => {
-    const onDateChange = (date: string | Date | Date[] | null, field: keyof AsistenciaPostPayload) => {
+  const renderForm = (item: AsistenciaFormItem, onChange: (e: any) => void) => {
+    const onDateChange = (date: string | Date | Date[] | null, field: keyof AsistenciaSavePayload) => {
       if (!date) return;
       let iso: string | null = null;
       if (Array.isArray(date)) {
@@ -279,8 +297,8 @@ export const AsistenciaEntregada: React.FC = () => {
       } else { iso = date.toISOString().substring(0, 19); }
       onChange({ target: { name: field, value: iso } });
     };
-    const onDropdownChange = (e: { value: any }, field: keyof AsistenciaPostPayload) => onChange({ target: { name: field, value: e.value } });
-    const onNumberChange = (e: { value: number | null }, field: keyof AsistenciaPostPayload) => onChange({ target: { name: field, value: e.value || 0 } });
+    const onDropdownChange = (e: { value: any }, field: keyof AsistenciaSavePayload | 'recurso_grupo_id') => onChange({ target: { name: field, value: e.value } });
+    const onNumberChange = (e: { value: number | null }, field: keyof AsistenciaSavePayload) => onChange({ target: { name: field, value: e.value || 0 } });
 
     const grupoOptions = (grupos || []).map(g => ({ label: g.nombre, value: g.id }));
     const itemOptions = (items || []).map(i => ({ label: i.nombre, value: i.id }));
@@ -294,15 +312,15 @@ export const AsistenciaEntregada: React.FC = () => {
         <div className="row">
           <div className="field col-4 md:col-4">
             <label>Cantidad *</label>
-            <InputNumber value={Number(item.cantidad || 0)} onValueChange={(e) => onNumberChange(e, 'cantidad')} min={0} className="w-full" />
+            <InputNumber value={Number(item.cantidad_entregada || 0)} onValueChange={(e) => onNumberChange(e, 'cantidad_entregada')} min={0} className="w-full" />
           </div>
           <div className="field col-4 md:col-4">
             <label>Familias</label>
-            <InputNumber value={Number(item.familias || 0)} onValueChange={(e) => onNumberChange(e, 'familias')} min={0} className="w-full" />
+            <InputNumber value={Number(item.familias_beneficiadas || 0)} onValueChange={(e) => onNumberChange(e, 'familias_beneficiadas')} min={0} className="w-full" />
           </div>
           <div className="field col-4 md:col-4">
             <label>Personas</label>
-            <InputNumber value={Number(item.personas || 0)} onValueChange={(e) => onNumberChange(e, 'personas')} min={0} className="w-full" />
+            <InputNumber value={Number(item.personas_beneficiadas || 0)} onValueChange={(e) => onNumberChange(e, 'personas_beneficiadas')} min={0} className="w-full" />
           </div>
         </div>
 
@@ -322,12 +340,12 @@ export const AsistenciaEntregada: React.FC = () => {
           <div className="field col-6 md:col-4" hidden={true}>
             <label>Grupo *</label>
             <Dropdown
-              value={typeof item.asistencia_grupo_id === 'number' ? item.asistencia_grupo_id : null}
+              value={typeof item.recurso_grupo_id === 'number' ? item.recurso_grupo_id : null}
               options={grupoOptions}
               onChange={async (e) => {
-                onDropdownChange(e, 'asistencia_grupo_id');
+                onDropdownChange(e, 'recurso_grupo_id');
                 // Clear selected item and filter list by group
-                onChange({ target: { name: 'asistencia_item_id', value: undefined } });
+                onChange({ target: { name: 'recurso_tipo_id', value: undefined } });
                 if (typeof e.value === 'number') {
                   filterItemsByGrupo(e.value);
                 } else {
@@ -343,9 +361,9 @@ export const AsistenciaEntregada: React.FC = () => {
           <div className="field col-12 md:col-12">
             <label>Ítem *</label>
             <Dropdown
-              value={typeof item.asistencia_item_id === 'number' ? item.asistencia_item_id : null}
+              value={typeof item.recurso_tipo_id === 'number' ? item.recurso_tipo_id : null}
               options={itemOptions}
-              onChange={(e) => onDropdownChange(e, 'asistencia_item_id')}
+              onChange={(e) => onDropdownChange(e, 'recurso_tipo_id')}
               placeholder={itemsStatus === 'loading' ? 'Cargando...' : 'Seleccionar item'}
               disabled={itemsStatus === 'loading'}
               filter
@@ -363,9 +381,9 @@ export const AsistenciaEntregada: React.FC = () => {
                 value={selectedProvinciaId}
                 options={provinciaOptions}
                 onChange={(e) => {
-                  onDropdownChange(e, 'provincia_id');
-                  onChange({ target: { name: 'canton_id', value: 0 } });
-                  onChange({ target: { name: 'parroquia_id', value: 0 } });
+                  onDropdownChange(e, 'provincia_destino_id');
+                  onChange({ target: { name: 'canton_destino_id', value: 0 } });
+                  onChange({ target: { name: 'parroquia_destino_id', value: 0 } });
                   handleProvinciaChange(e.value ?? null);
                 }}
                 placeholder="Seleccionar provincia"
@@ -384,8 +402,8 @@ export const AsistenciaEntregada: React.FC = () => {
               value={selectedCantonId}
               options={cantones.map(c => ({ label: c.nombre, value: c.id }))}
               onChange={(e) => {
-                onDropdownChange(e, 'canton_id');
-                onChange({ target: { name: 'parroquia_id', value: 0 } });
+                onDropdownChange(e, 'canton_destino_id');
+                onChange({ target: { name: 'parroquia_destino_id', value: 0 } });
                 handleCantonChange(e.value ?? null);
               }}
               placeholder="Seleccionar canton"
@@ -400,9 +418,9 @@ export const AsistenciaEntregada: React.FC = () => {
           <div className="field col-6 md:col-6">
             <label>Parroquia *</label>
             <Dropdown
-              value={typeof item.parroquia_id === 'number' && item.parroquia_id !== 0 ? item.parroquia_id : null}
+              value={typeof item.parroquia_destino_id === 'number' && item.parroquia_destino_id !== 0 ? item.parroquia_destino_id : null}
               options={parroquiaOptions}
-              onChange={(e) => onDropdownChange(e, 'parroquia_id')}
+              onChange={(e) => onDropdownChange(e, 'parroquia_destino_id')}
               placeholder="Seleccionar parroquia"
               disabled={parroquiaOptions.length === 0}
               filter
@@ -418,12 +436,12 @@ export const AsistenciaEntregada: React.FC = () => {
          <div>
           <label>Ubicación en el mapa</label>
           <MapSelector
-            latitud={item.latitud}
-            longitud={item.longitud}
-            initializeWithDefault={!((item as any).id || (item as any).asistencia_id)}
+            latitud={item.latitud_destino}
+            longitud={item.longitud_destino}
+            initializeWithDefault={!item.id}
             onLocationChange={(lat, lng) => {
-              onChange({ target: { name: 'latitud', value: lat } });
-              onChange({ target: { name: 'longitud', value: lng } });
+              onChange({ target: { name: 'latitud_destino', value: lat } });
+              onChange({ target: { name: 'longitud_destino', value: lng } });
             }}
             height="200px"
             placeholder="Buscar dirección, calle, ciudad..."
@@ -434,8 +452,8 @@ export const AsistenciaEntregada: React.FC = () => {
           <div className="field col-6 md:col-6">
             <label>Latitud</label>
             <InputNumber
-              value={typeof item.latitud === 'number' ? item.latitud : null}
-              onValueChange={(e) => onChange({ target: { name: 'latitud', value: e.value } })}
+              value={typeof item.latitud_destino === 'number' ? item.latitud_destino : null}
+              onValueChange={(e) => onChange({ target: { name: 'latitud_destino', value: e.value } })}
               className="w-full"
               mode="decimal"
               min={-90}
@@ -450,8 +468,8 @@ export const AsistenciaEntregada: React.FC = () => {
           <div className="field col-6 md:col-6">
             <label>Longitud</label>
             <InputNumber
-              value={typeof item.longitud === 'number' ? item.longitud : null}
-              onValueChange={(e) => onChange({ target: { name: 'longitud', value: e.value } })}
+              value={typeof item.longitud_destino === 'number' ? item.longitud_destino : null}
+              onValueChange={(e) => onChange({ target: { name: 'longitud_destino', value: e.value } })}
               className="w-full"
               mode="decimal"
               min={-180}
@@ -467,28 +485,18 @@ export const AsistenciaEntregada: React.FC = () => {
 
         <div className="field col-12">
           <label>Sector</label>
-          <InputText value={item.sector || ''} onChange={(e) => onChange({ target: { name: 'sector', value: e.target.value } })} />
+          <InputText value={item.sector_destino || ''} onChange={(e) => onChange({ target: { name: 'sector_destino', value: e.target.value } })} />
         </div>
       </div>
     );
   };
 
-  const resolveItemForEdit = async (row: AsistenciaListItem): Promise<Partial<AsistenciaPostPayload> & { id?: number; asistencia_id?: number }> => {
-    // Resolve item and derive group from itemsAll
-    const item = itemsAll.find(i => i.nombre === row.asistencia_item);
-    const asistencia_item_id = item?.id || undefined;
-    const asistencia_grupo_id = item?.recurso_grupo_id || undefined;
-    // Filter items by resolved group so dropdown has correct options
-    if (asistencia_grupo_id) {
-      filterItemsByGrupo(asistencia_grupo_id);
+  const resolveItemForEdit = async (row: AsistenciaListItem): Promise<AsistenciaFormItem> => {
+    if (row.recurso_grupo_id) {
+      filterItemsByGrupo(row.recurso_grupo_id);
     }
-    let institucion_donante_id: number | undefined = undefined;
-    if (row.institucion_donante) {
-      const inst = instituciones.find(i => i.nombre === row.institucion_donante || `${i.siglas ? i.siglas + ' - ' : ''}${i.nombre}` === row.institucion_donante);
-      if (inst) institucion_donante_id = inst.id;
-    }
-    const editProvinciaId = Number((row as any).provincia_id ?? loginProvinciaId ?? 0) || 0;
-    const editCantonId = Number((row as any).canton_id ?? loginCantonId ?? 0) || 0;
+    const editProvinciaId = Number(row.provincia_destino_id ?? loginProvinciaId ?? 0) || 0;
+    const editCantonId = Number(row.canton_destino_id ?? loginCantonId ?? 0) || 0;
     setSelectedProvinciaId(editProvinciaId || null);
     setSelectedCantonId(editCantonId || null);
     if (editProvinciaId > 0 && (!cantones || cantones.length === 0)) {
@@ -497,7 +505,6 @@ export const AsistenciaEntregada: React.FC = () => {
         setCantones(canRes.ok ? await canRes.json() : []);
       } catch { }
     }
-    let parroquia_id: number | undefined = undefined;
     try {
       if ((!parroquias || parroquias.length === 0) && editCantonId) {
         const paRes = await authFetch(`${apiBase}/parroquias/canton/${editCantonId}`, { headers: { accept: 'application/json' } });
@@ -505,49 +512,45 @@ export const AsistenciaEntregada: React.FC = () => {
         setParroquias(Array.isArray(paData) ? paData : []);
       }
     } catch { }
-    if (row.parroquia_nombre) {
-      const pa = (parroquias || []).find(p => p.nombre === row.parroquia_nombre);
-      if (pa) parroquia_id = pa.id;
-    }
     return {
-      id: (row as any).id,
-      asistencia_id: (row as any).asistencia_id,
-      activo: true,
-      asistencia_categoria_id: 1,
-      asistencia_grupo_id,
-      asistencia_item_id,
-      cantidad: row.cantidad,
-      canton_id: editCantonId,
+      id: row.id,
+      activo: row.activo ?? true,
+      cantidad_entregada: row.cantidad_entregada,
+      canton_destino_id: editCantonId,
       creador: datosLogin?.usuario_login || datosLogin?.usuario_descripcion || 'usuario',
       emergencia_id: selectedEmergenciaId || 0,
-      familias: row.familias,
+      familias_beneficiadas: row.familias_beneficiadas,
       fecha_entrega: row.fecha_entrega,
-      institucion_donante_id: institucion_donante_id ?? 0,
-      latitud: row.latitud ?? null,
-      longitud: row.longitud ?? null,
-      parroquia_id: parroquia_id ?? 0,
-      personas: row.personas,
-      provincia_id: editProvinciaId,
-      sector: row.sector || '',
-    } as Partial<AsistenciaPostPayload> & { id?: number; asistencia_id?: number };
+      institucion_donante_id: row.institucion_donante_id ?? 0,
+      latitud_destino: Number(row.latitud_destino ?? 0),
+      longitud_destino: Number(row.longitud_destino ?? 0),
+      modificador: datosLogin?.usuario_login || datosLogin?.usuario_descripcion || 'usuario',
+      parroquia_destino_id: row.parroquia_destino_id ?? 0,
+      personas_beneficiadas: row.personas_beneficiadas,
+      provincia_destino_id: editProvinciaId,
+      recurso_categoria_id: row.recurso_categoria_id,
+      recurso_grupo_id: row.recurso_grupo_id,
+      recurso_tipo_id: row.recurso_tipo_id,
+      sector_destino: row.sector_destino || '',
+    };
   };
 
   const columns = [
     { field: 'id', header: 'ID', sortable: true },
-    { field: 'parroquia_nombre', header: 'Parroquia', sortable: true },
+    { field: 'parroquia_destino', header: 'Parroquia', sortable: true },
     { field: 'fecha_entrega', header: 'Fecha Entrega', sortable: true },
-    { field: 'sector', header: 'Sector', sortable: true },
+    { field: 'sector_destino', header: 'Sector', sortable: true },
     { field: 'institucion_donante', header: 'Institución', sortable: true },
-    { field: 'asistencia_grupo', header: 'Grupo', sortable: true },
-    { field: 'asistencia_item', header: 'Ítem', sortable: true },
-    { field: 'cantidad', header: 'Cantidad', sortable: true },
-    { field: 'familias', header: 'Familias', sortable: true },
-    { field: 'personas', header: 'Personas', sortable: true },
+    { field: 'recurso_grupo', header: 'Grupo', sortable: true },
+    { field: 'recurso_tipo', header: 'Ítem', sortable: true },
+    { field: 'cantidad_entregada', header: 'Cantidad', sortable: true },
+    { field: 'familias_beneficiadas', header: 'Familias', sortable: true },
+    { field: 'personas_beneficiadas', header: 'Personas', sortable: true },
   ];
 
   return (
     <Card title="Asistencia Entregada">
-      <BaseCRUD<AsistenciaListItem | AsistenciaPostPayload>
+      <BaseCRUD<AsistenciaListItem | AsistenciaFormItem>
         title=""
         items={rows as any}
         columns={columns as any}
@@ -557,22 +560,23 @@ export const AsistenciaEntregada: React.FC = () => {
         resolveItemForEdit={resolveItemForEdit as any}
         initialItem={{
           activo: true,
-          asistencia_categoria_id: 1,
-          asistencia_grupo_id: undefined as any,
-          asistencia_item_id: undefined as any,
-          cantidad: 0,
-          canton_id: loginCantonId || 0,
+          cantidad_entregada: 0,
+          canton_destino_id: loginCantonId || 0,
           creador: datosLogin?.usuario_login || '',
           emergencia_id: selectedEmergenciaId || 0,
-          familias: 0,
+          familias_beneficiadas: 0,
           fecha_entrega: new Date().toISOString().substring(0, 19),
           institucion_donante_id: 0,
-          latitud: null,
-          longitud: null,
-          parroquia_id: 0,
-          personas: 0,
-          provincia_id: loginProvinciaId || 0,
-          sector: '',
+          latitud_destino: 0,
+          longitud_destino: 0,
+          modificador: datosLogin?.usuario_login || '',
+          parroquia_destino_id: 0,
+          personas_beneficiadas: 0,
+          provincia_destino_id: loginProvinciaId || 0,
+          recurso_categoria_id: 1,
+          recurso_grupo_id: undefined as any,
+          recurso_tipo_id: undefined as any,
+          sector_destino: '',
         }}
         idField="id"
         showDeleteButton={true}

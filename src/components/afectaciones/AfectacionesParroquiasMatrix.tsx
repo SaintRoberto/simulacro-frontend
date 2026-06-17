@@ -101,7 +101,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
   // Matrix keyed by composite rowKey `${parroquia_id}-${evento_id}` -> variable_id -> payload
   const [matrix, setMatrix] = useState<Record<string, Record<number, AfectacionCellPayload>>>({});
   // Rows with parroquia-evento pairs
-  type RowItem = { parroquia_id: number; parroquia_nombre: string; evento_id: number; evento_nombre: string };
+  type RowItem = { parroquia_id: number; parroquia_nombre: string; evento_id: number; evento_nombre: string; evento_sector?: string };
   const [rows, setRows] = useState<RowItem[]>([]);
   // Also keep a ref to avoid stale closures in memoized renderers
   const matrixRef = useRef(matrix);
@@ -292,6 +292,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
           parroquia_id: number;
           parroquia_nombre?: string;
           evento_id?: number;
+          evento_sector?: string;
           evento_nombre?: string;
           afectacion_variable_id: number;
           variable_nombre?: string;
@@ -341,6 +342,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
               parroquia_nombre: r.parroquia_nombre || String(r.parroquia_id),
               evento_id: r.evento_id ?? 0,
               evento_nombre: r.evento_nombre || '-',
+              evento_sector: r.evento_sector,
             });
           }
         }

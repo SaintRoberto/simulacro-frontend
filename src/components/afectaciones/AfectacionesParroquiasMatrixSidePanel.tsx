@@ -36,6 +36,7 @@ type RowItem = {
   parroquia_nombre: string;
   evento_id: number;
   evento_nombre: string;
+  evento_sector?: string;
 };
 
 type InfraDetalle = {
@@ -51,6 +52,7 @@ type RegistroApi = {
   parroquia_nombre?: string;
   evento_id?: number;
   evento_nombre?: string;
+  evento_sector?: string;
   afectacion_variable_id: number;
   variable_nombre?: string;
   requiere_gis?: boolean;
@@ -236,6 +238,7 @@ export const AfectacionesParroquiasMatrixSidePanel: React.FC<AfectacionesParroqu
               parroquia_nombre: r.parroquia_nombre || String(r.parroquia_id),
               evento_id: r.evento_id ?? 0,
               evento_nombre: r.evento_nombre || '-',
+              evento_sector: r.evento_sector,
             });
           }
           if (!fresh[rk]) fresh[rk] = {};
@@ -565,6 +568,7 @@ export const AfectacionesParroquiasMatrixSidePanel: React.FC<AfectacionesParroqu
           <Space direction="vertical" size={0}>
             <Text strong>{r.parroquia_nombre}</Text>
             <Text type="secondary">{r.evento_nombre}</Text>
+            {r.evento_sector ? <Text type="secondary" style={{ fontSize: 11 }}>{r.evento_sector.substring(0, 30).toLowerCase()}</Text> : null}
           </Space>
         ),
       },

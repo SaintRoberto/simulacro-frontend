@@ -1,5 +1,5 @@
 import React, { FormEvent, useEffect, useRef, useState } from 'react';
-import { MapContainer, Marker, Popup, TileLayer, useMapEvents } from 'react-leaflet';
+import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import { LatLng, Map as LeafletMap } from 'leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -29,8 +29,13 @@ type SearchResult = {
 const MITAD_DEL_MUNDO: [number, number] = [-0.0022, -78.4558];
 const searchCache = new Map<string, SearchResult[]>();
 
+const parseCoordinate = (value?: number | null) => {
+  if (value === null || value === undefined) return NaN;
+  return Number(value);
+};
+
 const hasCoordinates = (latitud?: number | null, longitud?: number | null) =>
-  Number.isFinite(latitud) && Number.isFinite(longitud);
+  Number.isFinite(parseCoordinate(latitud)) && Number.isFinite(parseCoordinate(longitud));
 
 const LocationMarker: React.FC<{
   latitud: number;
@@ -59,6 +64,35 @@ const LocationMarker: React.FC<{
   );
 };
 
+const MapSizeUpdater: React.FC<{
+  latitud: number;
+  longitud: number;
+  coordinatesAreValid: boolean;
+}> = ({ latitud, longitud, coordinatesAreValid }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    const refreshMap = () => {
+      map.invalidateSize();
+      if (coordinatesAreValid) {
+        map.setView([latitud, longitud], 16, { animate: false });
+      }
+    };
+
+    const timeoutIds = [0, 100, 300, 600].map((delay) => window.setTimeout(refreshMap, delay));
+    const container = map.getContainer();
+    const resizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(refreshMap) : null;
+    resizeObserver?.observe(container);
+
+    return () => {
+      timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
+      resizeObserver?.disconnect();
+    };
+  }, [coordinatesAreValid, latitud, longitud, map]);
+
+  return null;
+};
+
 const MapSelector: React.FC<MapSelectorProps> = ({
   latitud,
   longitud,
@@ -75,8 +109,10 @@ const MapSelector: React.FC<MapSelectorProps> = ({
   const initializedDefaultRef = useRef(false);
 
   const coordinatesAreValid = hasCoordinates(latitud, longitud);
+  const parsedLatitud = parseCoordinate(latitud);
+  const parsedLongitud = parseCoordinate(longitud);
   const effectivePosition: [number, number] = coordinatesAreValid
-    ? [Number(latitud), Number(longitud)]
+    ? [parsedLatitud, parsedLongitud]
     : MITAD_DEL_MUNDO;
   const defaultZoom = coordinatesAreValid || initializeWithDefault ? 15 : 13;
 
@@ -208,6 +244,11 @@ const MapSelector: React.FC<MapSelectorProps> = ({
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          />
+          <MapSizeUpdater
+            latitud={effectivePosition[0]}
+            longitud={effectivePosition[1]}
+            coordinatesAreValid={coordinatesAreValid}
           />
           {(coordinatesAreValid || initializeWithDefault) && (
             <LocationMarker
