@@ -129,7 +129,7 @@ export const AfectacionesParroquiasMatrixSidePanel: React.FC<AfectacionesParroqu
         setLoading(true);
         const [provRes, varRes] = await Promise.all([
           authFetch(`${apiBase}/provincias/emergencia/${emergencyId}`, { headers: { accept: 'application/json' } }),
-          authFetch(`${apiBase}/mesa_grupo/${mesagrupo_Id}/afectacion_varibles/`, { headers: { accept: 'application/json' } }),
+          authFetch(`${apiBase}/mesa_grupo/${mesagrupo_Id}/afectacion_varibles/coe/${datosLogin?.coe_id}`, { headers: { accept: 'application/json' } }),
         ]);
         if (!mounted) return;
         const provData = provRes.ok ? await provRes.json() : [];
@@ -196,10 +196,10 @@ export const AfectacionesParroquiasMatrixSidePanel: React.FC<AfectacionesParroqu
   useEffect(() => {
     let mounted = true;
     const loadRegistros = async () => {
-      if (!cantonSelId || parroquiasSelIds.length === 0) return;
+      if (!provinciaId || !cantonSelId || !datosLogin?.coe_id || parroquiasSelIds.length === 0) return;
       setLoading(true);
       try {
-        const url = `${apiBase}/afectaciones_registros/eventos/emergencia/${emergencyId}/canton/${cantonSelId}/mesa_grupo/${mesagrupo_Id}/`;
+        const url = `${apiBase}/afectaciones_registros/eventos/emergencia/${emergencyId}/provincia/${provinciaId}/canton/${cantonSelId}/coe/${datosLogin.coe_id}/mesa_grupo/${mesagrupo_Id}/`;
         const res = await authFetch(url, { headers: { accept: 'application/json' } });
         const all: RegistroApi[] = res.ok ? await res.json() : [];
         if (!mounted) return;
@@ -264,7 +264,7 @@ export const AfectacionesParroquiasMatrixSidePanel: React.FC<AfectacionesParroqu
     return () => {
       mounted = false;
     };
-  }, [apiBase, authFetch, cantonSelId, emergencyId, mesagrupo_Id, parroquiasSelIds, variables.length]);
+  }, [apiBase, authFetch, cantonSelId, datosLogin?.coe_id, emergencyId, mesagrupo_Id, parroquiasSelIds, provinciaId, variables.length]);
 
   const guidedVariable = useMemo(
     () => variables.find(v => v.requiere_gis) ?? variables[0] ?? null,
@@ -455,7 +455,7 @@ export const AfectacionesParroquiasMatrixSidePanel: React.FC<AfectacionesParroqu
   }, [apiBase, authFetch, cantonSelId, datosLogin?.usuario_login, draftCantidad, draftCosto, emergencyId, provinciaId, recordIds, selectedRow, selectedRowKey, selectedVar]);
 
   const saveInfraFromDrawer = async () => {
-    if (isNacionalReadOnly || !selectedVar || !selectedRow || !shouldShowInfraestructura) return;
+    if (!selectedVar || !selectedRow || !shouldShowInfraestructura) return;
     applyDrawerToMatrix();
     const registroId = await ensureRegistroIdForSelected();
     if (!registroId) {
@@ -497,10 +497,10 @@ export const AfectacionesParroquiasMatrixSidePanel: React.FC<AfectacionesParroqu
   };
 
   const saveAll = async () => {
-    if (isNacionalReadOnly) {
+    /*if (isNacionalReadOnly) {
       message.warning('El COE Nacional no puede editar esta matriz.');
       return;
-    }
+    }*/
     if (!provinciaId || !cantonSelId || rows.length === 0) {
       message.warning('Seleccione provincia, cantón y al menos una parroquia');
       return;
@@ -714,7 +714,7 @@ export const AfectacionesParroquiasMatrixSidePanel: React.FC<AfectacionesParroqu
         </Col>
         <Col xs={24} md={4} lg={3} style={{ display: 'flex', alignItems: 'end', justifyContent: 'flex-end' }}>
           <div data-tour="afectaciones-guardar-btn">
-            <Button type="primary" onClick={saveAll} loading={saving} disabled={isNacionalReadOnly || rows.length === 0 || variables.length === 0}>
+            <Button type="primary" onClick={saveAll} loading={saving} disabled={rows.length === 0 || variables.length === 0}>
               Guardar Cambios
             </Button>
           </div>
@@ -749,11 +749,11 @@ export const AfectacionesParroquiasMatrixSidePanel: React.FC<AfectacionesParroqu
               <Row gutter={8}>
                 <Col span={12}>
                   <Text style={{ fontSize: 12, color: '#6b7280' }}>Cantidad</Text>
-                  <InputNumber min={0} value={draftCantidad} onChange={v => setDraftCantidad(typeof v === 'number' ? v : 0)} style={{ width: '100%' }} disabled={isNacionalReadOnly} />
+                  <InputNumber min={0} value={draftCantidad} onChange={v => setDraftCantidad(typeof v === 'number' ? v : 0)} style={{ width: '100%' }}  />
                 </Col>
                 <Col span={12}>
                   <Text style={{ fontSize: 12, color: '#6b7280' }}>Costo Estimado</Text>
-                  <InputNumber min={0} value={draftCosto} onChange={v => setDraftCosto(typeof v === 'number' ? v : 0)} style={{ width: '100%' }} prefix="$ " disabled={isNacionalReadOnly || !selectedVar.requiere_costo} />
+                  <InputNumber min={0} value={draftCosto} onChange={v => setDraftCosto(typeof v === 'number' ? v : 0)} style={{ width: '100%' }} prefix="$ " disabled={!selectedVar.requiere_costo} />
                 </Col>
               </Row>
             </div>
@@ -769,7 +769,6 @@ export const AfectacionesParroquiasMatrixSidePanel: React.FC<AfectacionesParroqu
                           <input
                             type="checkbox"
                             checked={infraChecked.includes(item.infraestructura_id)}
-                            disabled={isNacionalReadOnly}
                             onChange={(e) => {
                               const checked = e.currentTarget.checked;
                               setInfraChecked(prev => checked ? [...prev, item.infraestructura_id] : prev.filter(id => id !== item.infraestructura_id));
@@ -784,7 +783,7 @@ export const AfectacionesParroquiasMatrixSidePanel: React.FC<AfectacionesParroqu
 
                 <Space>
                   <Button onClick={() => setDrawerOpen(false)}>Cancelar</Button>
-                  <Button type="primary" onClick={saveInfraFromDrawer} loading={infraLoading} disabled={isNacionalReadOnly}>Guardar Infraestructura</Button>
+                  <Button type="primary" onClick={saveInfraFromDrawer} loading={infraLoading} >Guardar Infraestructura</Button>
                 </Space>
               </>
             ) : (

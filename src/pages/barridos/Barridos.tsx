@@ -177,7 +177,6 @@ export const Barridos: React.FC = () => {
     }
     const data = await fetchArray([
       `${apiBase}/canton/${cantonId}/parroquias/emergencia/${emergenciaId}`,
-      `${apiBase}/parroquias/canton/${cantonId}`,
     ]);
     const mapped = mapCatalog(data, 'Parroquia');
     setParroquias(mapped);

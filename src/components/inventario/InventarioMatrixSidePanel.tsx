@@ -549,7 +549,6 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
       try {
         const data = await fetchFirstArray([
           `${apiBase}/canton/${cantonIdForParroquias}/parroquias/emergencia/${emergencyId}`,
-          `${apiBase}/parroquias/canton/${cantonIdForParroquias}`,
         ]);
         if (!mounted) return;
 

@@ -4,6 +4,7 @@ import { Calendar } from 'primereact/calendar';
 import { Dropdown } from 'primereact/dropdown';
 import { InputText } from 'primereact/inputtext';
 import { InputNumber } from 'primereact/inputnumber';
+import { message } from 'antd';
 import { BaseCRUD } from '../../components/crud/BaseCRUD';
 import { useAuth } from '../../context/AuthContext';
 
@@ -140,8 +141,36 @@ export const AlojamientosActivados: React.FC = () => {
     loadAlojamientos();
   }, [loadAlojamientos]);
 
-  const handleSave = async (form: Partial<ActivarAlojamientoForm>) => {
-    if (!selectedEmergenciaId) return;
+  const handleSave = async (form: Partial<ActivarAlojamientoForm>): Promise<boolean | void> => {
+    if (!selectedEmergenciaId) {
+      message.warning('Debe seleccionar una emergencia.');
+      return false;
+    }
+    if (Number(form.alojamiento_id ?? 0) <= 0) {
+      message.warning('El alojamiento es obligatorio.');
+      return false;
+    }
+    if (Number(form.estado_id ?? 0) <= 0) {
+      message.warning('El estado es obligatorio.');
+      return false;
+    }
+    if (!form.fecha_activacion) {
+      message.warning('La fecha de activacion es obligatoria.');
+      return false;
+    }
+    if(!form.fecha_cierre) {
+      message.warning('La fecha de cierre es obligatoria.');
+      return false;
+    }
+    if (!form.fecha_cierre && form.fecha_activacion && new Date(form.fecha_cierre) < new Date(form.fecha_activacion)) {
+      message.warning('La fecha de cierre no puede ser anterior a la fecha de activación.');
+      return false;
+    }
+    if (!String(form.responsable_nombre ?? '').trim()) {
+      message.warning('El responsable es obligatorio.');
+      return false;
+    }
+
     const isEdit = !!form.id;
     const common = {
       activo: true,
@@ -165,7 +194,12 @@ export const AlojamientosActivados: React.FC = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(putBody),
         });
-        if (res.ok) await loadGrid();
+        if (res.ok) {
+          await loadGrid();
+          return true;
+        }
+        message.error('No se pudo guardar el alojamiento activado.');
+        return false;
       } else {
         const postBody = { ...common, creador: creador } as any;
         const res = await authFetch(`${apiBase}/alojamientos_activados`, {
@@ -173,9 +207,17 @@ export const AlojamientosActivados: React.FC = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(postBody),
         });
-        if (res.ok) await loadGrid();
+        if (res.ok) {
+          await loadGrid();
+          return true;
+        }
+        message.error('No se pudo guardar el alojamiento activado.');
+        return false;
       }
-    } catch { }
+    } catch {
+      message.error('No se pudo guardar el alojamiento activado.');
+      return false;
+    }
   };
 
   const handleDelete = async (_row: AlojamientosActivadosRow) => {
@@ -203,7 +245,7 @@ export const AlojamientosActivados: React.FC = () => {
     return (
       <div className="grid p-fluid">
         <div className="field col-12 md:col-6">
-          <label htmlFor="alojamiento_id">Alojamiento</label>
+          <label htmlFor="alojamiento_id">Alojamiento *</label>
           <Dropdown
             id="alojamiento_id"
             name="alojamiento_id"
@@ -217,12 +259,12 @@ export const AlojamientosActivados: React.FC = () => {
         </div>
 
         <div className="field col-12 md:col-6">
-          <label htmlFor="estado_id">Estado</label>
+          <label htmlFor="estado_id">Estado *</label>
           <Dropdown id="estado_id" name="estado_id" value={item.estado_id as number | null} options={estados.map(e => ({ label: e.nombre, value: e.id }))} onChange={onDropdownChange(onChange, 'estado_id')} placeholder="Seleccione estado" className="w-full" />
         </div>
 
         <div className="field col-12 md:col-6">
-          <label htmlFor="fecha_activacion">Fecha activación</label>
+          <label htmlFor="fecha_activacion">Fecha activación *</label>
           <Calendar id="fecha_activacion" value={item.fecha_activacion || new Date()} onChange={(e) => onDateChange(onChange, 'fecha_activacion')(e.value)} showTime showSeconds dateFormat="dd/mm/yy" className="w-full" />
         </div>
 
@@ -255,7 +297,7 @@ export const AlojamientosActivados: React.FC = () => {
         </div>
 
         <div className="field col-12 md:col-6">
-          <label htmlFor="responsable_nombre">Responsable</label>
+          <label htmlFor="responsable_nombre">Responsable *</label>
           <InputText id="responsable_nombre" name="responsable_nombre" value={item.responsable_nombre || ''} onChange={onChange} />
         </div>
 

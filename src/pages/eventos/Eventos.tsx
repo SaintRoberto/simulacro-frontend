@@ -3,7 +3,7 @@ import { Card } from 'primereact/card';
 import { Dropdown } from 'primereact/dropdown';
 import { BaseCRUD } from '../../components/crud/BaseCRUD';
 import { useAuth } from '../../context/AuthContext';
-import { Select, Checkbox } from 'antd';
+import { Select, Checkbox, message } from 'antd';
 import MapSelector from '../../components/map/MapSelector';
 
 interface EventoItem {
@@ -42,6 +42,14 @@ type GeoOption = {
   id: number;
   nombre: string;
 };
+
+const isValidCoordinate = (value: unknown, min: number, max: number): value is number => {
+  if (value === null || value === undefined || value === '') return false;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= min && numeric <= max;
+};
+
+const hasText = (value: unknown) => String(value ?? '').trim().length > 0;
 
 export const Eventos: React.FC = () => {
   const { authFetch, selectedEmergenciaId, datosLogin, loginResponse } = useAuth();
@@ -203,30 +211,96 @@ export const Eventos: React.FC = () => {
     } catch { setSubtipos([]); }
   }, [apiBase, authFetch]);
 
-  const handleSave = async (item: Partial<EventoItem>) => {
+  const handleSave = async (item: Partial<EventoItem>): Promise<boolean | void> => {
+    const provinciaId = Number(item.provincia_id ?? datosLogin?.provincia_id ?? 0);
+    const cantonId = Number(item.canton_id ?? datosLogin?.canton_id ?? 0);
+    const parroquiaId = Number(item.parroquia_id ?? 0);
+    const tipoId = Number(item.evento_tipo_id ?? 0);
+    const subtipoId = Number(item.evento_subtipo_id ?? 0);
+    const causaId = Number(item.evento_causa_id ?? 0);
+    const atencionEstadoId = Number(item.evento_atencion_estado_id ?? 0);
+    const origenId = Number(item.evento_origen_id ?? 0);
+
+    if (!selectedEmergenciaId && !item.emergencia_id) {
+      message.warning('Debe seleccionar una emergencia.');
+      return false;
+    }
+    if (tipoId <= 0) {
+      message.warning('El tipo es obligatorio.');
+      return false;
+    }
+    if (subtipoId <= 0) {
+      message.warning('El subtipo es obligatorio.');
+      return false;
+    }
+    if (causaId <= 0) {
+      message.warning('La causa es obligatoria.');
+      return false;
+    }
+    if (atencionEstadoId <= 0) {
+      message.warning('El estado de atencion es obligatorio.');
+      return false;
+    }
+    if (provinciaId <= 0) {
+      message.warning('La provincia es obligatoria.');
+      return false;
+    }
+    if (cantonId <= 0) {
+      message.warning('El canton es obligatorio.');
+      return false;
+    }
+    if (origenId <= 0) {
+      message.warning('El origen es obligatorio.');
+      return false;
+    }
+    if (parroquiaId <= 0) {
+      message.warning('La parroquia afectada es obligatoria.');
+      return false;
+    }
+    if (!isValidCoordinate(item.latitud, -90, 90)) {
+      message.warning('Debe ingresar una latitud valida.');
+      return false;
+    }
+    if (!isValidCoordinate(item.longitud, -180, 180)) {
+      message.warning('Debe ingresar una longitud valida.');
+      return false;
+    }
+    if (!item.evento_fecha) {
+      message.warning('La fecha del evento es obligatoria.');
+      return false;
+    }
+    if (!hasText(item.sector)) {
+      message.warning('El sector es obligatorio.');
+      return false;
+    }
+    if (!hasText(item.situacion)) {
+      message.warning('La situacion es obligatoria.');
+      return false;
+    }
+
     try {
       const isEdit = !!item.id && item.id > 0;
       const url = isEdit ? `${apiBase}/eventos/${item.id}` : `${apiBase}/eventos`;
       const payloadRaw: Record<string, any> = {
         activo: true,
         alto_impacto: item.alto_impacto ?? false,
-        canton_id: item.canton_id ?? datosLogin?.canton_id,
+        canton_id: cantonId,
         creador: loginResponse?.usuario ?? '',
         descripcion: item.descripcion ?? '',
         emergencia_id: item.emergencia_id ?? selectedEmergenciaId,
-        evento_causa_id: item.evento_causa_id ?? undefined,
-        evento_atencion_estado_id: item.evento_atencion_estado_id ?? undefined,
-        evento_fecha: item.evento_fecha ?? new Date().toISOString(),
-        evento_origen_id: item.evento_origen_id ?? undefined,
-        evento_tipo_id: item.evento_tipo_id ?? undefined,
-        evento_subtipo_id: Number(item.evento_subtipo_id) || 0,
-        latitud: item.latitud ?? 0,
-        longitud: item.longitud ?? 0,
+        evento_causa_id: causaId,
+        evento_atencion_estado_id: atencionEstadoId,
+        evento_fecha: item.evento_fecha,
+        evento_origen_id: origenId,
+        evento_tipo_id: tipoId,
+        evento_subtipo_id: subtipoId,
+        latitud: Number(item.latitud),
+        longitud: Number(item.longitud),
         modificador: isEdit ? (loginResponse?.usuario ?? '') : undefined,
-        parroquia_id: item.parroquia_id ?? undefined,
-        provincia_id: item.provincia_id ?? datosLogin?.provincia_id,
-        sector: item.sector ?? '',
-        situacion: item.situacion ?? ''
+        parroquia_id: parroquiaId,
+        provincia_id: provinciaId,
+        sector: String(item.sector ?? '').trim(),
+        situacion: String(item.situacion ?? '').trim()
       };
       const payload = Object.fromEntries(Object.entries(payloadRaw).filter(([, v]) => v !== undefined));
       const res = await authFetch(url, {
@@ -234,9 +308,16 @@ export const Eventos: React.FC = () => {
         headers: { 'Content-Type': 'application/json', accept: 'application/json' },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        message.error('No se pudo guardar el evento.');
+        return false;
+      }
       await load();
-    } catch {}
+      return true;
+    } catch {
+      message.error('No se pudo guardar el evento.');
+      return false;
+    }
   };
 
   const handleDelete = async (item: EventoItem) => {
@@ -377,7 +458,7 @@ export const Eventos: React.FC = () => {
       {/* Primera fila: Tipo y Subtipo */}
       <div className="row g-3">
         <div className="col-12 col-md-6">
-          <label className="form-label">Tipo</label>
+          <label className="form-label">Tipo *</label>
           <Dropdown
             value={typeof item.evento_tipo_id === 'number' ? Number(item.evento_tipo_id) : null}
             options={tipos.map(t => ({ value: Number(t.id), label: t.nombre }))}
@@ -395,7 +476,7 @@ export const Eventos: React.FC = () => {
           />
         </div>
         <div className="col-12 col-md-6">
-          <label className="form-label">Subtipo</label>
+          <label className="form-label">Subtipo *</label>
           <Select
             className="w-100"
             value={typeof item.evento_subtipo_id === 'number' ? Number(item.evento_subtipo_id) : undefined}
@@ -410,7 +491,7 @@ export const Eventos: React.FC = () => {
       {/* Segunda fila: Causa y Estado de atención */}
       <div className="row g-3">
         <div className="col-12 col-md-6">
-          <label className="form-label">Causa</label>
+          <label className="form-label">Causa *</label>
           <Dropdown
             value={item.evento_causa_id != null ? Number(item.evento_causa_id) : null}
             options={causas.map(c => ({ value: Number(c.id), label: c.nombre }))}
@@ -423,7 +504,7 @@ export const Eventos: React.FC = () => {
           />
         </div>
         <div className="col-12 col-md-6">
-          <label className="form-label">Estado de atención</label>
+          <label className="form-label">Estado de atención *</label>
           <Select
             className="w-100"
             value={item.evento_atencion_estado_id != null ? Number(item.evento_atencion_estado_id) : undefined}
@@ -437,7 +518,7 @@ export const Eventos: React.FC = () => {
       {isUsuarioNacional && (
         <div className="row g-3">
           <div className="col-12 col-md-6">
-            <label className="form-label">Provincia</label>
+            <label className="form-label">Provincia *</label>
             <Select
               className="w-100"
               value={item.provincia_id ? Number(item.provincia_id) : undefined}
@@ -459,7 +540,7 @@ export const Eventos: React.FC = () => {
             />
           </div>
           <div className="col-12 col-md-6">
-            <label className="form-label">Cantón</label>
+            <label className="form-label">Cantón *</label>
             <Select
               className="w-100"
               value={item.canton_id ? Number(item.canton_id) : undefined}
@@ -485,7 +566,7 @@ export const Eventos: React.FC = () => {
       {/* Tercera fila: Origen y Parroquia */}
       <div className="row g-3">
         <div className="col-12 col-md-6">
-          <label className="form-label">Origen</label>
+          <label className="form-label">Origen *</label>
           <Select
             className="w-100"
             value={item.evento_origen_id != null ? Number(item.evento_origen_id) : undefined}
@@ -495,7 +576,7 @@ export const Eventos: React.FC = () => {
           />
         </div>
         <div className="col-12 col-md-6">
-          <label className="form-label">Parroquia Afectada</label>
+          <label className="form-label">Parroquia Afectada *</label>
           <Select
             className="w-100"
             value={item.parroquia_id != null ? Number(item.parroquia_id) : undefined}
@@ -529,7 +610,7 @@ export const Eventos: React.FC = () => {
       {/* Coordenadas */}
       <div className="row g-3">
         <div className="col-12 col-md-6">
-          <label className="form-label">Latitud</label>
+          <label className="form-label">Latitud *</label>
           <input
             type="number"
             step="any"
@@ -541,7 +622,7 @@ export const Eventos: React.FC = () => {
           />
         </div>
         <div className="col-12 col-md-6">
-          <label className="form-label">Longitud</label>
+          <label className="form-label">Longitud *</label>
           <input
             type="number"
             step="any"
@@ -557,7 +638,7 @@ export const Eventos: React.FC = () => {
       {/* Información adicional */}
       <div className="row g-3">
         <div className="col-12 col-md-6">
-          <label className="form-label">Fecha del evento</label>
+          <label className="form-label">Fecha del evento *</label>
           <input
             type="datetime-local"
             name="evento_fecha"
@@ -580,11 +661,11 @@ export const Eventos: React.FC = () => {
 
       {/* Campos de texto */}
       <div>
-        <label className="form-label">Sector</label>
+        <label className="form-label">Sector *</label>
         <input name="sector" className="form-control" value={item.sector || ''} onChange={onChange} />
       </div>
       <div>
-        <label className="form-label">Situación</label>
+        <label className="form-label">Situación *</label>
         <input name="situacion" className="form-control" value={item.situacion || ''} onChange={onChange} />
       </div>
       <div>

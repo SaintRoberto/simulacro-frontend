@@ -4,6 +4,7 @@ import { Dropdown } from 'primereact/dropdown';
 import { Calendar } from 'primereact/calendar';
 import { InputNumber } from 'primereact/inputnumber';
 import { InputText } from 'primereact/inputtext';
+import { message } from 'antd';
 import { BaseCRUD } from '../../components/crud/BaseCRUD';
 import MapSelector from '../../components/map/MapSelector';
 import { useAuth } from '../../context/AuthContext';
@@ -62,6 +63,15 @@ type AsistenciaFormItem = Partial<AsistenciaSavePayload> & {
   id?: number;
   recurso_categoria_id?: number;
   recurso_grupo_id?: number;
+};
+
+const DEFAULT_MAP_LAT = -0.002159;
+const DEFAULT_MAP_LNG = -78.455849;
+
+const isValidCoordinate = (value: unknown, min: number, max: number): value is number => {
+  if (value === null || value === undefined || value === '') return false;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= min && numeric <= max;
 };
 
 export const AsistenciaEntregada: React.FC = () => {
@@ -148,12 +158,12 @@ export const AsistenciaEntregada: React.FC = () => {
 
   const handleCantonChange = async (cantonId: number | null) => {
     setSelectedCantonId(cantonId);
-    if (!cantonId) {
+    if (!cantonId || !emergenciaId) {
       setParroquias([]);
       return;
     }
     try {
-      const paRes = await authFetch(`${apiBase}/parroquias/canton/${cantonId}`, { headers: { accept: 'application/json' } });
+      const paRes = await authFetch(`${apiBase}/canton/${cantonId}/parroquias/emergencia/${emergenciaId}`, { headers: { accept: 'application/json' } });
       setParroquias(paRes.ok ? await paRes.json() : []);
     } catch {
       setParroquias([]);
@@ -191,8 +201,12 @@ export const AsistenciaEntregada: React.FC = () => {
             const cantonesData = canRes.ok ? await canRes.json() : [];
             setCantones(cantonesData);
           }
-          const paRes = await authFetch(`${apiBase}/parroquias/canton/${loginCantonId}`, { headers: { accept: 'application/json' } });
-          setParroquias(paRes.ok ? await paRes.json() : []);
+          if (emergenciaId) {
+            const paRes = await authFetch(`${apiBase}/canton/${loginCantonId}/parroquias/emergencia/${emergenciaId}`, { headers: { accept: 'application/json' } });
+            setParroquias(paRes.ok ? await paRes.json() : []);
+          } else {
+            setParroquias([]);
+          }
           setSelectedCantonId(loginCantonId);
         } else if (loginProvinciaId) {
           setProvincias([]);
@@ -217,7 +231,7 @@ export const AsistenciaEntregada: React.FC = () => {
       }
     };
     run();
-  }, [apiBase, authFetch, isUsuarioCantonal, isUsuarioNacional, loginCantonId, loginProvinciaId, selectedEmergenciaId]);
+  }, [apiBase, authFetch, emergenciaId, isUsuarioCantonal, isUsuarioNacional, loginCantonId, loginProvinciaId, selectedEmergenciaId]);
 
   const fetchRows = async () => {
     if (!emergenciaId || !usuarioId) return;
@@ -242,29 +256,72 @@ export const AsistenciaEntregada: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [emergenciaId, usuarioId]);
 
-  const handleSave = async (payload: AsistenciaFormItem) => {
+  const handleSave = async (payload: AsistenciaFormItem): Promise<boolean | void> => {
     const creator = datosLogin?.usuario_login || datosLogin?.usuario_descripcion || 'usuario';
     const resolvedProvinciaId = isUsuarioNacional
       ? Number(selectedProvinciaId ?? payload.provincia_destino_id ?? 0)
       : Number(loginProvinciaId || payload.provincia_destino_id || 0);
     const resolvedCantonId = Number(selectedCantonId ?? payload.canton_destino_id ?? loginCantonId ?? 0);
+    const cantidadEntregada = Number(payload.cantidad_entregada ?? 0);
+    const recursoTipoId = Number(payload.recurso_tipo_id ?? 0);
+    const parroquiaDestinoId = Number(payload.parroquia_destino_id ?? 0);
+    const latitudDestino = payload.latitud_destino;
+    const longitudDestino = payload.longitud_destino;
+
+    if (!selectedEmergenciaId) {
+      message.warning('Debe seleccionar una emergencia.');
+      return false;
+    }
+    if (cantidadEntregada <= 0) {
+      message.warning('La cantidad debe ser mayor a 0.');
+      return false;
+    }
+    if (recursoTipoId <= 0) {
+      message.warning('El item es obligatorio.');
+      return false;
+    }
+    if (resolvedProvinciaId <= 0) {
+      message.warning('La provincia es obligatoria.');
+      return false;
+    }
+    if (resolvedCantonId <= 0) {
+      message.warning('El canton es obligatorio.');
+      return false;
+    }
+    if (parroquiaDestinoId <= 0) {
+      message.warning('La parroquia es obligatoria.');
+      return false;
+    }
+    if (!payload.fecha_entrega) {
+      message.warning('La fecha de entrega es obligatoria.');
+      return false;
+    }
+    if (!isValidCoordinate(latitudDestino, -90, 90)) {
+      message.warning('Debe ingresar una latitud valida.');
+      return false;
+    }
+    if (!isValidCoordinate(longitudDestino, -180, 180)) {
+      message.warning('Debe ingresar una longitud valida.');
+      return false;
+    }
+
     const id = payload.id;
     const isEdit = !!id;
     const baseBody = {
       activo: payload.activo ?? true,
-      cantidad_entregada: Number(payload.cantidad_entregada ?? 0),
+      cantidad_entregada: cantidadEntregada,
       canton_destino_id: resolvedCantonId,
       emergencia_id: selectedEmergenciaId || 0,
       familias_beneficiadas: Number(payload.familias_beneficiadas ?? 0),
       fecha_entrega: payload.fecha_entrega ?? new Date().toISOString().substring(0, 19),
       institucion_donante_id: Number(payload.institucion_donante_id ?? 0),
-      latitud_destino: Number(payload.latitud_destino ?? 0),
-      longitud_destino: Number(payload.longitud_destino ?? 0),
+      latitud_destino: Number(latitudDestino),
+      longitud_destino: Number(longitudDestino),
       modificador: creator,
-      parroquia_destino_id: Number(payload.parroquia_destino_id ?? 0),
+      parroquia_destino_id: parroquiaDestinoId,
       personas_beneficiadas: Number(payload.personas_beneficiadas ?? 0),
       provincia_destino_id: resolvedProvinciaId,
-      recurso_tipo_id: Number(payload.recurso_tipo_id ?? 0),
+      recurso_tipo_id: recursoTipoId,
       sector_destino: String(payload.sector_destino ?? ''),
     };
     const body = isEdit ? baseBody : { ...baseBody, creador: payload.creador ?? creator };
@@ -274,7 +331,12 @@ export const AsistenciaEntregada: React.FC = () => {
       headers: { 'Content-Type': 'application/json', accept: 'application/json' },
       body: JSON.stringify(body),
     });
-    if (res.ok) await fetchRows();
+    if (res.ok) {
+      await fetchRows();
+      return true;
+    }
+    message.error('No se pudo guardar la asistencia entregada.');
+    return false;
   };
 
   const handleDelete = async (row: AsistenciaListItem) => {
@@ -397,7 +459,7 @@ export const AsistenciaEntregada: React.FC = () => {
 
         <div className="row">
           <div className="field col-12 md:col-6">
-            <label>Cantón</label>
+            <label>Cantón *</label>
             <Dropdown
               value={selectedCantonId}
               options={cantones.map(c => ({ label: c.nombre, value: c.id }))}
@@ -450,7 +512,7 @@ export const AsistenciaEntregada: React.FC = () => {
 
         <div className="row">
           <div className="field col-6 md:col-6">
-            <label>Latitud</label>
+            <label>Latitud *</label>
             <InputNumber
               value={typeof item.latitud_destino === 'number' ? item.latitud_destino : null}
               onValueChange={(e) => onChange({ target: { name: 'latitud_destino', value: e.value } })}
@@ -466,7 +528,7 @@ export const AsistenciaEntregada: React.FC = () => {
             />
           </div>
           <div className="field col-6 md:col-6">
-            <label>Longitud</label>
+            <label>Longitud *</label>
             <InputNumber
               value={typeof item.longitud_destino === 'number' ? item.longitud_destino : null}
               onValueChange={(e) => onChange({ target: { name: 'longitud_destino', value: e.value } })}
@@ -506,8 +568,8 @@ export const AsistenciaEntregada: React.FC = () => {
       } catch { }
     }
     try {
-      if ((!parroquias || parroquias.length === 0) && editCantonId) {
-        const paRes = await authFetch(`${apiBase}/parroquias/canton/${editCantonId}`, { headers: { accept: 'application/json' } });
+      if ((!parroquias || parroquias.length === 0) && editCantonId && emergenciaId) {
+        const paRes = await authFetch(`${apiBase}/canton/${editCantonId}/parroquias/emergencia/${emergenciaId}`, { headers: { accept: 'application/json' } });
         const paData = paRes.ok ? await paRes.json() : [];
         setParroquias(Array.isArray(paData) ? paData : []);
       }
@@ -567,8 +629,8 @@ export const AsistenciaEntregada: React.FC = () => {
           familias_beneficiadas: 0,
           fecha_entrega: new Date().toISOString().substring(0, 19),
           institucion_donante_id: 0,
-          latitud_destino: 0,
-          longitud_destino: 0,
+          latitud_destino: DEFAULT_MAP_LAT,
+          longitud_destino: DEFAULT_MAP_LNG,
           modificador: datosLogin?.usuario_login || '',
           parroquia_destino_id: 0,
           personas_beneficiadas: 0,

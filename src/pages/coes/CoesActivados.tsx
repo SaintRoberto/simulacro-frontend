@@ -4,6 +4,8 @@ import { Calendar } from 'primereact/calendar';
 import { Dropdown } from 'primereact/dropdown';
 import { BaseCRUD } from '../../components/crud/BaseCRUD';
 import { useAuth } from '../../context/AuthContext';
+import { message } from 'antd';
+
 
 interface CoeActivadoRow {
   activo: boolean;
@@ -229,7 +231,31 @@ export const CoesActivados: React.FC = () => {
     return Array.from(merged.values());
   }, [estados, rows]);
 
-  const handleSave = async (item: Partial<CoeActivadoForm>) => {
+  const handleSave = async (item: Partial<CoeActivadoForm>): Promise<boolean | void> => {
+    if (!emergenciaId) {
+      message.warning('Debe seleccionar una emergencia.');
+      return false;
+    }
+    if (!item.coe_id || item.coe_id <= 0) {
+      message.warning('El COE es obligatorio.');
+      return false;
+    }
+    if (item.estado_activacion === null || item.estado_activacion === undefined || item.estado_activacion < 0) {
+      message.warning('El estado de activación es obligatorio.');
+      return false;
+    }
+    if (!item.fecha_activacion) {
+      message.warning('La fecha de activación es obligatoria.');
+      return false;
+    }
+    if(!item.provincia_id && !loginProvinciaId) {
+      message.warning('La provincia es obligatoria.');
+      return false;
+    }
+    if(!item.canton_id && !loginCantonId) {
+      message.warning('El cantón es obligatorio.');
+      return false;
+    }
     const resolvedProvinciaId = Number(item.provincia_id ?? loginProvinciaId ?? 0);
     const resolvedCantonId = Number(item.canton_id ?? loginCantonId ?? 0);
     const isEdit = Number(item.id ?? 0) > 0;
@@ -264,7 +290,10 @@ export const CoesActivados: React.FC = () => {
 
     if (res.ok) {
       await fetchRows();
+      return true;
     }
+    message.error('No se pudo guardar el COE activado.');
+    return false;
   };
 
   const handleDelete = async (row: CoeActivadoRow) => {
@@ -383,7 +412,7 @@ export const CoesActivados: React.FC = () => {
         <div className="field col-12 md:col-6">
           <label>Fecha activación *</label>
           <Calendar
-            value={item.fecha_activacion ? new Date(item.fecha_activacion) : new Date()}
+            value={item.fecha_activacion ? new Date(item.fecha_activacion) : null}
             onChange={(e) => onChange({ target: { name: 'fecha_activacion', value: e.value } })}
             showTime
             showSeconds

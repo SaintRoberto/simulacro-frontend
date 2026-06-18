@@ -3,6 +3,7 @@ import { Card } from "primereact/card";
 import { Dropdown } from "primereact/dropdown";
 import { Calendar } from "primereact/calendar";
 import { InputNumber } from "primereact/inputnumber";
+import { message } from "antd";
 import { BaseCRUD } from "../../components/crud/BaseCRUD";
 import { useAuth } from "../../context/AuthContext";
 import MapSelector from "../../components/map/MapSelector";
@@ -59,6 +60,32 @@ interface RecursoMovilizadoPayload {
   institucion_id?: number;
 }
 
+type ParroquiaOption = { id: number; nombre: string; canton_id?: number };
+
+const normalizeParroquias = (
+  data: unknown,
+  cantonId?: number
+): ParroquiaOption[] => {
+  if (!Array.isArray(data)) return [];
+  return data
+    .map((item: any) => ({
+      id: Number(item?.id ?? 0),
+      nombre: String(item?.nombre ?? ""),
+      canton_id: Number(item?.canton_id ?? cantonId ?? 0) || undefined,
+    }))
+    .filter((item) => item.id > 0 && item.nombre);
+};
+
+const isValidCoordinate = (
+  value: unknown,
+  min: number,
+  max: number
+): value is number => {
+  if (value === null || value === undefined || value === "") return false;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= min && numeric <= max;
+};
+
 export const RecursosMovilizados: React.FC = () => {
   const { authFetch, datosLogin, selectedEmergenciaId } = useAuth();
   const [rows, setRows] = useState<RecursoMovilizadoListItem[]>([]);
@@ -70,7 +97,7 @@ export const RecursosMovilizados: React.FC = () => {
     Array<{ id: number; nombre: string; provincia_id: number }>
   >([]);
   const [parroquias, setParroquias] = useState<
-    Array<{ id: number; nombre: string; canton_id: number }>
+    ParroquiaOption[]
   >([]);
   const [instituciones, setInstituciones] = useState<
     Array<{ id: number; nombre: string; siglas: string }>
@@ -191,10 +218,11 @@ export const RecursosMovilizados: React.FC = () => {
       try {
         if (loginCantonId) {
           const pa = await authFetch(
-            `${apiBase}/parroquias/canton/${loginCantonId}`,
+            `${apiBase}/canton/${loginCantonId}/parroquias/emergencia/${selectedEmergenciaId}`,
             { headers: { accept: "application/json" } }
           );
-          setParroquias(pa.ok ? await pa.json() : []);
+          const paData = pa.ok ? await pa.json() : [];
+          setParroquias(normalizeParroquias(paData, loginCantonId));
         } else {
           setParroquias([]);
         }
@@ -258,7 +286,7 @@ export const RecursosMovilizados: React.FC = () => {
       id?: number;
       recurso_id?: number;
     }
-  ) => {
+  ): Promise<boolean | void> => {
     const creator =
       datosLogin?.usuario_login || datosLogin?.usuario_descripcion || "usuario";
     const resolvedProvinciaId = isUsuarioNacional
@@ -278,6 +306,51 @@ export const RecursosMovilizados: React.FC = () => {
       Number(payload.parroquia_destino_id ?? 0) > 0
         ? Number(payload.parroquia_destino_id)
         : resolvedParroquiaId;
+    const recursoTipoId = Number(payload.recurso_tipo_id ?? payload.recurso_inventario_id ?? 0);
+    const institucionId = Number(payload.institucion_id ?? 0);
+    const latitud = payload.latitud_destino ?? payload.latitud;
+    const longitud = payload.longitud_destino ?? payload.longitud;
+
+    if (!selectedEmergenciaId) {
+      message.warning("Debe seleccionar una emergencia.");
+      return false;
+    }
+    if (Number(payload.cantidad_asignada ?? 0) <= 0) {
+      message.warning("La cantidad asignada debe ser mayor a 0.");
+      return false;
+    }
+    if (recursoTipoId <= 0) {
+      message.warning("El tipo de recurso es obligatorio.");
+      return false;
+    }
+    if (!payload.fecha_inicio) {
+      message.warning("La fecha de inicio es obligatoria.");
+      return false;
+    }
+    if (resolvedProvinciaId <= 0) {
+      message.warning("La provincia es obligatoria.");
+      return false;
+    }
+    if (resolvedCantonId <= 0) {
+      message.warning("El canton es obligatorio.");
+      return false;
+    }
+    if (parroquiaDestinoId <= 0) {
+      message.warning("La parroquia es obligatoria.");
+      return false;
+    }
+    if (institucionId <= 0) {
+      message.warning("La institucion es obligatoria.");
+      return false;
+    }
+    if (!isValidCoordinate(latitud, -90, 90)) {
+      message.warning("Debe ingresar una latitud valida.");
+      return false;
+    }
+    if (!isValidCoordinate(longitud, -180, 180)) {
+      message.warning("Debe ingresar una longitud valida.");
+      return false;
+    }
 
     const id = (payload as any)?.id ?? (payload as any)?.recurso_id;
     const isEdit = !!id;
@@ -290,13 +363,13 @@ export const RecursosMovilizados: React.FC = () => {
       fecha_fin: payload.fecha_fin ?? null,
       fecha_inicio:
         payload.fecha_inicio ?? new Date().toISOString().substring(0, 19),
-      institucion_id: Number(payload.institucion_id ?? 0),
-      latitud_destino: Number(payload.latitud_destino ?? payload.latitud ?? 0),
-      longitud_destino: Number(payload.longitud_destino ?? payload.longitud ?? 0),
+      institucion_id: institucionId,
+      latitud_destino: Number(latitud),
+      longitud_destino: Number(longitud),
       modificador: payload.modificador ?? creator,
       parroquia_destino_id: parroquiaDestinoId,
       provincia_destino_id: provinciaDestinoId,
-      recurso_tipo_id: Number(payload.recurso_tipo_id ?? payload.recurso_inventario_id ?? 0),
+      recurso_tipo_id: recursoTipoId,
     };
     const body = isEdit
       ? baseBody
@@ -321,7 +394,10 @@ export const RecursosMovilizados: React.FC = () => {
     });
     if (res.ok) {
       await fetchRows();
+      return true;
     }
+    message.error("No se pudo guardar el recurso movilizado.");
+    return false;
   };
 
   const handleDelete = async (row: RecursoMovilizadoListItem) => {
@@ -433,15 +509,16 @@ export const RecursosMovilizados: React.FC = () => {
     const handleCantonChange = async (canId: number | null) => {
       onChange({ target: { name: "canton_id", value: canId || 0 } });
       onChange({ target: { name: "parroquia_id", value: 0 } });
-      if (!canId) {
+      if (!canId || !emergenciaId) {
         setParroquias([]);
         return;
       }
       try {
-        const res = await authFetch(`${apiBase}/parroquias/canton/${canId}`, {
+        const res = await authFetch(`${apiBase}/canton/${canId}/parroquias/emergencia/${emergenciaId}`, {
           headers: { accept: "application/json" },
         });
-        setParroquias(res.ok ? await res.json() : []);
+        const data = res.ok ? await res.json() : [];
+        setParroquias(normalizeParroquias(data, canId));
       } catch {
         setParroquias([]);
       }
@@ -581,7 +658,7 @@ export const RecursosMovilizados: React.FC = () => {
         </div>
 
         <div className="field col-12 md:col-4">
-          <label>Institucion</label>
+          <label>Institucion *</label>
           <Dropdown
             value={
               typeof item.institucion_id === "number" ? item.institucion_id : null
@@ -611,7 +688,7 @@ export const RecursosMovilizados: React.FC = () => {
 
         <div className="row">
           <div className="field col-6 md:col-6">
-            <label>Latitud</label>
+            <label>Latitud *</label>
             <InputNumber
               value={typeof item.latitud === "number" ? item.latitud : null}
               onValueChange={(e) =>
@@ -629,7 +706,7 @@ export const RecursosMovilizados: React.FC = () => {
             />
           </div>
           <div className="field col-6 md:col-6">
-            <label>Longitud</label>
+            <label>Longitud *</label>
             <InputNumber
               value={typeof item.longitud === "number" ? item.longitud : null}
               onValueChange={(e) =>
@@ -723,13 +800,13 @@ export const RecursosMovilizados: React.FC = () => {
       ) || 0;
     let parroquia_id: number | undefined = editParroquiaId || undefined;
     try {
-      if ((!parroquias || parroquias.length === 0) && editCantonId) {
+      if ((!parroquias || parroquias.length === 0) && editCantonId && emergenciaId) {
         const paRes = await authFetch(
-          `${apiBase}/parroquias/canton/${editCantonId}`,
+          `${apiBase}/canton/${editCantonId}/parroquias/emergencia/${emergenciaId}`,
           { headers: { accept: "application/json" } }
         );
         const paData = paRes.ok ? await paRes.json() : [];
-        setParroquias(Array.isArray(paData) ? paData : []);
+        setParroquias(normalizeParroquias(paData, editCantonId));
       }
     } catch {}
 
