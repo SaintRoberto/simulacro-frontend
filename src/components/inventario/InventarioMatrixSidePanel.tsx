@@ -26,7 +26,10 @@ type Provincia = { id: number; nombre: string };
 type Canton = { id: number; nombre: string; provincia_id?: number };
 type Parroquia = { id: number; nombre: string; canton_id?: number; provincia_id?: number };
 type ParroquiaExistenciaDetalle = NonNullable<InventarioCellPayload['existencias_detalle']>[number];
-type ParroquiaExistenciaDetalleLocal = ParroquiaExistenciaDetalle & { recurso_inventario_id?: number };
+type ParroquiaExistenciaDetalleLocal = ParroquiaExistenciaDetalle & {
+  recurso_inventario_id?: number;
+  recurso_inventario_ids?: number[];
+};
 type DetalleExistenciaRow = {
   id: number;
   provincia_id: number;
@@ -54,6 +57,15 @@ const normalizeName = (value: unknown) =>
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toLowerCase();
+
+const mergeInventoryIds = (...sources: Array<unknown>): number[] => {
+  const ids = new Set<number>();
+  sources.flat().forEach((value) => {
+    const parsed = Number(value ?? 0);
+    if (Number.isFinite(parsed) && parsed > 0) ids.add(parsed);
+  });
+  return Array.from(ids);
+};
 
 export interface InventarioMatrixSidePanelProps {
   apiBase?: string;
@@ -119,7 +131,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
   const [drawerInitialDetalles, setDrawerInitialDetalles] = useState<ParroquiaExistenciaDetalleLocal[]>([]);
   const [drawerParroquiaValues, setDrawerParroquiaValues] = useState<Record<number, number>>({});
   const [drawerParroquiaMeta, setDrawerParroquiaMeta] = useState<
-    Record<number, { parroquia_nombre: string; canton_id?: number; provincia_id?: number; recurso_inventario_id?: number }>
+    Record<number, { parroquia_nombre: string; canton_id?: number; provincia_id?: number; recurso_inventario_id?: number; recurso_inventario_ids?: number[] }>
   >({});
   const [drawerHasUnsavedChanges, setDrawerHasUnsavedChanges] = useState(false);
   const [geoLoading, setGeoLoading] = useState(false);
@@ -329,14 +341,15 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
 
         const prev = detallesByParroquia.get(parroquiaId);
         const existencias = Math.max(0, Number(it.existencias ?? 0));
+        const recursoInventarioId = resolveInventarioId(it);
         detallesByParroquia.set(parroquiaId, {
           parroquia_id: parroquiaId,
           parroquia_nombre: String(it.parroquia_nombre ?? prev?.parroquia_nombre ?? ''),
           canton_id: Number(it.canton_id ?? prev?.canton_id ?? 0) || undefined,
           provincia_id: Number(it.provincia_id ?? prev?.provincia_id ?? 0) || undefined,
           existencias: Math.max(0, Number(prev?.existencias ?? 0)) + existencias,
-          recurso_inventario_id:
-            prev?.recurso_inventario_id ?? resolveInventarioId(it),
+          recurso_inventario_id: prev?.recurso_inventario_id ?? recursoInventarioId,
+          recurso_inventario_ids: mergeInventoryIds(prev?.recurso_inventario_ids, prev?.recurso_inventario_id, recursoInventarioId),
         });
       }
       return Array.from(detallesByParroquia.values());
@@ -400,8 +413,8 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
             canton_id: Number(it.canton_id ?? 0) || undefined,
             provincia_id: Number(it.provincia_id ?? 0) || undefined,
             existencias,
-            recurso_inventario_id:
-              resolveInventarioId(it),
+            recurso_inventario_id: resolveInventarioId(it),
+            recurso_inventario_ids: mergeInventoryIds(resolveInventarioId(it)),
           };
 
           if (detalle.parroquia_id > 0) {
@@ -416,6 +429,12 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
                 provincia_id: existingDetalle.provincia_id ?? detalle.provincia_id,
                 existencias: Math.max(0, Number(existingDetalle.existencias ?? 0)) + detalle.existencias,
                 recurso_inventario_id: existingDetalle.recurso_inventario_id ?? detalle.recurso_inventario_id,
+                recurso_inventario_ids: mergeInventoryIds(
+                  existingDetalle.recurso_inventario_ids,
+                  existingDetalle.recurso_inventario_id,
+                  detalle.recurso_inventario_ids,
+                  detalle.recurso_inventario_id
+                ),
               };
             } else {
               currentDetalles.push(detalle);
@@ -581,14 +600,15 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
                 }
                 if (!Number.isFinite(parroquiaId) || parroquiaId <= 0) return;
                 const prev = detallesMap.get(parroquiaId);
+                const recursoInventarioId = resolveInventarioId(it);
                 detallesMap.set(parroquiaId, {
                   parroquia_id: parroquiaId,
                   parroquia_nombre: String(it.parroquia_nombre ?? prev?.parroquia_nombre ?? ''),
                   canton_id: Number(it.canton_id ?? cantonIdForParroquias) || undefined,
                   provincia_id: Number(it.provincia_id ?? provinciaIdForParroquias) || undefined,
                   existencias: Math.max(0, Number(prev?.existencias ?? 0)) + Math.max(0, Number(it.existencias ?? 0)),
-                  recurso_inventario_id:
-                    prev?.recurso_inventario_id ?? resolveInventarioId(it),
+                  recurso_inventario_id: prev?.recurso_inventario_id ?? recursoInventarioId,
+                  recurso_inventario_ids: mergeInventoryIds(prev?.recurso_inventario_ids, prev?.recurso_inventario_id, recursoInventarioId),
                 });
               });
             }
@@ -604,7 +624,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
         }
 
         const nextValues: Record<number, number> = {};
-        const nextMeta: Record<number, { parroquia_nombre: string; canton_id?: number; provincia_id?: number; recurso_inventario_id?: number }> = {};
+        const nextMeta: Record<number, { parroquia_nombre: string; canton_id?: number; provincia_id?: number; recurso_inventario_id?: number; recurso_inventario_ids?: number[] }> = {};
         mapped.forEach((p) => {
           const fromDetalle =
             detallesMap.get(p.id) ??
@@ -618,6 +638,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
             canton_id: p.canton_id,
             provincia_id: p.provincia_id,
             recurso_inventario_id: fromDetalle?.recurso_inventario_id,
+            recurso_inventario_ids: fromDetalle?.recurso_inventario_ids,
           };
         });
 
@@ -710,11 +731,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     setDrawerHasUnsavedChanges(true);
     setDrawerParroquiaValues((prev) => {
       const next = { ...prev };
-      if (safeValue <= 0) {
-        delete next[parroquia.id];
-      } else {
-        next[parroquia.id] = safeValue;
-      }
+      next[parroquia.id] = safeValue;
       return next;
     });
     setDrawerParroquiaMeta((prev) => ({
@@ -723,6 +740,8 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
         parroquia_nombre: parroquia.nombre,
         canton_id: parroquia.canton_id,
         provincia_id: parroquia.provincia_id,
+        recurso_inventario_id: prev[parroquia.id]?.recurso_inventario_id,
+        recurso_inventario_ids: prev[parroquia.id]?.recurso_inventario_ids,
       },
     }));
   }, []);
@@ -739,7 +758,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     return Object.entries(drawerParroquiaValues)
       .map(([parroquiaIdRaw, existenciasRaw]) => {
         const parroquiaId = Number(parroquiaIdRaw);
-        const existencias = Math.max(0, Number(existenciasRaw || 0));
+        const existencias = Math.max(0, Number(existenciasRaw ?? 0));
         const meta = drawerParroquiaMeta[parroquiaId];
         const original = drawerInitialDetalles.find((x) => Number(x.parroquia_id) === parroquiaId);
         const option = parroquiasOptions.find((x) => x.id === parroquiaId);
@@ -750,6 +769,12 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
           provincia_id: selectedProvinciaId,
           existencias,
           recurso_inventario_id: original?.recurso_inventario_id ?? meta?.recurso_inventario_id,
+          recurso_inventario_ids: mergeInventoryIds(
+            original?.recurso_inventario_ids,
+            original?.recurso_inventario_id,
+            meta?.recurso_inventario_ids,
+            meta?.recurso_inventario_id
+          ),
         };
       })
       .filter((d) =>
@@ -759,7 +784,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
         Number(d.canton_id ?? 0) > 0 &&
         Number.isFinite(Number(d.provincia_id ?? 0)) &&
         Number(d.provincia_id ?? 0) > 0 &&
-        d.existencias > 0
+        (d.existencias > 0 || mergeInventoryIds(d.recurso_inventario_ids, d.recurso_inventario_id).length > 0)
       );
   }, [
     drawerCantonId,
@@ -794,24 +819,37 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
         if (lookupRes.ok) {
           const lookupData = await lookupRes.json();
           const lookupRows = Array.isArray(lookupData) ? lookupData : [];
-          const byParroquia = lookupRows.find((it: any) => Number(it?.parroquia_id ?? 0) === Number(detalle.parroquia_id ?? 0));
-          const resolved = resolveInventarioId(byParroquia ?? {});
+          const matchingRows = lookupRows.filter((it: any) => Number(it?.parroquia_id ?? 0) === Number(detalle.parroquia_id ?? 0));
+          const resolvedIds = mergeInventoryIds(matchingRows.map((it: any) => resolveInventarioId(it)));
+          const resolved = resolvedIds[0];
           if (resolved) recordId = resolved;
+          if (resolvedIds.length > 0) {
+            detalle.recurso_inventario_ids = mergeInventoryIds(detalle.recurso_inventario_ids, detalle.recurso_inventario_id, resolvedIds);
+          }
         }
       } catch {
         // si falla la busqueda, continuar con flujo normal
       }
     }
 
-    if (recordId > 0) {
-      const updateBody = [{ existencias: detalle.existencias, recurso_inventario_id: recordId }];
-      const updateRes = await authFetch(`${apiBase}/recursos_inventario/${recordId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updateBody),
-      });
-      if (!updateRes.ok) throw new Error('save_failed');
-      return recordId;
+    const recordIds = mergeInventoryIds(detalle.recurso_inventario_ids, detalle.recurso_inventario_id, recordId);
+    if (recordIds.length > 0) {
+      const primaryId = recordIds[0];
+      const updateRecord = async (id: number, existencias: number) => {
+        const updateBody = [{ existencias, recurso_inventario_id: id }];
+        const updateRes = await authFetch(`${apiBase}/recursos_inventario/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updateBody),
+        });
+        if (!updateRes.ok) throw new Error('save_failed');
+      };
+
+      await updateRecord(primaryId, Number(detalle.existencias ?? 0));
+      for (const duplicateId of recordIds.slice(1)) {
+        await updateRecord(duplicateId, 0);
+      }
+      return primaryId;
     }
 
     const createBody = {
@@ -827,6 +865,9 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
       parroquia_id: Number(detalle.parroquia_id ?? 0),
       provincia_id: Number(detalle.provincia_id ?? 0),
     };
+    if (Number(createBody.existencias) <= 0) {
+      return undefined;
+    }
     if (
       Number(createBody.provincia_id) <= 0 ||
       Number(createBody.canton_id) <= 0 ||
@@ -902,7 +943,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
       message.info('No hay cambios por guardar en esta parroquia.');
       return;
     }
-    if (drawerDetalleForMatrix.length === 0) {
+    if (drawerDetalleForMatrix.length === 0 && drawerInitialDetalles.length === 0) {
       message.warning('Debe seleccionar provincia, canton y parroquia validos para guardar.');
       return;
     }
@@ -960,6 +1001,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     drawerCantonId,
     drawerDetalleForMatrix,
     drawerHasUnsavedChanges,
+    drawerInitialDetalles.length,
     drawerProvinciaId,
     effectiveMesaId,
     isUsuarioNacional,

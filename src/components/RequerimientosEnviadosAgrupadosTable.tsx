@@ -182,6 +182,7 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
                 const isDetalleLoading = !!detalleLoading[numero];
                 const detalleErrorMsg = detalleError[numero];
                 const sequentialNumber = first + index + 1;
+                const isCompleted = progressPercent(item.porcentaje_avance) >= 100;
 
                 return (
                   <React.Fragment key={numero}>
@@ -224,28 +225,32 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
                           >
                             <i className="pi pi-search" style={{ fontSize: '1.1rem' }} />
                           </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onEdit?.(item);
-                            }}
-                            className="btn btn-sm btn-link p-0 text-primary"
-                            title="Editar"
-                          >
-                            <i className="pi pi-pencil" style={{ fontSize: '1.1rem' }} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onDelete?.(item);
-                            }}
-                            className="btn btn-sm btn-link p-0 text-danger"
-                            title="Eliminar"
-                          >
-                            <i className="pi pi-trash" style={{ fontSize: '1.1rem' }} />
-                          </button>
+                          {!isCompleted && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onEdit?.(item);
+                                }}
+                                className="btn btn-sm btn-link p-0 text-primary"
+                                title="Editar"
+                              >
+                                <i className="pi pi-pencil" style={{ fontSize: '1.1rem' }} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onDelete?.(item);
+                                }}
+                                className="btn btn-sm btn-link p-0 text-danger"
+                                title="Eliminar"
+                              >
+                                <i className="pi pi-trash" style={{ fontSize: '1.1rem' }} />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>

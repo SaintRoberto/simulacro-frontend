@@ -1181,9 +1181,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
         },
       ]);
       alert('Solicitud enviada a nivel superior correctamente.');
-      if (originalRequerimientoRecursoId > 0) {
-        navigateToEnviadosWithRefresh();
-      }
+      navigateToEnviadosWithRefresh();
     } catch (error) {
       console.error(error);
       alert('Error al enviar a nivel superior.');
