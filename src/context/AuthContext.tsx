@@ -156,6 +156,18 @@ export interface RequerimientoRecibidoNotificacion {
   tipo_notificacion: 'recibido' | 'retornado' | 'delegado';
 }
 
+export interface AccionRespuestaNotificacion {
+  accion_respuesta_id: number;
+  coe_acta_resolucion_mesa_id: number;
+  detalle: string;
+  emergencia_id: number;
+  estado_id: number;
+  estado_nombre: string;
+  fecha_final: string;
+  origen_id: number;
+  origen_nombre: string | null;
+}
+
 
 export interface RequerimientoEstado {
   id: number;
@@ -229,6 +241,7 @@ interface AuthContextValue {
   getRequerimientoRecursos: (requerimientoId: number) => Promise<RequerimientoRecursoResponse[]>;
   getRecursoTiposByGrupo: (grupoId: number) => Promise<RecursoTipo[]>;
   getRequerimientosRecibidosNotificaciones: () => Promise<RequerimientoRecibidoNotificacion[]>;
+  getAccionesRespuestaNotificaciones: () => Promise<AccionRespuestaNotificacion[]>;
   authFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
   selectedEmergenciaId: number | null;
   setSelectedEmergenciaId: (id: number | null) => void;
@@ -636,6 +649,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [apiBase, authFetch, datosLogin?.usuario_id, datosLogin?.emergencia_id, selectedEmergenciaId]);
 
+  const getAccionesRespuestaNotificaciones = useCallback(async (): Promise<AccionRespuestaNotificacion[]> => {
+    try {
+      const effectiveId = datosLogin?.usuario_id ?? Number(localStorage.getItem('userId') || 'NaN');
+      const userId = Number(effectiveId);
+
+      if (isNaN(userId) || userId <= 0) {
+        return [];
+      }
+
+      const res = await authFetch(`${apiBase}/acciones_respuesta/usuario/${userId}`, {
+        headers: { accept: 'application/json' },
+      });
+      if (!res.ok) return [];
+
+      const raw = await res.json();
+      const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
+      return list
+        .map((item: any) => ({
+          accion_respuesta_id: Number(item?.accion_respuesta_id ?? item?.id ?? 0),
+          coe_acta_resolucion_mesa_id: Number(item?.coe_acta_resolucion_mesa_id ?? 0),
+          detalle: String(item?.detalle ?? ''),
+          emergencia_id: Number(item?.emergencia_id ?? 0),
+          estado_id: Number(item?.estado_id ?? item?.accion_respuesta_estado_id ?? 0),
+          estado_nombre: String(item?.estado_nombre ?? item?.accion_respuesta_estado_nombre ?? 'Sin estado'),
+          fecha_final: String(item?.fecha_final ?? ''),
+          origen_id: Number(item?.origen_id ?? item?.accion_respuesta_origen_id ?? 0),
+          origen_nombre: item?.origen_nombre ?? null,
+        }))
+        .filter((item: AccionRespuestaNotificacion) => item.accion_respuesta_id > 0);
+    } catch {
+      return [];
+    }
+  }, [apiBase, authFetch, datosLogin?.usuario_id]);
+
 
   const value = useMemo<AuthContextValue>(() => ({
     loginResponse,
@@ -658,6 +705,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     getRequerimientoRecursos,
     getRecursoTiposByGrupo,
     getRequerimientosRecibidosNotificaciones,
+    getAccionesRespuestaNotificaciones,
     authFetch,
     selectedEmergenciaId,
     barridoActivo,
@@ -667,7 +715,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (id == null) localStorage.removeItem('selectedEmergenciaId');
       else localStorage.setItem('selectedEmergenciaId', String(id));
     }
-  }), [loginResponse, datosLogin, receptores, receptoresStatus, recursoGrupos, recursoGruposStatus, recursoTipos, recursoTiposStatus, barridoActivo, barridoActivoStatus, isRestoringSession, login, loadReceptores, loadRecursoGrupos, loadRecursoTipos, createRequerimiento, createRequerimientoRecurso, getRequerimientoEstados, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, getRequerimientosRecibidosNotificaciones, authFetch, selectedEmergenciaId]);
+  }), [loginResponse, datosLogin, receptores, receptoresStatus, recursoGrupos, recursoGruposStatus, recursoTipos, recursoTiposStatus, barridoActivo, barridoActivoStatus, isRestoringSession, login, loadReceptores, loadRecursoGrupos, loadRecursoTipos, createRequerimiento, createRequerimientoRecurso, getRequerimientoEstados, getRequerimientoById, getRequerimientoRecursos, getRecursoTiposByGrupo, getRequerimientosRecibidosNotificaciones, getAccionesRespuestaNotificaciones, authFetch, selectedEmergenciaId]);
 
   return (
     <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

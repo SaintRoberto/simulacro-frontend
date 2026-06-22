@@ -65,6 +65,7 @@ export interface HuellaLogPayload {
   requerimiento_accion_log_id: number;
   requerimiento_estado_id: number;
   requerimiento_numero: string;
+  requerimiento_respuesta_situacion: string;
   requerimiento_recurso_id: number;
   respuesta_estado_id: number;
   respuesta_fecha: string;
@@ -163,6 +164,7 @@ export interface BuildHuellaLogPayloadParams {
   recursoTipoId?: number;
   requerimientoEstadoId?: number;
   requerimientoNumero?: string;
+  requerimientoRespuestaSituacion?: string;
   requerimientoRecursoId?: number;
   respuestaEstadoId?: number;
   respuestaFecha?: string;
@@ -193,6 +195,7 @@ export const buildHuellaLogPayload = (params: BuildHuellaLogPayloadParams): Huel
     requerimiento_accion_log_id: asNumber(params.accionId, 0),
     requerimiento_estado_id: asNumber(params.requerimientoEstadoId, defaults.estadoId),
     requerimiento_numero: requerimientoNumero,
+    requerimiento_respuesta_situacion: String(params.requerimientoRespuestaSituacion ?? ''),
     requerimiento_recurso_id: requerimientoRecursoId,
     respuesta_estado_id: asNumber(params.respuestaEstadoId, 0),
     respuesta_fecha: String(params.respuestaFecha ?? new Date().toISOString()),
@@ -244,4 +247,3 @@ export const registrarHuellaMovimiento = async ({
   const payload = buildHuellaLogPayload(params);
   await registrarHuellaLog({ apiBase, authFetch, payload, context });
 };
-
