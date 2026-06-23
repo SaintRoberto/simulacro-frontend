@@ -33,6 +33,7 @@ interface RecursoSeleccionado {
   mesaId: number;
   mesaNombre: string;
   mesaSiglas: string;
+  mesaUsuarioLogin?: string;
   mesaUsuarioId: number;
   activo: boolean;
 }
@@ -41,6 +42,7 @@ interface InventarioNoRechazadoRow {
   mesaId: number;
   mesaNombre: string;
   siglas: string;
+  usuarioLogin?: string;
   usuarioId: number;
   cantidadDisponible: number;
   cantidadSolicitada: number;
@@ -127,6 +129,10 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
   );
   const prefilledTipoNombre = useMemo(
     () => String(searchParams.get('tipoRequerimiento') || '').trim(),
+    [searchParams]
+  );
+  const prefilledRechazadoPor = useMemo(
+    () => String(searchParams.get('rechazado_por') || '').trim(),
     [searchParams]
   );
   const prefilledCantidadSolicitada = useMemo(() => {
@@ -273,6 +279,12 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
           mesaId: rowMesaId,
           mesaNombre: String(it?.mesa_nombre ?? receptorRef?.mesa_nombre ?? `Mesa ${rowMesaId}`),
           siglas: String(receptorRef?.siglas ?? receptorRef?.mesa_siglas ?? ''),
+          usuarioLogin: String(
+            it?.usuario_login ??
+            it?.usuario_receptor ??
+            (receptorRef as any)?.usuario_login ??
+            ''
+          ),
           usuarioId: Number(receptorRef?.usuario_id ?? usuarioEmisorId),
           cantidadDisponible: Math.max(0, Number(it?.existencias ?? 0)),
           cantidadSolicitada: initialCantidad,
@@ -420,6 +432,7 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
           mesaId: row.mesaId,
           mesaNombre: row.mesaNombre,
           mesaSiglas: row.siglas,
+          mesaUsuarioLogin: row.usuarioLogin,
           mesaUsuarioId: row.usuarioId,
           activo: true,
         },
@@ -523,6 +536,12 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
         );
         return;
       }
+      const requerimientoNumeroOriginal = String(prefilledRequerimientoNumero || '');
+      const mesaRechazoNombre = String(
+        prefilledRechazadoPor ||
+        searchParams.get('usuario_receptor') ||
+        ''
+      ).trim();
       void registrarHuellaMovimiento({
         apiBase,
         authFetch,
@@ -533,7 +552,8 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
           coeOrigenId: Number(datosLogin?.coe_id ?? 0),
           mesaOrigenId: Number(datosLogin?.mesa_id ?? 0),
           motivoId: HuellaMotivoId.MESA_NO_COMPETENTE,
-          requerimientoNumero: String(prefilledRequerimientoNumero || ''),
+          requerimientoNumero: requerimientoNumeroOriginal,
+          requerimientoNumeroOriginal,
           requerimientoRecursoId: Number(prefilledRequerimientoId ?? 0),
           respuestaFecha: new Date().toISOString(),
         },
@@ -580,6 +600,12 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
           recursoTipoId: Number(recurso.tipoId ?? 0),
           usuarioReceptorId: Number(usuarioReceptorId ?? 0),
         });
+        const mesaDestinoNombre = String(
+          recurso.mesaUsuarioLogin ||
+          recurso.mesaSiglas ||
+          recurso.mesaNombre ||
+          ''
+        ).trim();
         void registrarHuellaMovimiento({
           apiBase,
           authFetch,
@@ -596,7 +622,9 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
             recursoGrupoId: Number(recurso.grupoId ?? 0),
             recursoTipoId: Number(recurso.tipoId ?? 0),
             requerimientoNumero: String(requerimientoNumeroUuid),
+            requerimientoNumeroOriginal,
             requerimientoRecursoId: Number(requerimientoRecursoIdLog ?? 0),
+            requerimientoRespuestaSituacion: `requerimiento reasignado a ${mesaDestinoNombre || '-'} por rechazo de ${mesaRechazoNombre || '-'}`,
             respuestaFecha: new Date().toISOString(),
           },
         });

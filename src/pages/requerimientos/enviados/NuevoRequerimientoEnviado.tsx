@@ -757,7 +757,7 @@ export const NuevoRequerimientoEnviado: React.FC = () => {
           mesaNombre: String(it?.mesa_nombre ?? mesaRef?.mesaNombre ?? `Mesa ${mesaId}`),
           siglas: String(mesaRef?.siglas ?? ''),
           usuarioId: Number(usuarioByMesaId.get(mesaId) ?? it?.usuario_id ?? mesaRef?.usuarioId ?? 0),
-          cantidadDisponible: Math.max(0, Number(it?.existencias ?? 0)),
+          cantidadDisponible: Math.max(0, Number(it?.disponibles ?? 0)),
           cantidadSolicitada: Number(cantidadSolicitadaByKeyRef.current[key] ?? 0),
           detalleSolicitudRecurso: String(detalleSolicitudByKeyRef.current[key] ?? ''),
         };

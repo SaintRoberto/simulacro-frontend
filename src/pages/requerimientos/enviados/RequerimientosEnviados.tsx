@@ -6,6 +6,7 @@ import { useAuth } from '../../../context/AuthContext';
 import RequerimientosEnviadosAgrupadosTable, {
   RequerimientoEnviadoDetalleRow,
   RequerimientoEnviadoGrupoRow,
+  RequerimientoHuellaLogRow,
 } from '../../../components/RequerimientosEnviadosAgrupadosTable';
 
 export const RequerimientosEnviados: React.FC = () => {
@@ -173,6 +174,29 @@ export const RequerimientosEnviados: React.FC = () => {
     [apiBase, authFetch, detalleCache, datosLogin?.usuario_id]
   );
 
+  const loadHuellaLogsByRecurso = useCallback(
+    async (requerimientoRecursoId: number): Promise<RequerimientoHuellaLogRow[]> => {
+      const res = await authFetch(
+        `${apiBase}/requerimiento-huella-logs/requerimiento-recurso/${requerimientoRecursoId}`,
+        { headers: { accept: 'application/json' } }
+      );
+
+      if (!res.ok) {
+        throw new Error('huella_logs_not_found');
+      }
+
+      const parsed = await res.json();
+      const list = Array.isArray(parsed) ? parsed : [];
+      return list.map((row: any) => ({
+        id: Number(row?.id ?? 0),
+        respuesta_estado: row?.respuesta_estado ?? null,
+        requerimiento_respuesta_situacion: row?.requerimiento_respuesta_situacion ?? null,
+        respuesta_fecha: row?.respuesta_fecha ?? null,
+      }));
+    },
+    [apiBase, authFetch]
+  );
+
   useEffect(() => {
     loadRequerimientos();
     const refreshSilently = () => {
@@ -252,6 +276,7 @@ export const RequerimientosEnviados: React.FC = () => {
         loading={loading}
         error={error}
         loadDetalle={loadDetalleByNumero}
+        loadHuellaLogs={loadHuellaLogsByRecurso}
         detalleData={detalleCache}
         onRead={() => {}}
         onEdit={handleEdit}

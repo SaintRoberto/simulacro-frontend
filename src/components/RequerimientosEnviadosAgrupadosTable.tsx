@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Input, Progress, Tag } from 'antd';
+import { Input, Modal, Progress, Tag } from 'antd';
 import { getRequerimientoEstadoTagColor } from '../utils/requerimientoEstado';
 
 export interface RequerimientoEnviadoGrupoRow {
@@ -26,6 +26,13 @@ export interface RequerimientoEnviadoDetalleRow {
   creacion: string;
 }
 
+export interface RequerimientoHuellaLogRow {
+  id?: number;
+  respuesta_estado?: string | null;
+  requerimiento_respuesta_situacion?: string | null;
+  respuesta_fecha?: string | null;
+}
+
 interface RequerimientosEnviadosAgrupadosTableProps {
   items: RequerimientoEnviadoGrupoRow[];
   loading: boolean;
@@ -34,6 +41,7 @@ interface RequerimientosEnviadosAgrupadosTableProps {
   onEdit?: (item: RequerimientoEnviadoGrupoRow) => void;
   onDelete?: (item: RequerimientoEnviadoGrupoRow) => void;
   loadDetalle: (requerimientoNumero: string) => Promise<RequerimientoEnviadoDetalleRow[]>;
+  loadHuellaLogs?: (requerimientoRecursoId: number) => Promise<RequerimientoHuellaLogRow[]>;
   detalleData?: Record<string, RequerimientoEnviadoDetalleRow[]>;
   emptyMessage?: string;
 }
@@ -63,6 +71,7 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
   onEdit,
   onDelete,
   loadDetalle,
+  loadHuellaLogs,
   detalleData,
   emptyMessage = 'No se encontraron registros.',
 }) => {
@@ -73,6 +82,11 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
   const [detalleCache, setDetalleCache] = useState<Record<string, RequerimientoEnviadoDetalleRow[]>>({});
   const [detalleLoading, setDetalleLoading] = useState<Record<string, boolean>>({});
   const [detalleError, setDetalleError] = useState<Record<string, string>>({});
+  const [huellaModalOpen, setHuellaModalOpen] = useState(false);
+  const [huellaRows, setHuellaRows] = useState<RequerimientoHuellaLogRow[]>([]);
+  const [huellaLoading, setHuellaLoading] = useState(false);
+  const [huellaError, setHuellaError] = useState('');
+  const [huellaNumero, setHuellaNumero] = useState('');
 
   const normalizedItems = useMemo(
     () =>
@@ -133,6 +147,23 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
   const onPagePrev = () => setFirst((prev) => Math.max(0, prev - rows));
   const onPageNext = () => setFirst((prev) => prev + rows);
 
+  const openHuellaModal = async (requerimientoRecursoId: number, requerimientoNumero: string) => {
+    if (!loadHuellaLogs) return;
+    setHuellaNumero(requerimientoNumero);
+    setHuellaRows([]);
+    setHuellaError('');
+    setHuellaModalOpen(true);
+    setHuellaLoading(true);
+    try {
+      const data = await loadHuellaLogs(requerimientoRecursoId);
+      setHuellaRows(data || []);
+    } catch {
+      setHuellaError('No se pudo cargar el detalle del avance del requerimiento.');
+    } finally {
+      setHuellaLoading(false);
+    }
+  };
+
   return (
     <div className="container-fluid base-crud">
       <div className="d-flex align-items-center justify-content-end mb-3">
@@ -182,7 +213,9 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
                 const isDetalleLoading = !!detalleLoading[numero];
                 const detalleErrorMsg = detalleError[numero];
                 const sequentialNumber = first + index + 1;
-                const isCompleted = progressPercent(item.porcentaje_avance) >= 100;
+                const headerProgress = progressPercent(item.porcentaje_avance);
+                const isCompleted = headerProgress >= 100;
+                const hasProgress = headerProgress > 0;
 
                 return (
                   <React.Fragment key={numero}>
@@ -238,17 +271,19 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
                               >
                                 <i className="pi pi-pencil" style={{ fontSize: '1.1rem' }} />
                               </button>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onDelete?.(item);
-                                }}
-                                className="btn btn-sm btn-link p-0 text-danger"
-                                title="Eliminar"
-                              >
-                                <i className="pi pi-trash" style={{ fontSize: '1.1rem' }} />
-                              </button>
+                              {!hasProgress && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onDelete?.(item);
+                                  }}
+                                  className="btn btn-sm btn-link p-0 text-danger"
+                                  title="Eliminar"
+                                >
+                                  <i className="pi pi-trash" style={{ fontSize: '1.1rem' }} />
+                                </button>
+                              )}
                             </>
                           )}
                         </div>
@@ -278,6 +313,7 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
                                     <th>Porcentaje Avance</th>
                                     <th>Estado</th>
                                     <th>Creacion</th>
+                                    <th>Accion</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -306,6 +342,19 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
                                         )}
                                       </td>
                                       <td>{formatDate(detalle.creacion)}</td>
+                                      <td>
+                                        <button
+                                          type="button"
+                                          className="btn btn-sm btn-link p-0 text-info"
+                                          title="Ver avance"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            void openHuellaModal(Number(detalle.id), numero);
+                                          }}
+                                        >
+                                          <i className="pi pi-search" style={{ fontSize: '1.1rem' }} />
+                                        </button>
+                                      </td>
                                     </tr>
                                   ))}
                                 </tbody>
@@ -373,6 +422,47 @@ export const RequerimientosEnviadosAgrupadosTable: React.FC<RequerimientosEnviad
           </div>
         </div>
       )}
+
+      <Modal
+        open={huellaModalOpen}
+        title={`Detalle de avance${huellaNumero ? ` - REQ-${huellaNumero.slice(0, 4).toUpperCase()}` : ''}`}
+        onCancel={() => setHuellaModalOpen(false)}
+        footer={null}
+        width={820}
+      >
+        {huellaLoading ? (
+          <div className="py-3">Cargando detalle...</div>
+        ) : huellaError ? (
+          <div className="alert alert-danger py-2" role="alert">
+            {huellaError}
+          </div>
+        ) : huellaRows.length === 0 ? (
+          <div className="text-muted py-3">Sin registros de avance para este requerimiento.</div>
+        ) : (
+          <div className="table-responsive">
+            <table className="table table-sm table-bordered mb-0">
+              <thead className="table-light">
+                <tr>
+                  <th>ID</th>
+                  <th>Respuesta Estado</th>
+                  <th>Situacion</th>
+                  <th>Fecha Respuesta</th>
+                </tr>
+              </thead>
+              <tbody>
+                {huellaRows.map((row, index) => (
+                  <tr key={`${row.id ?? 'huella'}-${index}`}>
+                    <td>{index + 1}</td>
+                    <td>{row.respuesta_estado || '-'}</td>
+                    <td>{row.requerimiento_respuesta_situacion || '-'}</td>
+                    <td>{formatDate(row.respuesta_fecha)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

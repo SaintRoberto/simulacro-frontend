@@ -145,6 +145,7 @@ export const RequerimientosRechazados: React.FC = () => {
       grupo_id: String(row.grupoId || 0),
       tipo_id: String(row.tipoId || 0),
       detalle: `Reasignacion por requerimiento rechazado ${row.requerimientoNumero?.slice(0, 8) || ''}`,
+      rechazado_por: row.destinatario || '',
     });
     navigate(`/requerimientos/rechazados/nuevo?${params.toString()}`);
   };

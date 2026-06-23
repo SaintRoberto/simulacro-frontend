@@ -65,6 +65,7 @@ export interface HuellaLogPayload {
   requerimiento_accion_log_id: number;
   requerimiento_estado_id: number;
   requerimiento_numero: string;
+  requerimiento_numero_original: string;
   requerimiento_respuesta_situacion: string;
   requerimiento_recurso_id: number;
   respuesta_estado_id: number;
@@ -164,6 +165,7 @@ export interface BuildHuellaLogPayloadParams {
   recursoTipoId?: number;
   requerimientoEstadoId?: number;
   requerimientoNumero?: string;
+  requerimientoNumeroOriginal?: string;
   requerimientoRespuestaSituacion?: string;
   requerimientoRecursoId?: number;
   respuestaEstadoId?: number;
@@ -195,6 +197,7 @@ export const buildHuellaLogPayload = (params: BuildHuellaLogPayloadParams): Huel
     requerimiento_accion_log_id: asNumber(params.accionId, 0),
     requerimiento_estado_id: asNumber(params.requerimientoEstadoId, defaults.estadoId),
     requerimiento_numero: requerimientoNumero,
+    requerimiento_numero_original: String(params.requerimientoNumeroOriginal ?? ''),
     requerimiento_respuesta_situacion: String(params.requerimientoRespuestaSituacion ?? ''),
     requerimiento_recurso_id: requerimientoRecursoId,
     respuesta_estado_id: asNumber(params.respuestaEstadoId, 0),

@@ -4,6 +4,10 @@ import { BaseCRUD } from '../../../components/crud/BaseCRUD';
 import { Progress, Tag, Modal, Button as AntButton } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
+import {
+  HuellaAccionLogId,
+  registrarHuellaMovimiento,
+} from '../../../utils/requerimientoHuellaLog';
  
 
 interface RequerimientoRecibido {
@@ -87,6 +91,11 @@ const isRejectedStateName = (value: string): boolean => {
 const isFinalizedRequirement = (value: Pick<RequerimientoRecibido, 'estado' | 'requerimientoEstadoId'>): boolean => {
   const normalized = String(value.estado || '').toLowerCase();
   return Number(value.requerimientoEstadoId) === 3 || normalized.includes('final');
+};
+
+const hasRequirementProgress = (value: Pick<RequerimientoRecibido, 'porcentajeAvance'>): boolean => {
+  const progress = Number(value.porcentajeAvance ?? 0);
+  return Number.isFinite(progress) && progress > 0;
 };
 
 export const RequerimientosRecibidos: React.FC = () => {
@@ -299,6 +308,11 @@ export const RequerimientosRecibidos: React.FC = () => {
   };
 
   const handleDelete = useCallback(async (requerimiento: RequerimientoRecibido) => {
+    if (hasRequirementProgress(requerimiento)) {
+      alert('No se puede rechazar un requerimiento con avance mayor a 0%.');
+      return;
+    }
+
     if (isFinalizedRequirement(requerimiento)) {
       alert('No se puede rechazar un requerimiento finalizado.');
       return;
@@ -317,6 +331,28 @@ export const RequerimientosRecibidos: React.FC = () => {
       });
 
       if (patchRes.ok) {
+        const usuarioMesa = String(
+          datosLogin?.usuario_login ||
+          datosLogin?.mesa_siglas ||
+          datosLogin?.mesa_nombre ||
+          ''
+        ).trim();
+        await registrarHuellaMovimiento({
+          apiBase,
+          authFetch,
+          context: 'recibidos:rechazar_requerimiento',
+          params: {
+            accionId: HuellaAccionLogId.RECHAZAR_REQUERIMIENTO,
+            usuarioAccionId: Number(datosLogin?.usuario_id ?? 0),
+            cantidadSolicitada: Number(requerimiento.cantidadSolicitada ?? 0),
+            coeOrigenId: Number(datosLogin?.coe_id ?? 0),
+            mesaOrigenId: Number(datosLogin?.mesa_id ?? 0),
+            requerimientoNumero: String(requerimiento.requerimientoNumero || ''),
+            requerimientoRecursoId: Number(requerimiento.id ?? 0),
+            requerimientoRespuestaSituacion: `requerimiento rechazado por ${usuarioMesa || '-'}`,
+            respuestaFecha: new Date().toISOString(),
+          },
+        });
         alert('Recurso rechazado correctamente.');
         await loadRequerimientos();
         return;
@@ -327,7 +363,18 @@ export const RequerimientosRecibidos: React.FC = () => {
       console.error('Error al rechazar requerimiento:', error);
       alert('Ocurrio un error al rechazar el requerimiento.');
     }
-  }, [rechazadoEstadoId, authFetch, apiBase, loadRequerimientos]);
+  }, [
+    rechazadoEstadoId,
+    authFetch,
+    apiBase,
+    loadRequerimientos,
+    datosLogin?.usuario_login,
+    datosLogin?.mesa_siglas,
+    datosLogin?.mesa_nombre,
+    datosLogin?.usuario_id,
+    datosLogin?.coe_id,
+    datosLogin?.mesa_id,
+  ]);
 
   const handleRead = useCallback(async (item: RequerimientoRecibido) => {
     try {
@@ -511,7 +558,7 @@ export const RequerimientosRecibidos: React.FC = () => {
             navigate(`/requerimientos/Recibidos/nuevo?${params.toString()}`);
           }}
           canEditRow={(row) => !isFinalizedRequirement(row)}
-          canDeleteRow={(row) => !isFinalizedRequirement(row)}
+          canDeleteRow={(row) => !isFinalizedRequirement(row) && !hasRequirementProgress(row)}
           onRead={handleRead}
           showCreateButton={false}
           showDeleteButton={true}
