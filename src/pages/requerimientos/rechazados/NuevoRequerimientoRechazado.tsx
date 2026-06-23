@@ -286,7 +286,7 @@ export const NuevoRequerimientoRechazado: React.FC = () => {
             ''
           ),
           usuarioId: Number(receptorRef?.usuario_id ?? usuarioEmisorId),
-          cantidadDisponible: Math.max(0, Number(it?.existencias ?? 0)),
+          cantidadDisponible: Math.max(0, Number(it?.disponibles ?? 0)),
           cantidadSolicitada: initialCantidad,
           detalleSolicitudRecurso: String(detalleSolicitudByKeyRef.current[key] ?? ''),
         };
