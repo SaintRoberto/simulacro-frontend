@@ -83,6 +83,11 @@ const buildApiBase = () => process.env.REACT_APP_API_URL || '/api';
 const emergencyId = Number(localStorage.getItem('selectedEmergenciaId') || 0);
 const rowColor = '#a8eeb3';
 
+const hasMeaningfulValue = (cell?: AfectacionCellPayload | null): boolean => {
+  if (!cell) return false;
+  return Number(cell.cantidad ?? 0) !== 0 || Number(cell.costo ?? 0) !== 0;
+};
+
 export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrixProps> = ({
   apiBase = buildApiBase(),
   cantonId = 901,
@@ -428,7 +433,7 @@ export const AfectacionesParroquiasMatrix: React.FC<AfectacionesParroquiasMatrix
             const url = `${apiBase}/afectacion_variable_registros/${id}`;
             const body = { cantidad: cell.cantidad ?? 0, costo: cell.costo ?? 0 };
             tasks.push(authFetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
-          } else {
+          } else if (hasMeaningfulValue(cell)) {
             const url = `${apiBase}/afectacion_variable_registros`;
             const body = {
               activo: true,

@@ -72,6 +72,11 @@ export interface AfectacionesParroquiasMatrixSidePanelProps {
 
 const buildApiBase = () => process.env.REACT_APP_API_URL || '/api';
 
+const hasMeaningfulValue = (cell?: AfectacionCellPayload | null): boolean => {
+  if (!cell) return false;
+  return Number(cell.cantidad ?? 0) !== 0 || Number(cell.costo ?? 0) !== 0;
+};
+
 export const AfectacionesParroquiasMatrixSidePanel: React.FC<AfectacionesParroquiasMatrixSidePanelProps> = ({
   apiBase = buildApiBase(),
   mesaGrupoId = 0,
@@ -418,6 +423,11 @@ export const AfectacionesParroquiasMatrixSidePanel: React.FC<AfectacionesParroqu
     const existing = recordIds[selectedRowKey]?.[selectedVar.id] ?? matrixRef.current[selectedRowKey]?.[selectedVar.id]?.id;
     if (existing) return existing;
 
+    if (Number(draftCantidad ?? 0) === 0 && Number(draftCosto ?? 0) === 0) {
+      message.warning('Debe ingresar cantidad o costo distinto de 0 antes de crear el registro.');
+      return null;
+    }
+
     const body = {
       activo: true,
       afectacion_variable_id: selectedVar.id,
@@ -524,7 +534,7 @@ export const AfectacionesParroquiasMatrixSidePanel: React.FC<AfectacionesParroqu
                 body: JSON.stringify(payload),
               })
             );
-          } else {
+          } else if (hasMeaningfulValue(cell)) {
             tasks.push(
               authFetch(`${apiBase}/afectacion_variable_registros`, {
                 method: 'POST',
@@ -541,6 +551,24 @@ export const AfectacionesParroquiasMatrixSidePanel: React.FC<AfectacionesParroqu
                   provincia_id: provinciaId,
                   evento_id: row.evento_id,
                 }),
+              }).then(async (res) => {
+                if (!res.ok) return res;
+                const created = await res.clone().json().catch(() => null);
+                const newId = Number(created?.id ?? 0);
+                if (newId > 0) {
+                  setRecordIds(prev => ({
+                    ...prev,
+                    [rk]: { ...(prev[rk] || {}), [v.id]: newId },
+                  }));
+                  setMatrix(prev => ({
+                    ...prev,
+                    [rk]: {
+                      ...(prev[rk] || {}),
+                      [v.id]: { ...(prev[rk]?.[v.id] || {}), id: newId },
+                    },
+                  }));
+                }
+                return res;
               })
             );
           }
