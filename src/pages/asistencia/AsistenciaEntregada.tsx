@@ -642,6 +642,8 @@ export const AsistenciaEntregada: React.FC = () => {
         }}
         idField="id"
         showDeleteButton={true}
+        exportToExcel
+        exportFileName="asistencia_entregada"
       />
       {loading && <div className="mt-2">Cargando...</div>}
     </Card>

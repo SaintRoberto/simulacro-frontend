@@ -370,6 +370,8 @@ export const AlojamientosActivados: React.FC = () => {
           responsable_telefono: ''
         }}
         showDeleteButton={false}
+        exportToExcel
+        exportFileName="alojamientos_activados"
       />
     </Card>
   );
