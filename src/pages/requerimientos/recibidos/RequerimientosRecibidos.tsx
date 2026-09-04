@@ -651,7 +651,7 @@ export const RequerimientosRecibidos: React.FC = () => {
                           <td>{recurso.tipo_nombre || '-'}</td>
                           <td>{recurso.cantidad_solicitada}</td>
                           <td>${recurso.costoEstimado?.toFixed(2) || 0}</td>
-                          <td>{recurso.destino || '-'}</td>
+                          <td>{recurso.especificaciones || '-'}</td>
                         </tr>
                       ))}
                     </tbody>

@@ -42,7 +42,7 @@ export interface InventarioMatrixProps {
   selectedMesaId?: number;
   onMesaChange: (mesaId: number) => void;
   hideMesaSelector?: boolean;
-  recursoGrupos: Array<{ id: number; nombre: string }>;
+  recursoGrupos: Array<{ id: number; nombre: string; searchText?: string }>;
   recursoGruposStatus: 'idle' | 'loading' | 'succeeded' | 'failed';
   selectedGrupoId?: number;
   onGrupoChange: (grupoId: number) => void;
@@ -139,14 +139,18 @@ export const InventarioMatrix: React.FC<InventarioMatrixProps> = ({
               <Text strong>Grupo Recurso</Text>
               <Select
                 placeholder="Seleccione grupo de recurso"
-                options={recursoGrupos.map((g) => ({ label: g.nombre, value: g.id }))}
+                options={recursoGrupos.map((g) => ({ label: g.nombre, value: g.id, searchText: g.searchText }))}
                 value={selectedGrupoId}
                 onChange={(value) => onGrupoChange(value)}
                 disabled={recursoGruposStatus === 'loading'}
                 loading={recursoGruposStatus === 'loading'}
                 style={{ width: '100%' }}
                 showSearch
-                optionFilterProp="label"
+                optionLabelProp="label"
+                filterOption={(input, option) => {
+                  const searchable = `${option?.label ?? ''} ${option?.searchText ?? ''}`.toLowerCase();
+                  return searchable.includes(input.toLowerCase());
+                }}
               />
             </Space>
           </div>

@@ -40,6 +40,13 @@ type DetalleExistenciaRow = {
   parroquia?: string;
   existencias: number;
 };
+
+type RecursoGrupoSearchOption = {
+  id: number;
+  nombre: string;
+  searchText: string;
+};
+
 const resolveInventarioId = (value: { recurso_inventario_id?: unknown; id?: unknown }): number | undefined => {
   const parsed = Number(value?.recurso_inventario_id ?? value?.id ?? 0);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
@@ -88,9 +95,6 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
   const {
     datosLogin,
     authFetch,
-    recursoGrupos,
-    recursoGruposStatus,
-    loadRecursoGrupos,
     getRecursoTiposByGrupo,
   } = useAuth();
 
@@ -106,6 +110,8 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
 
   const [loading, setLoading] = useState(false);
   const [savingParroquia, setSavingParroquia] = useState(false);
+  const [recursoGrupoOptions, setRecursoGrupoOptions] = useState<RecursoGrupoSearchOption[]>([]);
+  const [recursoGrupoOptionsStatus, setRecursoGrupoOptionsStatus] = useState<'idle' | 'loading' | 'succeeded' | 'failed'>('idle');
   const [mesasStatus, setMesasStatus] = useState<'idle' | 'loading' | 'succeeded' | 'failed'>('idle');
   const [mesas, setMesas] = useState<Mesa[]>([]);
   const [selectedMesaId, setSelectedMesaId] = useState<number | undefined>(undefined);
@@ -198,9 +204,54 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     return window.confirm('Tienes cambios sin guardar. Si sales, se perderán. ¿Deseas continuar?');
   }, [drawerHasUnsavedChanges]);
 
+  const loadRecursoGrupoOptions = useCallback(async () => {
+    setRecursoGrupoOptionsStatus('loading');
+    try {
+      const res = await authFetch(`${apiBase}/recurso-tipos`, { headers: { accept: 'application/json' } });
+      if (!res.ok) {
+        setRecursoGrupoOptions([]);
+        setRecursoGrupoOptionsStatus('failed');
+        return;
+      }
+
+      const raw = await res.json();
+      const list = Array.isArray(raw) ? raw : [];
+      const grouped = new Map<number, { nombre: string; terms: Set<string> }>();
+
+      for (const item of list) {
+        if (item?.activo === false) continue;
+        const grupoId = Number(item?.recurso_grupo_id ?? 0);
+        if (!Number.isFinite(grupoId) || grupoId <= 0) continue;
+
+        const grupoNombre = String(item?.recurso_grupo_nombre ?? `Grupo ${grupoId}`).trim();
+        const tipoNombre = String(item?.nombre ?? '').trim();
+        const current = grouped.get(grupoId) ?? { nombre: grupoNombre, terms: new Set<string>() };
+        current.terms.add(grupoNombre);
+        if (tipoNombre) current.terms.add(tipoNombre);
+        grouped.set(grupoId, current);
+      }
+
+      const options = Array.from(grouped.entries())
+        .map(([id, value]) => ({
+          id,
+          nombre: value.nombre,
+          searchText: Array.from(value.terms).join(' '),
+        }))
+        .sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+      setRecursoGrupoOptions(options);
+      setRecursoGrupoOptionsStatus('succeeded');
+    } catch {
+      setRecursoGrupoOptions([]);
+      setRecursoGrupoOptionsStatus('failed');
+    }
+  }, [apiBase, authFetch]);
+
   useEffect(() => {
-    if (recursoGruposStatus === 'idle') loadRecursoGrupos();
-  }, [recursoGruposStatus, loadRecursoGrupos]);
+    if (recursoGrupoOptionsStatus === 'idle') {
+      loadRecursoGrupoOptions();
+    }
+  }, [loadRecursoGrupoOptions, recursoGrupoOptionsStatus]);
 
   const fetchFirstArray = useCallback(async (urls: string[]) => {
     for (const url of urls) {
@@ -1109,8 +1160,8 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
           selectedMesaId={effectiveMesaId}
           onMesaChange={(mesaId) => setSelectedMesaId(mesaId)}
           hideMesaSelector={hasAssignedMesa}
-          recursoGrupos={recursoGrupos}
-          recursoGruposStatus={recursoGruposStatus}
+          recursoGrupos={recursoGrupoOptions}
+          recursoGruposStatus={recursoGrupoOptionsStatus}
           selectedGrupoId={selectedGrupoId}
           onGrupoChange={(grupoId) => setSelectedGrupoId(grupoId)}
           onLoadMatrix={loadMatrixByGrupo}

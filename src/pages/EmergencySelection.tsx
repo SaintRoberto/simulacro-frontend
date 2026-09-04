@@ -6,6 +6,7 @@ import earthquakeIcon from '../assets/earthquake.svg';
 import rainsIcon from '../assets/rains.svg';
 import volcanoIcon from '../assets/volcano.svg';
 import tsunamiIcon from '../assets/tsunami.svg';
+import enosIcon from '../assets/enos.svg';
 
 interface EmergencyItem {
   ambito: string;
@@ -16,28 +17,37 @@ interface EmergencyItem {
   usuario: string;
 }
 
+const normalizeIdentifier = (identificador: string) =>
+  String(identificador || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
 const iconFor = (identificador: string) => {
-  const key = String(identificador || '').toLowerCase();
+  const key = normalizeIdentifier(identificador);
   if (key.includes('sismo') || key.includes('terrem')) return 'icon icon-terremoto';
   if (key.includes('erup') || key.includes('volcan')) return 'icon icon-volcan';
+  if (key.includes('enos') || key.includes('nino') || key.includes('nina')) return 'icon icon-enos';
   if (key.includes('lluv') || key.includes('invern') || key.includes('inun')) return 'icon icon-lluvia';
   if (key.includes('tsuna') || key.includes('tsunami')) return 'icon icon-tsunami';
   return 'icon icon-circle';
 };
 
 const iconSrcFor = (identificador: string): string | null => {
-  const key = String(identificador || '').toLowerCase();
+  const key = normalizeIdentifier(identificador);
   if (key.includes('sismo') || key.includes('terrem')) return earthquakeIcon;
   if (key.includes('erup') || key.includes('volcan')) return volcanoIcon;
+  if (key.includes('enos') || key.includes('nino') || key.includes('nina')) return enosIcon;
   if (key.includes('lluv') || key.includes('invern') || key.includes('inun')) return rainsIcon;
   if (key.includes('tsuna') || key.includes('tsunami')) return tsunamiIcon;
   return null;
 };
 
 const iconForbk = (identificador: string) => {
-  const key = String(identificador || '').toLowerCase();
+  const key = normalizeIdentifier(identificador);
   if (key.includes('sismo') || key.includes('terrem')) return 'linear-gradient(to top, #f0f0f0, #ff7d7d)';
   if (key.includes('erup') || key.includes('volcan')) return 'linear-gradient(to top, #f0f0f0, #735fc1)';
+  if (key.includes('enos') || key.includes('nino') || key.includes('nina')) return 'linear-gradient(to top, #f0f0f0, #39c5bb)';
   if (key.includes('lluv') || key.includes('invern') || key.includes('inun')) return 'linear-gradient(to top, #f0f0f0, #7db1ff)';
   if (key.includes('tsuna') || key.includes('tsunami')) return 'linear-gradient(to top, #f0f0f0, #42c6ff)';
   return 'linear-gradient(to top, #f0f0f0, #cccccc)';

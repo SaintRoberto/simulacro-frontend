@@ -1077,10 +1077,37 @@ export const NuevoRequerimientoRecibido: React.FC = () => {
             <div className="col-12">
               <h3 className="m-0">Inventario para Asignación</h3>
             </div>
-            <div className="col-12 mt-2">
-              <span><strong>Grupo Recurso:</strong> {recursoInventarioSeleccionado?.grupo || grupoRequerimientoParam || '-'}</span>
-              <span className="mx-3"><strong>Tipo Recurso:</strong> {recursoInventarioSeleccionado?.tipo || tipoRequerimientoParam || '-'}</span>
-              <span className="mx-3"><strong>Cantidad Solicitada:</strong> {recursoInventarioSeleccionado?.cantidad || cantidadSolicitada || '-'}</span>
+            <div className="col-12 mt-3">
+              <div
+                className="p-3"
+                style={{
+                  backgroundColor: '#f0f7ff',
+                  border: '1px solid #91caff',
+                  borderLeft: '5px solid #1677ff',
+                  borderRadius: '6px',
+                }}
+              >
+                <div className="d-flex flex-wrap gap-3 align-items-start">
+                  <div style={{ minWidth: '180px', flex: '1 1 180px' }}>
+                    <div className="text-muted" style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase' }}>Grupo Recurso</div>
+                    <div style={{ fontSize: '13px', fontWeight: 700 }}>{recursoInventarioSeleccionado?.grupo || grupoRequerimientoParam || '-'}</div>
+                  </div>
+                  <div style={{ minWidth: '220px', flex: '1.2 1 220px' }}>
+                    <div className="text-muted" style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase' }}>Tipo Recurso</div>
+                    <div style={{ fontSize: '13px', fontWeight: 700 }}>{recursoInventarioSeleccionado?.tipo || tipoRequerimientoParam || '-'}</div>
+                  </div>
+                  <div style={{ minWidth: '130px', flex: '0 1 130px' }}>
+                    <div className="text-muted" style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase' }}>Cantidad Solicitada</div>
+                    <div style={{ fontSize: '16px', fontWeight: 800, color: '#0b5ed7' }}>{recursoInventarioSeleccionado?.cantidad || cantidadSolicitada || '-'}</div>
+                  </div>
+                  <div style={{ minWidth: '320px', flex: '2 1 320px' }}>
+                    <div className="text-muted" style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase' }}>Especificaciones</div>
+                    <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.4, fontSize: '12px', color: '#1f2937' }}>
+                      {recursoInventarioSeleccionado?.especificacionesAdicionales || '-'}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
           <DataTable

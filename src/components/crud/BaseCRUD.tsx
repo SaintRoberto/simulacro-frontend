@@ -58,6 +58,8 @@ interface BaseCRUDProps<T> {
   forceDeleteAction?: boolean;
   useMenuPermissions?: boolean;
   modalWidth?: number | string;
+  exportToExcel?: boolean;
+  exportFileName?: string;
 }
 
 export function BaseCRUD<T extends Record<string, any>>({
@@ -93,6 +95,8 @@ export function BaseCRUD<T extends Record<string, any>>({
   forceDeleteAction = false,
   useMenuPermissions = true,
   modalWidth,
+  exportToExcel = false,
+  exportFileName,
 }: BaseCRUDProps<T>) {
   const { authFetch, datosLogin } = useAuth();
   const { getMenuIdByRoute } = useMenu();
@@ -379,14 +383,214 @@ export function BaseCRUD<T extends Record<string, any>>({
     );
   };
 
+  const filteredItems = useMemo(() => {
+    if (!globalFilter) return items;
+    const q = globalFilter.toLowerCase();
+    return items.filter((it) => JSON.stringify(it).toLowerCase().includes(q));
+  }, [items, globalFilter]);
+
+  const getExportCellValue = (row: T, field: string) => {
+    const value = row[field as keyof T] as any;
+    if (value === null || value === undefined) return '';
+    if (value instanceof Date) return value.toLocaleString();
+    return String(value);
+  };
+
+  const escapeXml = (value: string) => {
+    const cleaned = Array.from(value).filter((char) => {
+      const code = char.charCodeAt(0);
+      return code === 9 || code === 10 || code === 13 || code >= 32;
+    }).join('');
+    return cleaned
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  };
+
+  const getColumnName = (index: number) => {
+    let column = '';
+    let n = index;
+    while (n >= 0) {
+      column = String.fromCharCode((n % 26) + 65) + column;
+      n = Math.floor(n / 26) - 1;
+    }
+    return column;
+  };
+
+  const createZipFile = (files: Array<{ name: string; content: string }>) => {
+    const encoder = new TextEncoder();
+    const crcTable = new Uint32Array(256);
+    for (let i = 0; i < 256; i += 1) {
+      let c = i;
+      for (let j = 0; j < 8; j += 1) {
+        c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+      }
+      crcTable[i] = c >>> 0;
+    }
+
+    const crc32 = (data: Uint8Array) => {
+      let crc = 0xffffffff;
+      for (let i = 0; i < data.length; i += 1) {
+        crc = crcTable[(crc ^ data[i]) & 0xff] ^ (crc >>> 8);
+      }
+      return (crc ^ 0xffffffff) >>> 0;
+    };
+
+    const parts: Uint8Array[] = [];
+    const centralParts: Uint8Array[] = [];
+    let offset = 0;
+
+    const writeUint16 = (view: DataView, viewOffset: number, value: number) => {
+      view.setUint16(viewOffset, value, true);
+    };
+    const writeUint32 = (view: DataView, viewOffset: number, value: number) => {
+      view.setUint32(viewOffset, value, true);
+    };
+
+    files.forEach((file) => {
+      const nameData = encoder.encode(file.name);
+      const contentData = encoder.encode(file.content);
+      const crc = crc32(contentData);
+
+      const localHeader = new Uint8Array(30 + nameData.length);
+      const localView = new DataView(localHeader.buffer);
+      writeUint32(localView, 0, 0x04034b50);
+      writeUint16(localView, 4, 20);
+      writeUint16(localView, 6, 0);
+      writeUint16(localView, 8, 0);
+      writeUint16(localView, 10, 0);
+      writeUint16(localView, 12, 0);
+      writeUint32(localView, 14, crc);
+      writeUint32(localView, 18, contentData.length);
+      writeUint32(localView, 22, contentData.length);
+      writeUint16(localView, 26, nameData.length);
+      writeUint16(localView, 28, 0);
+      localHeader.set(nameData, 30);
+      parts.push(localHeader, contentData);
+
+      const centralHeader = new Uint8Array(46 + nameData.length);
+      const centralView = new DataView(centralHeader.buffer);
+      writeUint32(centralView, 0, 0x02014b50);
+      writeUint16(centralView, 4, 20);
+      writeUint16(centralView, 6, 20);
+      writeUint16(centralView, 8, 0);
+      writeUint16(centralView, 10, 0);
+      writeUint16(centralView, 12, 0);
+      writeUint16(centralView, 14, 0);
+      writeUint32(centralView, 16, crc);
+      writeUint32(centralView, 20, contentData.length);
+      writeUint32(centralView, 24, contentData.length);
+      writeUint16(centralView, 28, nameData.length);
+      writeUint16(centralView, 30, 0);
+      writeUint16(centralView, 32, 0);
+      writeUint16(centralView, 34, 0);
+      writeUint16(centralView, 36, 0);
+      writeUint32(centralView, 38, 0);
+      writeUint32(centralView, 42, offset);
+      centralHeader.set(nameData, 46);
+      centralParts.push(centralHeader);
+
+      offset += localHeader.length + contentData.length;
+    });
+
+    const centralDirectoryOffset = offset;
+    const centralDirectorySize = centralParts.reduce((total, part) => total + part.length, 0);
+    const endRecord = new Uint8Array(22);
+    const endView = new DataView(endRecord.buffer);
+    writeUint32(endView, 0, 0x06054b50);
+    writeUint16(endView, 4, 0);
+    writeUint16(endView, 6, 0);
+    writeUint16(endView, 8, files.length);
+    writeUint16(endView, 10, files.length);
+    writeUint32(endView, 12, centralDirectorySize);
+    writeUint32(endView, 16, centralDirectoryOffset);
+    writeUint16(endView, 20, 0);
+
+    return new Blob([...parts, ...centralParts, endRecord], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+  };
+
+  const exportExcel = () => {
+    const rowsXml = [
+      columns.map((col) => col.header),
+      ...filteredItems.map((row) => columns.map((col) => getExportCellValue(row, col.field))),
+    ].map((rowValues, rowIndex) => {
+      const rowNumber = rowIndex + 1;
+      const cells = rowValues.map((value, colIndex) => {
+        const cellRef = `${getColumnName(colIndex)}${rowNumber}`;
+        return `<c r="${cellRef}" t="inlineStr"><is><t>${escapeXml(value)}</t></is></c>`;
+      }).join('');
+      return `<row r="${rowNumber}">${cells}</row>`;
+    }).join('');
+
+    const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>${rowsXml}</sheetData>
+</worksheet>`;
+    const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Datos" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>`;
+    const workbookRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>`;
+    const rootRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`;
+    const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>`;
+
+    const blob = createZipFile([
+      { name: '[Content_Types].xml', content: contentTypesXml },
+      { name: '_rels/.rels', content: rootRelsXml },
+      { name: 'xl/workbook.xml', content: workbookXml },
+      { name: 'xl/_rels/workbook.xml.rels', content: workbookRelsXml },
+      { name: 'xl/worksheets/sheet1.xml', content: sheetXml },
+    ]);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeTitle = (exportFileName || title || 'reporte').trim().replace(/[\\/:*?"<>|]+/g, '_') || 'reporte';
+    link.href = url;
+    link.download = `${safeTitle}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const defaultRightToolbarTemplate = () => {
     return (
-      <Input.Search
-        placeholder="Buscar..."
-        allowClear
-        onChange={(e) => setGlobalFilter(e.currentTarget.value)}
-        style={{ maxWidth: 240 }}
-      />
+      <div className="d-flex gap-2 align-items-center">
+        {exportToExcel && (
+          <Button
+            onClick={exportExcel}
+            disabled={filteredItems.length === 0}
+            title="Exportar Excel"
+            aria-label="Exportar Excel"
+            style={{ backgroundColor: '#217346', borderColor: '#217346', color: '#fff' }}
+          >
+            <i className="pi pi-file-excel" aria-hidden="true"></i>
+          </Button>
+        )}
+        <Input.Search
+          placeholder="Buscar..."
+          allowClear
+          onChange={(e) => setGlobalFilter(e.currentTarget.value)}
+          style={{ maxWidth: 240 }}
+        />
+      </div>
     );
   };
 
@@ -439,12 +643,6 @@ export function BaseCRUD<T extends Record<string, any>>({
       {rightToolbarTemplate ? rightToolbarTemplate() : defaultRightToolbarTemplate()}
     </div>
   );
-
-  const filteredItems = useMemo(() => {
-    if (!globalFilter) return items;
-    const q = globalFilter.toLowerCase();
-    return items.filter((it) => JSON.stringify(it).toLowerCase().includes(q));
-  }, [items, globalFilter]);
 
   // Calcular items paginados
   const paginatedItems = useMemo(() => {
