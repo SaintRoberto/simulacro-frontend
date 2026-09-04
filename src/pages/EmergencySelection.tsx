@@ -6,7 +6,7 @@ import earthquakeIcon from '../assets/earthquake.svg';
 import rainsIcon from '../assets/rains.svg';
 import volcanoIcon from '../assets/volcano.svg';
 import tsunamiIcon from '../assets/tsunami.svg';
-import enosIcon from '../assets/enos.svg';
+import enosIcon from '../assets/enos.png';
 
 interface EmergencyItem {
   ambito: string;
@@ -23,11 +23,16 @@ const normalizeIdentifier = (identificador: string) =>
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 
+const isEnosIcon = (identificador: string) => {
+  const key = normalizeIdentifier(identificador);
+  return key.includes('enos') || key.includes('nino') || key.includes('nina');
+};
+
 const iconFor = (identificador: string) => {
   const key = normalizeIdentifier(identificador);
   if (key.includes('sismo') || key.includes('terrem')) return 'icon icon-terremoto';
   if (key.includes('erup') || key.includes('volcan')) return 'icon icon-volcan';
-  if (key.includes('enos') || key.includes('nino') || key.includes('nina')) return 'icon icon-enos';
+  if (isEnosIcon(identificador)) return 'icon icon-enos';
   if (key.includes('lluv') || key.includes('invern') || key.includes('inun')) return 'icon icon-lluvia';
   if (key.includes('tsuna') || key.includes('tsunami')) return 'icon icon-tsunami';
   return 'icon icon-circle';
@@ -37,7 +42,7 @@ const iconSrcFor = (identificador: string): string | null => {
   const key = normalizeIdentifier(identificador);
   if (key.includes('sismo') || key.includes('terrem')) return earthquakeIcon;
   if (key.includes('erup') || key.includes('volcan')) return volcanoIcon;
-  if (key.includes('enos') || key.includes('nino') || key.includes('nina')) return enosIcon;
+  if (isEnosIcon(identificador)) return enosIcon;
   if (key.includes('lluv') || key.includes('invern') || key.includes('inun')) return rainsIcon;
   if (key.includes('tsuna') || key.includes('tsunami')) return tsunamiIcon;
   return null;
@@ -47,7 +52,7 @@ const iconForbk = (identificador: string) => {
   const key = normalizeIdentifier(identificador);
   if (key.includes('sismo') || key.includes('terrem')) return 'linear-gradient(to top, #f0f0f0, #ff7d7d)';
   if (key.includes('erup') || key.includes('volcan')) return 'linear-gradient(to top, #f0f0f0, #735fc1)';
-  if (key.includes('enos') || key.includes('nino') || key.includes('nina')) return 'linear-gradient(to top, #f0f0f0, #39c5bb)';
+  if (isEnosIcon(identificador)) return 'linear-gradient(to top, #f0f0f0, #39c5bb)';
   if (key.includes('lluv') || key.includes('invern') || key.includes('inun')) return 'linear-gradient(to top, #f0f0f0, #7db1ff)';
   if (key.includes('tsuna') || key.includes('tsunami')) return 'linear-gradient(to top, #f0f0f0, #42c6ff)';
   return 'linear-gradient(to top, #f0f0f0, #cccccc)';
@@ -147,9 +152,11 @@ const EmergencySelection: React.FC = () => {
                 }}
               >
               {(() => {
-                const src = iconSrcFor(it.identificador || it.emergencia || it.descripcion);
+                const identifier = it.identificador || it.emergencia || it.descripcion;
+                const src = iconSrcFor(identifier);
                 if (!src) return null;
-                return <img src={src} alt="icono" style={{ width: 70, height: 70 }} />;
+                const size = isEnosIcon(identifier) ? 190 : 70;
+                return <img src={src} alt="icono" style={{ width: size, height: size, objectFit: 'contain' }} />;
               })()}
               </div>
               <div className="mt-3 text-muted" 
