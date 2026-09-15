@@ -64,12 +64,42 @@ interface ActaCOE {
   id?: number;
   detalle: string;
   fechaHoraSesion: Date | null;
+  fechaInicioDesastre: Date | null;
   resoluciones: Resolucion[];
   emergencia_id: number;
   usuario_id: number;
   creador: string;
   acta_coe_estado_id?: number;
 }
+
+const DISASTER_DATE_STORAGE_VERSION = 'v1';
+
+const getActaDisasterDateStorageKey = (actaId: number) =>
+  `actaCoeFechaInicioDesastre:${DISASTER_DATE_STORAGE_VERSION}:${actaId}`;
+
+const readActaDisasterDate = (actaId: number): Date | null => {
+  try {
+    const storedValue = localStorage.getItem(getActaDisasterDateStorageKey(actaId));
+    if (!storedValue) return null;
+    const parsedDate = new Date(storedValue);
+    return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+  } catch {
+    return null;
+  }
+};
+
+const saveActaDisasterDate = (actaId: number, value: Date | null) => {
+  try {
+    const storageKey = getActaDisasterDateStorageKey(actaId);
+    if (value) {
+      localStorage.setItem(storageKey, value.toISOString());
+    } else {
+      localStorage.removeItem(storageKey);
+    }
+  } catch {
+    // Este dato es solo local para el PDF; si el navegador bloquea storage, no afecta el guardado.
+  }
+};
 
 export const NuevoActaCOE: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -92,6 +122,7 @@ export const NuevoActaCOE: React.FC = () => {
   const [acta, setActa] = useState<ActaCOE>({
     detalle: '',
     fechaHoraSesion: new Date(),
+    fechaInicioDesastre: null,
     resoluciones: [],
     emergencia_id: effectiveEmergenciaId,
     usuario_id: datosLogin?.usuario_id || 0,
@@ -242,6 +273,7 @@ export const NuevoActaCOE: React.FC = () => {
       setActa({
         ...actaData,
         fechaHoraSesion: actaData.fecha_sesion ? new Date(actaData.fecha_sesion) : null,
+        fechaInicioDesastre: readActaDisasterDate(id),
         resoluciones: resolucionesConMesas
       });
 
@@ -251,7 +283,7 @@ export const NuevoActaCOE: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [authFetch, mesas, estadosResolucion]);
+  }, [apiBase, authFetch, mesas]);
 
   // Cargar mesas, estados y estados de acta una sola vez al montar el componente
   useEffect(() => {
@@ -281,10 +313,10 @@ export const NuevoActaCOE: React.FC = () => {
           setEstadosActa(estadosActaData);
 
           // Si es un acta nueva, establecer el primer estado como valor por defecto
-          if (estadosActaData.length > 0 && !acta.acta_coe_estado_id) {
+          if (estadosActaData.length > 0) {
             setActa(prev => ({
               ...prev,
-              acta_coe_estado_id: estadosActaData[0].id
+              acta_coe_estado_id: prev.acta_coe_estado_id || estadosActaData[0].id
             }));
           }
         }
@@ -310,14 +342,22 @@ export const NuevoActaCOE: React.FC = () => {
     };
 
     cargarDatosIniciales();
-  }, [authFetch, datosLogin]);
+  }, [
+    apiBase,
+    authFetch,
+    datosLogin?.coe_id,
+    datosLogin?.emergencia_id,
+    datosLogin?.usuario_id,
+    datosLogin?.usuario_login,
+    editId,
+  ]);
 
   // Cargar datos del acta cuando el ID de edición cambia y las mesas/estados están cargados
   useEffect(() => {
     if (editId && mesas.length > 0 && estadosResolucion.length > 0 && estadosActa.length > 0) {
       cargarActa(editId);
     }
-  }, [editId, mesas, estadosResolucion, estadosActa]);
+  }, [cargarActa, editId, mesas, estadosResolucion, estadosActa]);
 
   const abrirDialogoResolucion = (resolucion?: Resolucion) => {
     if (resolucion) {
@@ -691,6 +731,11 @@ export const NuevoActaCOE: React.FC = () => {
       }
 
       // Si todo salió bien, volvemos al listado
+      const savedActaId = Number(actaId || actaData?.id || 0);
+      if (savedActaId > 0) {
+        saveActaDisasterDate(savedActaId, acta.fechaInicioDesastre);
+      }
+
       navigate('/actas');
     } catch (error) {
       console.error('Error al guardar el acta:', error);
@@ -698,23 +743,6 @@ export const NuevoActaCOE: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | { name?: string; value: any }>) => {
-    const { name, value } = e.target || {};
-    if (!name) return;
-
-    setActa(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-
-  const handleDropdownChange = (e: { value: any }, field: string) => {
-    setActa(prev => ({
-      ...prev,
-      [field]: e.value
-    }));
   };
 
   return (
@@ -737,11 +765,11 @@ export const NuevoActaCOE: React.FC = () => {
 
           <div className="container-fluid">
             <div className="row col-12 pb-2">
-              <div className="col-6">
+              <div className="col-12 col-md-4">
                 <label className="label-uniform">Fecha y Hora de inicio de Sesión *</label>
                 <Calendar
                   value={acta.fechaHoraSesion}
-                  onChange={(e) => setActa({ ...acta, fechaHoraSesion: e.value as Date })}
+                  onChange={(e) => setActa(prev => ({ ...prev, fechaHoraSesion: e.value as Date }))}
                   showIcon
                   showTime
                   hourFormat="24"
@@ -751,7 +779,19 @@ export const NuevoActaCOE: React.FC = () => {
                 />
               </div>
 
-              <div className="col-6">
+              <div className="col-12 col-md-4">
+                <label className="label-uniform">Fecha de inicio del desastre</label>
+                <Calendar
+                  value={acta.fechaInicioDesastre}
+                  onChange={(e) => setActa(prev => ({ ...prev, fechaInicioDesastre: e.value as Date | null }))}
+                  showIcon
+                  dateFormat="dd/mm/yy"
+                  className="w-full m-1"
+                  disabled={isReadOnly}
+                />
+              </div>
+
+              <div className="col-12 col-md-4">
                 <label className="label-uniform">Estado de Acta *</label>
 
                 <Dropdown
