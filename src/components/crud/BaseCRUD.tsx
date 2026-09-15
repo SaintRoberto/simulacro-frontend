@@ -60,6 +60,7 @@ interface BaseCRUDProps<T> {
   modalWidth?: number | string;
   exportToExcel?: boolean;
   exportFileName?: string;
+  additionalActions?: (item: T) => ReactNode;
 }
 
 export function BaseCRUD<T extends Record<string, any>>({
@@ -97,6 +98,7 @@ export function BaseCRUD<T extends Record<string, any>>({
   modalWidth,
   exportToExcel = false,
   exportFileName,
+  additionalActions,
 }: BaseCRUDProps<T>) {
   const { authFetch, datosLogin } = useAuth();
   const { getMenuIdByRoute } = useMenu();
@@ -633,6 +635,7 @@ export function BaseCRUD<T extends Record<string, any>>({
             <i className={deleteActionIconClassName} style={{ fontSize: '1.1rem' }}></i>
           </button>
         )}
+        {additionalActions?.(rowData)}
       </div>
     );
   };
@@ -650,7 +653,7 @@ export function BaseCRUD<T extends Record<string, any>>({
   }, [filteredItems, first, rows]);
 
   // Determinar si hay acciones disponibles para mostrar la columna
-  const tieneAcciones = canRead || canEdit || canDelete;
+  const tieneAcciones = canRead || canEdit || canDelete || Boolean(additionalActions);
 
   // Manejador de cambio de página
   const onPageChange = (event: any) => {
