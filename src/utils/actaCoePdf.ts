@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
 import logoActaCoe from '../assets/logo_acta_coe.png';
-import logoNuevoEcuador from '../assets/logoMainSec.png';
+import logoNuevoEcuador from '../assets/elnuevoEcuador.png';
 
 const PAGE_WIDTH = 210;
 const PAGE_HEIGHT = 297;
@@ -57,7 +57,7 @@ interface PdfContext {
   doc: jsPDF;
   title: string;
   logos: [PdfImage | null, PdfImage | null];
-  ecuadorLogo: string | null;
+  ecuadorLogo: PdfImage | null;
   resolutionLogo: PdfImage | null;
   input: ActaCoePdfInput;
   y: number;
@@ -458,20 +458,14 @@ const drawResolutionOfficialHeader = (context: PdfContext, compact = false) => {
   context.y = compact ? 42 : 88;
 };
 
-const drawResolutionOfficialFooter = (doc: jsPDF, ecuadorLogo: string | null) => {
+const drawResolutionOfficialFooter = (doc: jsPDF, ecuadorLogo: PdfImage | null) => {
   doc.setTextColor(96, 75, 145);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
   doc.text('Secretaría de Gestión de Riesgos', 14, PAGE_HEIGHT - 18);
 
-  doc.setTextColor(35, 45, 120);
-  doc.setFont('helvetica', 'bolditalic');
-  doc.setFontSize(9);
-  doc.text('EL NUEVO', PAGE_WIDTH - 59, PAGE_HEIGHT - 26);
-  doc.setFontSize(18);
-  doc.text('ECUADOR', PAGE_WIDTH - 71, PAGE_HEIGHT - 17);
   if (ecuadorLogo) {
-    doc.addImage(ecuadorLogo, 'PNG', PAGE_WIDTH - 35, PAGE_HEIGHT - 31, 20, 18);
+    addImageContained(doc, ecuadorLogo, PAGE_WIDTH - 84, PAGE_HEIGHT - 36, 70, 28);
   }
   doc.setTextColor(20, 20, 20);
 };
@@ -535,7 +529,7 @@ const drawResolutionCertificate = (context: PdfContext) => {
 
 const buildResolucionesPdf = (
   input: ActaCoePdfInput,
-  ecuadorLogo: string | null,
+  ecuadorLogo: PdfImage | null,
   resolutionLogo: PdfImage | null,
 ) => {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -631,7 +625,7 @@ export const createActaCoePdfs = async (input: ActaCoePdfInput): Promise<ActaCoe
 
   return {
     actaCompleta: buildPdf(input, logos, false),
-    resoluciones: buildResolucionesPdf(input, ecuadorLogo?.dataUrl ?? null, coeLogo),
+    resoluciones: buildResolucionesPdf(input, ecuadorLogo, coeLogo),
     nombres: {
       actaCompleta: `Acta_COE_${suffix}.pdf`,
       resoluciones: `Resoluciones_COE_${suffix}.pdf`,
