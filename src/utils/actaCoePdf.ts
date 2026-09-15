@@ -1,7 +1,6 @@
 import { jsPDF } from 'jspdf';
 import logoActaCoe from '../assets/logo_acta_coe.png';
 import logoNuevoEcuador from '../assets/logoMainSec.png';
-import logoUnidos from '../assets/unidos.png';
 
 const PAGE_WIDTH = 210;
 const PAGE_HEIGHT = 297;
@@ -57,11 +56,17 @@ export interface ActaCoePdfResult {
 interface PdfContext {
   doc: jsPDF;
   title: string;
-  logos: [string | null, string | null];
+  logos: [PdfImage | null, PdfImage | null];
   ecuadorLogo: string | null;
-  unidosLogo: string | null;
+  resolutionLogo: PdfImage | null;
   input: ActaCoePdfInput;
   y: number;
+}
+
+interface PdfImage {
+  dataUrl: string;
+  width: number;
+  height: number;
 }
 
 const safeFilePart = (value: string) => value
@@ -127,7 +132,7 @@ const resolveDpaLabel = (dpa: DpaPdfData) => {
 const resolveLevelLower = (dpa: DpaPdfData) =>
   resolveLevel(dpa).toLocaleLowerCase('es-EC');
 
-const imageToDataUrl = (source: string): Promise<string | null> => new Promise((resolve) => {
+const imageToDataUrl = (source: string): Promise<PdfImage | null> => new Promise((resolve) => {
   const image = new Image();
   image.onload = () => {
     const canvas = document.createElement('canvas');
@@ -139,11 +144,42 @@ const imageToDataUrl = (source: string): Promise<string | null> => new Promise((
       return;
     }
     context.drawImage(image, 0, 0);
-    resolve(canvas.toDataURL('image/png'));
+    resolve({
+      dataUrl: canvas.toDataURL('image/png'),
+      width: image.naturalWidth,
+      height: image.naturalHeight,
+    });
   };
   image.onerror = () => resolve(null);
   image.src = source;
 });
+
+const addImageContained = (
+  doc: jsPDF,
+  image: PdfImage,
+  x: number,
+  y: number,
+  maxWidth: number,
+  maxHeight: number,
+) => {
+  const aspectRatio = image.width / image.height;
+  let width = maxWidth;
+  let height = width / aspectRatio;
+
+  if (height > maxHeight) {
+    height = maxHeight;
+    width = height * aspectRatio;
+  }
+
+  doc.addImage(
+    image.dataUrl,
+    'PNG',
+    x + ((maxWidth - width) / 2),
+    y + ((maxHeight - height) / 2),
+    width,
+    height,
+  );
+};
 
 const drawDocumentHeader = (context: PdfContext) => {
   const { doc, logos, title } = context;
@@ -163,7 +199,14 @@ const drawDocumentHeader = (context: PdfContext) => {
 
   const [, coeLogo] = logos;
   if (coeLogo) {
-    doc.addImage(coeLogo, 'PNG', MARGIN + titleWidth + 2, MARGIN + 4, CONTENT_WIDTH - titleWidth - 4, 18);
+    addImageContained(
+      doc,
+      coeLogo,
+      MARGIN + titleWidth + 2,
+      MARGIN + 2,
+      CONTENT_WIDTH - titleWidth - 4,
+      headerHeight - 4,
+    );
   }
 
   doc.setTextColor(20, 20, 20);
@@ -385,23 +428,16 @@ const drawFinalRecord = (context: PdfContext) => {
   ], 8);
 };
 
-const drawResolutionBrand = (doc: jsPDF, unidosLogo: string | null) => {
-  if (unidosLogo) {
-    doc.addImage(unidosLogo, 'PNG', 13, 10, 41, 29);
+const drawResolutionBrand = (doc: jsPDF, resolutionLogo: PdfImage | null) => {
+  if (resolutionLogo) {
+    addImageContained(doc, resolutionLogo, 13, 10, 46.5, 21.75);
     return;
   }
 
-  doc.setTextColor(250, 238, 182);
+  doc.setTextColor(55, 55, 55);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(42);
-  doc.text('#', 12, 32);
-
-  doc.setTextColor(15, 15, 15);
-  doc.setFontSize(14);
-  doc.text('UNIDOS', 19, 18);
-  doc.text('POR', 19, 25);
-  doc.text('LA', 19, 32);
-  doc.text('ACCIÓN', 19, 39);
+  doc.setFontSize(11);
+  doc.text('República del Ecuador', 14, 24);
 };
 
 const drawResolutionOfficialHeader = (context: PdfContext, compact = false) => {
@@ -410,7 +446,7 @@ const drawResolutionOfficialHeader = (context: PdfContext, compact = false) => {
   const date = formatLongDateUpper(input.acta.fecha_sesion);
 
   if (!compact) {
-    drawResolutionBrand(doc, context.unidosLogo);
+    drawResolutionBrand(doc, context.resolutionLogo);
   }
 
   doc.setTextColor(55, 55, 55);
@@ -500,7 +536,7 @@ const drawResolutionCertificate = (context: PdfContext) => {
 const buildResolucionesPdf = (
   input: ActaCoePdfInput,
   ecuadorLogo: string | null,
-  unidosLogo: string | null,
+  resolutionLogo: PdfImage | null,
 ) => {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const context: PdfContext = {
@@ -508,7 +544,7 @@ const buildResolucionesPdf = (
     input,
     logos: [null, null],
     ecuadorLogo,
-    unidosLogo,
+    resolutionLogo,
     title: 'RESOLUCIONES',
     y: MARGIN,
   };
@@ -547,7 +583,7 @@ const buildResolucionesPdf = (
 
 const buildPdf = (
   input: ActaCoePdfInput,
-  logos: [string | null, string | null],
+  logos: [PdfImage | null, PdfImage | null],
   resolutionsOnly: boolean,
 ) => {
   const level = resolveLevel(input.dpa);
@@ -557,7 +593,7 @@ const buildPdf = (
     input,
     logos,
     ecuadorLogo: null,
-    unidosLogo: null,
+    resolutionLogo: null,
     title: resolutionsOnly
       ? `RESOLUCIONES – COE ${level}`
       : `ACTA DE SESIÓN – COE ${level}`,
@@ -585,18 +621,17 @@ const buildPdf = (
 };
 
 export const createActaCoePdfs = async (input: ActaCoePdfInput): Promise<ActaCoePdfResult> => {
-  const [coeLogo, ecuadorLogo, unidosLogo] = await Promise.all([
+  const [coeLogo, ecuadorLogo] = await Promise.all([
     imageToDataUrl(logoActaCoe),
     imageToDataUrl(logoNuevoEcuador),
-    imageToDataUrl(logoUnidos),
   ]);
-  const logos = [null, coeLogo] as [string | null, string | null];
+  const logos = [null, coeLogo] as [PdfImage | null, PdfImage | null];
   const location = safeFilePart(resolveLocation(input.dpa));
   const suffix = `${input.acta.id}_${location}`;
 
   return {
     actaCompleta: buildPdf(input, logos, false),
-    resoluciones: buildResolucionesPdf(input, ecuadorLogo, unidosLogo),
+    resoluciones: buildResolucionesPdf(input, ecuadorLogo?.dataUrl ?? null, coeLogo),
     nombres: {
       actaCompleta: `Acta_COE_${suffix}.pdf`,
       resoluciones: `Resoluciones_COE_${suffix}.pdf`,
