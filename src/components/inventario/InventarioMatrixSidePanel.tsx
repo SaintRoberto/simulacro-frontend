@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { InputNumber, Button, Typography, Space, Drawer, Tour, message, Spin, Select, Tabs, Table } from 'antd';
 import type { TourProps } from 'antd';
 import { useAuth } from '../../context/AuthContext';
-import InventarioMatrix, { Institucion, InventarioCellPayload, RecursoTipoRow, Mesa } from './InventarioMatrix';
+import InventarioMatrix, { Coe, Institucion, InventarioCellPayload, RecursoTipoRow, Mesa } from './InventarioMatrix';
 
 const { Text } = Typography;
 
@@ -99,9 +99,11 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
   } = useAuth();
 
   const emergencyId = Number(localStorage.getItem('selectedEmergenciaId') || '0');
-  const coeId = Number(datosLogin?.coe_id || 0);
+  const loginCoeId = Number(datosLogin?.coe_id ?? 0);
+  const isSubsecretario = loginCoeId === 0;
+  const isReadOnly = isSubsecretario;
   const assignedMesaId = Number(datosLogin?.mesa_id ?? 0);
-  const hasAssignedMesa = Number.isFinite(assignedMesaId) && assignedMesaId !== 0;
+  const hasAssignedMesa = !isSubsecretario && Number.isFinite(assignedMesaId) && assignedMesaId !== 0;
   const loginProvinciaId = Number(datosLogin?.provincia_id ?? 0);
   const loginCantonId = Number(datosLogin?.canton_id ?? 0);
   const isUsuarioNacional = loginProvinciaId === 0 && loginCantonId === 0;
@@ -113,13 +115,25 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
   const [recursoGrupoOptions, setRecursoGrupoOptions] = useState<RecursoGrupoSearchOption[]>([]);
   const [recursoGrupoOptionsStatus, setRecursoGrupoOptionsStatus] = useState<'idle' | 'loading' | 'succeeded' | 'failed'>('idle');
   const [mesasStatus, setMesasStatus] = useState<'idle' | 'loading' | 'succeeded' | 'failed'>('idle');
+  const [coesStatus, setCoesStatus] = useState<'idle' | 'loading' | 'succeeded' | 'failed'>('idle');
+  const [coes, setCoes] = useState<Coe[]>([]);
+  const [selectedCoeId, setSelectedCoeId] = useState<number | undefined>(undefined);
+  const [filterProvinciasStatus, setFilterProvinciasStatus] = useState<'idle' | 'loading' | 'succeeded' | 'failed'>('idle');
+  const [filterCantonesStatus, setFilterCantonesStatus] = useState<'idle' | 'loading' | 'succeeded' | 'failed'>('idle');
+  const [filterProvincias, setFilterProvincias] = useState<Provincia[]>([]);
+  const [filterCantones, setFilterCantones] = useState<Canton[]>([]);
+  const [selectedFilterProvinciaId, setSelectedFilterProvinciaId] = useState<number | undefined>(undefined);
+  const [selectedFilterCantonId, setSelectedFilterCantonId] = useState<number | undefined>(undefined);
   const [mesas, setMesas] = useState<Mesa[]>([]);
   const [selectedMesaId, setSelectedMesaId] = useState<number | undefined>(undefined);
   const [selectedGrupoId, setSelectedGrupoId] = useState<number | undefined>(undefined);
   const [instituciones, setInstituciones] = useState<Institucion[]>([]);
   const [rows, setRows] = useState<RecursoTipoRow[]>([]);
   const [matrix, setMatrix] = useState<Record<number, Record<number, InventarioCellPayload>>>({});
+  const effectiveCoeId = isSubsecretario ? selectedCoeId : loginCoeId;
   const effectiveMesaId = hasAssignedMesa ? assignedMesaId : selectedMesaId;
+  const effectiveProvinciaId = isSubsecretario ? selectedFilterProvinciaId : loginProvinciaId;
+  const effectiveCantonId = isSubsecretario ? selectedFilterCantonId : loginCantonId;
 
   const matrixRef = useRef(matrix);
   useEffect(() => {
@@ -267,16 +281,90 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     return [];
   }, [authFetch]);
 
+  const fetchCoes = useCallback(async () => {
+    if (!isSubsecretario) return;
+    setCoesStatus('loading');
+    try {
+      const res = await authFetch(`${apiBase}/coes/listado`, { headers: { accept: 'application/json' } });
+      if (!res.ok) throw new Error('coes_not_ok');
+      const data = await res.json();
+      const mapped: Coe[] = (Array.isArray(data) ? data : [])
+        .map((x: any) => ({
+          id: Number(x.id),
+          nombre: String(x.nombre ?? 'COE'),
+          siglas: x.siglas ?? x.abreviatura,
+        }))
+        .filter((x: Coe) => Number.isFinite(x.id) && x.id > 0);
+      setCoes(mapped);
+      setCoesStatus('succeeded');
+    } catch {
+      setCoes([]);
+      setCoesStatus('failed');
+      message.error('No se pudo cargar el listado de COE.');
+    }
+  }, [apiBase, authFetch, isSubsecretario]);
+
+  const fetchFilterProvincias = useCallback(async () => {
+    if (!isSubsecretario) return;
+    setFilterProvinciasStatus('loading');
+    try {
+      const data = await fetchFirstArray([
+        `${apiBase}/provincias/emergencia/${emergencyId}`,
+        `${apiBase}/provincias`,
+      ]);
+      const mapped: Provincia[] = data
+        .map((x: any) => ({
+          id: Number(x.id),
+          nombre: String(x.nombre ?? x.provincia_nombre ?? `Provincia ${x.id}`),
+        }))
+        .filter((x: Provincia) => Number.isFinite(x.id) && x.id > 0);
+      setFilterProvincias(mapped);
+      setFilterProvinciasStatus('succeeded');
+    } catch {
+      setFilterProvincias([]);
+      setFilterProvinciasStatus('failed');
+      message.error('No se pudo cargar el listado de provincias.');
+    }
+  }, [apiBase, emergencyId, fetchFirstArray, isSubsecretario]);
+
+  const fetchFilterCantones = useCallback(async () => {
+    if (!isSubsecretario || !selectedFilterProvinciaId) {
+      setFilterCantones([]);
+      setFilterCantonesStatus('idle');
+      return;
+    }
+    setFilterCantonesStatus('loading');
+    try {
+      const data = await fetchFirstArray([
+        `${apiBase}/provincia/${selectedFilterProvinciaId}/cantones/emergencia/${emergencyId}`,
+        `${apiBase}/provincia/${selectedFilterProvinciaId}/cantones/`,
+      ]);
+      const mapped: Canton[] = data
+        .map((x: any) => ({
+          id: Number(x.id),
+          nombre: String(x.nombre ?? x.canton_nombre ?? `Cantón ${x.id}`),
+          provincia_id: Number(x.provincia_id ?? selectedFilterProvinciaId),
+        }))
+        .filter((x: Canton) => Number.isFinite(x.id) && x.id > 0);
+      setFilterCantones(mapped);
+      setFilterCantonesStatus('succeeded');
+    } catch {
+      setFilterCantones([]);
+      setFilterCantonesStatus('failed');
+      message.error('No se pudo cargar el listado de cantones.');
+    }
+  }, [apiBase, emergencyId, fetchFirstArray, isSubsecretario, selectedFilterProvinciaId]);
+
   const fetchMesas = useCallback(async () => {
-    if (!coeId) {
+    if (!effectiveCoeId) {
       setMesas([]);
       setSelectedMesaId(hasAssignedMesa ? assignedMesaId : undefined);
-      setMesasStatus('failed');
+      setMesasStatus('idle');
       return;
     }
     setMesasStatus('loading');
     try {
-      const res = await authFetch(`${apiBase}/mesas/coe/${coeId}`, { headers: { accept: 'application/json' } });
+      const res = await authFetch(`${apiBase}/mesas/coe/${effectiveCoeId}`, { headers: { accept: 'application/json' } });
       if (!res.ok) throw new Error('mesas_not_ok');
       const data = await res.json();
       const list = Array.isArray(data) ? data : [];
@@ -292,22 +380,22 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
       setMesas(mapped);
       setMesasStatus('succeeded');
 
-      const defaultMesa = hasAssignedMesa ? assignedMesaId : mapped[0]?.id;
+      const defaultMesa = hasAssignedMesa ? assignedMesaId : (isSubsecretario ? undefined : mapped[0]?.id);
       setSelectedMesaId(defaultMesa);
     } catch {
       setMesas([]);
       setSelectedMesaId(hasAssignedMesa ? assignedMesaId : undefined);
       setMesasStatus('failed');
     }
-  }, [apiBase, assignedMesaId, authFetch, coeId, hasAssignedMesa]);
+  }, [apiBase, assignedMesaId, authFetch, effectiveCoeId, hasAssignedMesa, isSubsecretario]);
 
   const fetchInstituciones = useCallback(async () => {
-    if (!coeId || !effectiveMesaId) {
+    if (!effectiveCoeId || !effectiveMesaId) {
       setInstituciones([]);
       return;
     }
     const candidates = [
-      `${apiBase}/instituciones_coe_mesa/coe/${coeId}/mesa/${effectiveMesaId}`,
+      `${apiBase}/instituciones_coe_mesa/coe/${effectiveCoeId}/mesa/${effectiveMesaId}`,
       `${apiBase}/instituciones/emergencia/${emergencyId}`,
       `${apiBase}/instituciones`,
     ];
@@ -332,7 +420,19 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
       }
     }
     setInstituciones([]);
-  }, [apiBase, authFetch, coeId, effectiveMesaId, emergencyId]);
+  }, [apiBase, authFetch, effectiveCoeId, effectiveMesaId, emergencyId]);
+
+  useEffect(() => {
+    fetchCoes();
+  }, [fetchCoes]);
+
+  useEffect(() => {
+    fetchFilterProvincias();
+  }, [fetchFilterProvincias]);
+
+  useEffect(() => {
+    fetchFilterCantones();
+  }, [fetchFilterCantones]);
 
   useEffect(() => {
     fetchMesas();
@@ -364,9 +464,9 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     rowId: number,
     institucionId: number
   ): Promise<ParroquiaExistenciaDetalleLocal[]> => {
-    if (!selectedGrupoId || !effectiveMesaId || !coeId) return [];
+    if (!selectedGrupoId || !effectiveMesaId || !effectiveCoeId) return [];
     try {
-      const url = `${apiBase}/recursos_inventario/recurso_grupo/${selectedGrupoId}/coe/${coeId}/mesa/${effectiveMesaId}/provincia/${loginProvinciaId}/canton/${loginCantonId}`;
+      const url = `${apiBase}/recursos_inventario/recurso_grupo/${selectedGrupoId}/coe/${effectiveCoeId}/mesa/${effectiveMesaId}/provincia/${effectiveProvinciaId ?? 0}/canton/${effectiveCantonId ?? 0}`;
       const res = await withTimeout(authFetch(url, { headers: { accept: 'application/json' } }), 4000);
       if (!res.ok) return [];
       const data = await res.json();
@@ -407,10 +507,10 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     } catch {
       return [];
     }
-  }, [apiBase, authFetch, coeId, effectiveMesaId, instituciones, loginCantonId, loginProvinciaId, selectedGrupoId]);
+  }, [apiBase, authFetch, effectiveCantonId, effectiveCoeId, effectiveMesaId, effectiveProvinciaId, instituciones, selectedGrupoId]);
 
   const loadMatrixByGrupo = useCallback(async () => {
-    if (!selectedGrupoId || !effectiveMesaId || !coeId) return;
+    if (!selectedGrupoId || !effectiveMesaId || !effectiveCoeId) return;
     setLoading(true);
     try {
       const tipos = await getRecursoTiposByGrupo(selectedGrupoId);
@@ -422,7 +522,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
 
       const fresh: Record<number, Record<number, InventarioCellPayload>> = {};
       try {
-        const url = `${apiBase}/recursos_inventario/recurso_grupo/${selectedGrupoId}/coe/${coeId}/mesa/${effectiveMesaId}/provincia/${loginProvinciaId}/canton/${loginCantonId}`;
+        const url = `${apiBase}/recursos_inventario/recurso_grupo/${selectedGrupoId}/coe/${effectiveCoeId}/mesa/${effectiveMesaId}/provincia/${effectiveProvinciaId ?? 0}/canton/${effectiveCantonId ?? 0}`;
         const res = await withTimeout(authFetch(url, { headers: { accept: 'application/json' } }), 4000);
         if (!res.ok) throw new Error('inventario_not_ok');
         const data = await res.json();
@@ -503,7 +603,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     } finally {
       setLoading(false);
     }
-  }, [apiBase, authFetch, coeId, effectiveMesaId, getRecursoTiposByGrupo, instituciones, loginCantonId, loginProvinciaId, selectedGrupoId]);
+  }, [apiBase, authFetch, effectiveCantonId, effectiveCoeId, effectiveMesaId, effectiveProvinciaId, getRecursoTiposByGrupo, instituciones, selectedGrupoId]);
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -635,9 +735,9 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
         const rowId = Number(selectedRow?.recurso_tipo_id ?? 0);
         const institucionId = Number(selectedInstitucion?.id ?? 0);
 
-        if (coeId > 0 && effectiveMesaId && provinciaIdForParroquias && rowId > 0 && institucionId > 0) {
+        if (effectiveCoeId && effectiveMesaId && provinciaIdForParroquias && rowId > 0 && institucionId > 0) {
           try {
-            const endpoint = `${apiBase}/recursos_inventario/coe_id/${coeId}/mesa_id/${effectiveMesaId}/provincia_id/${provinciaIdForParroquias}/canton_id/${cantonIdForParroquias}/recurso_tipo_id/${rowId}/institucion_duena_id/${institucionId}`;
+            const endpoint = `${apiBase}/recursos_inventario/coe_id/${effectiveCoeId}/mesa_id/${effectiveMesaId}/provincia_id/${provinciaIdForParroquias}/canton_id/${cantonIdForParroquias}/recurso_tipo_id/${rowId}/institucion_duena_id/${institucionId}`;
             const res = await withTimeout(authFetch(endpoint, { headers: { accept: 'application/json' } }), 4000);
             if (res.ok) {
               const invData = await res.json();
@@ -709,7 +809,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
   }, [
     apiBase,
     authFetch,
-    coeId,
+    effectiveCoeId,
     drawerCantonId,
     drawerInitialDetalles,
     drawerOpen,
@@ -740,7 +840,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     setDrawerParroquiaMeta({});
     setParroquiasOptions([]);
     setDrawerHasUnsavedChanges(false);
-    setDrawerActiveTab('registro');
+    setDrawerActiveTab(isReadOnly ? 'detalle' : 'registro');
 
     if (isUsuarioNacional) {
       setDrawerProvinciaId(detalleProvinciaId > 0 ? detalleProvinciaId : undefined);
@@ -757,7 +857,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     }
 
     setDrawerOpen(true);
-  }, [confirmDiscardUnsavedChanges, isUsuarioCantonal, isUsuarioNacional, isUsuarioProvincial, loginCantonId, loginProvinciaId]);
+  }, [confirmDiscardUnsavedChanges, isReadOnly, isUsuarioCantonal, isUsuarioNacional, isUsuarioProvincial, loginCantonId, loginProvinciaId]);
 
   useEffect(() => {
     if (!tourOpen) return;
@@ -772,12 +872,13 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
       return;
     }
 
-    if (tourCurrent < 6 && drawerOpen && drawerActiveTab !== 'registro') {
+    if (!isReadOnly && tourCurrent < 6 && drawerOpen && drawerActiveTab !== 'registro') {
       setDrawerActiveTab('registro');
     }
-  }, [drawerActiveTab, drawerOpen, instituciones, openCellPanel, rows, tourCurrent, tourOpen]);
+  }, [drawerActiveTab, drawerOpen, instituciones, isReadOnly, openCellPanel, rows, tourCurrent, tourOpen]);
 
   const handleParroquiaExistenciaChange = useCallback((parroquia: Parroquia, value: number | null) => {
+    if (isReadOnly) return;
     const safeValue = Math.max(0, Math.floor(Number(value ?? 0)));
     setDrawerHasUnsavedChanges(true);
     setDrawerParroquiaValues((prev) => {
@@ -795,7 +896,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
         recurso_inventario_ids: prev[parroquia.id]?.recurso_inventario_ids,
       },
     }));
-  }, []);
+  }, [isReadOnly]);
 
   const totalExistenciasParroquias = useMemo(() => {
     return Object.values(drawerParroquiaValues).reduce((acc, val) => acc + Math.max(0, Number(val || 0)), 0);
@@ -863,9 +964,9 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     let recordId = Number(detalle.recurso_inventario_id ?? 0);
 
     // Primera carga/cambio de canton: si el id aun no esta en memoria, buscarlo en backend
-    if (recordId <= 0 && coeId > 0 && effectiveMesaId) {
+    if (recordId <= 0 && effectiveCoeId && effectiveMesaId) {
       try {
-        const lookupUrl = `${apiBase}/recursos_inventario/coe_id/${coeId}/mesa_id/${effectiveMesaId}/provincia_id/${Number(detalle.provincia_id ?? 0)}/canton_id/${Number(detalle.canton_id ?? 0)}/recurso_tipo_id/${recursoTipoId}/institucion_duena_id/${institucionId}`;
+        const lookupUrl = `${apiBase}/recursos_inventario/coe_id/${effectiveCoeId}/mesa_id/${effectiveMesaId}/provincia_id/${Number(detalle.provincia_id ?? 0)}/canton_id/${Number(detalle.canton_id ?? 0)}/recurso_tipo_id/${recursoTipoId}/institucion_duena_id/${institucionId}`;
         const lookupRes = await withTimeout(authFetch(lookupUrl, { headers: { accept: 'application/json' } }), 4000);
         if (lookupRes.ok) {
           const lookupData = await lookupRes.json();
@@ -906,7 +1007,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     const createBody = {
       activo: true,
       canton_id: Number(detalle.canton_id ?? 0),
-      coe_id: coeId,
+      coe_id: effectiveCoeId,
       creador: usuarioLogin,
       recurso_tipo_id: recursoTipoId,
       existencias: Number(detalle.existencias ?? 0),
@@ -941,17 +1042,23 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     } catch {
       return undefined;
     }
-  }, [apiBase, authFetch, coeId, datosLogin?.usuario_login, effectiveMesaId]);
+  }, [apiBase, authFetch, datosLogin?.usuario_login, effectiveCoeId, effectiveMesaId]);
 
   const loadDetalleExistencias = useCallback(async () => {
-    if (!drawerOpen || !selectedRow || !selectedInstitucion || !coeId || !effectiveMesaId) {
+    if (!drawerOpen || !selectedRow || !selectedInstitucion || !effectiveCoeId || !effectiveMesaId) {
       setDetalleExistenciasRows([]);
       setDetalleExistenciasStatus('idle');
       return;
     }
     setDetalleExistenciasStatus('loading');
     try {
-      const endpoint = `${apiBase}/recursos_inventario/coe_id/${coeId}/mesa_id/${effectiveMesaId}/recurso_tipo_id/${selectedRow.recurso_tipo_id}/institucion_duena_id/${selectedInstitucion.id}/provincia_id/${isUsuarioNacional ? drawerProvinciaId ?? 0 : loginProvinciaId ?? 0}/canton_id/${isUsuarioCantonal ? loginCantonId ?? 0 : drawerCantonId ?? 0}`;
+      const provinciaId = isSubsecretario
+        ? effectiveProvinciaId ?? 0
+        : isUsuarioNacional ? drawerProvinciaId ?? 0 : loginProvinciaId ?? 0;
+      const cantonId = isSubsecretario
+        ? effectiveCantonId ?? 0
+        : isUsuarioCantonal ? loginCantonId ?? 0 : drawerCantonId ?? 0;
+      const endpoint = `${apiBase}/recursos_inventario/coe_id/${effectiveCoeId}/mesa_id/${effectiveMesaId}/recurso_tipo_id/${selectedRow.recurso_tipo_id}/institucion_duena_id/${selectedInstitucion.id}/provincia_id/${provinciaId}/canton_id/${cantonId}`;
       const res = await withTimeout(authFetch(endpoint, { headers: { accept: 'application/json' } }), 4500);
       if (!res.ok) throw new Error('detalle_not_ok');
       const data = await res.json();
@@ -971,9 +1078,13 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
       setDetalleExistenciasRows([]);
       setDetalleExistenciasStatus('error');
     }
-  }, [apiBase, authFetch, coeId, drawerOpen, effectiveMesaId, selectedInstitucion, selectedRow]);
+  }, [apiBase, authFetch, drawerCantonId, drawerOpen, drawerProvinciaId, effectiveCantonId, effectiveCoeId, effectiveMesaId, effectiveProvinciaId, isSubsecretario, isUsuarioCantonal, isUsuarioNacional, loginCantonId, loginProvinciaId, selectedInstitucion, selectedRow]);
 
   const saveParroquia = useCallback(async () => {
+    if (isReadOnly) {
+      message.warning('Este perfil solo puede visualizar el inventario.');
+      return;
+    }
     if (!selectedRow || !selectedInstitucion) {
       message.warning('Seleccione una celda de la matriz.');
       return;
@@ -1057,6 +1168,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
     effectiveMesaId,
     isUsuarioNacional,
     isUsuarioProvincial,
+    isReadOnly,
     loadDetalleExistencias,
     loadMatrixByGrupo,
     persistInventarioCreateOrUpdate,
@@ -1134,7 +1246,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
         <Button
           data-tour="inventario-guia-btn"
           onClick={() => {
-            setDrawerActiveTab('registro');
+            setDrawerActiveTab(isReadOnly ? 'detalle' : 'registro');
             setTourCurrent(0);
             setTourOpen(true);
           }}
@@ -1155,6 +1267,43 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
       <Spin spinning={loading && rows.length === 0}>
         <InventarioMatrix
           tableTitle={tableTitle}
+          coes={coes}
+          coesStatus={coesStatus}
+          selectedCoeId={selectedCoeId}
+          showCoeSelector={isSubsecretario}
+          provincias={filterProvincias}
+          provinciasStatus={filterProvinciasStatus}
+          selectedProvinciaId={selectedFilterProvinciaId}
+          cantones={filterCantones}
+          cantonesStatus={filterCantonesStatus}
+          selectedCantonId={selectedFilterCantonId}
+          showLocationSelectors={isSubsecretario}
+          onCoeChange={(nextCoeId) => {
+            setSelectedCoeId(nextCoeId);
+            setSelectedMesaId(undefined);
+            setMesas([]);
+            setInstituciones([]);
+            setRows([]);
+            setMatrix({});
+          }}
+          onProvinciaChange={(provinciaId) => {
+            setSelectedFilterProvinciaId(provinciaId);
+            setSelectedFilterCantonId(undefined);
+            setFilterCantones([]);
+            setRows([]);
+            setMatrix({});
+            setSelectedRow(null);
+            setSelectedInstitucion(null);
+            setDrawerOpen(false);
+          }}
+          onCantonChange={(cantonId) => {
+            setSelectedFilterCantonId(cantonId);
+            setRows([]);
+            setMatrix({});
+            setSelectedRow(null);
+            setSelectedInstitucion(null);
+            setDrawerOpen(false);
+          }}
           mesas={mesas}
           mesasStatus={mesasStatus}
           selectedMesaId={effectiveMesaId}
@@ -1172,7 +1321,13 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
           selectedRowId={selectedRow?.recurso_tipo_id}
           selectedInstitucionId={selectedInstitucion?.id}
           loading={loading}
-          loadDisabled={!effectiveMesaId || !selectedGrupoId || instituciones.length === 0}
+          loadDisabled={
+            !effectiveCoeId ||
+            !effectiveMesaId ||
+            !selectedGrupoId ||
+            !instituciones.length ||
+            (isSubsecretario && (!effectiveProvinciaId || !effectiveCantonId))
+          }
         />
       </Spin>
 
@@ -1190,7 +1345,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
                 activeKey={drawerActiveTab}
                 onChange={(key) => setDrawerActiveTab(key as 'registro' | 'detalle')}
                 items={[
-                  {
+                  ...(!isReadOnly ? [{
                     key: 'registro',
                     label: 'Registro',
                     children: (
@@ -1277,7 +1432,7 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
                         </div>
                       </div>
                     ),
-                  },
+                  }] : []),
                   {
                     key: 'detalle',
                     label: 'Detalle de Existencias',
@@ -1356,11 +1511,13 @@ export const InventarioMatrixSidePanel: React.FC<InventarioMatrixSidePanelProps>
               />
               <Space>
                 <Button onClick={closeDrawer}>Cerrar</Button>
-                <div data-tour="inventario-guardar-btn">
-                  <Button type="primary" onClick={saveParroquia} loading={savingParroquia}>
-                    Guardar
-                  </Button>
-                </div>
+                {!isReadOnly ? (
+                  <div data-tour="inventario-guardar-btn">
+                    <Button type="primary" onClick={saveParroquia} loading={savingParroquia}>
+                      Guardar
+                    </Button>
+                  </div>
+                ) : null}
               </Space>
             </Space>
           </div>

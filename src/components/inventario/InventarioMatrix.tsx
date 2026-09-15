@@ -17,6 +17,17 @@ export type Mesa = {
   grupo_mesa_abreviatura: string
 };
 
+export type Coe = {
+  id: number;
+  nombre: string;
+  siglas?: string;
+};
+
+export type LocationOption = {
+  id: number;
+  nombre: string;
+};
+
 export type RecursoTipoRow = {
   recurso_tipo_id: number;
   recurso_tipo_nombre: string;
@@ -37,6 +48,20 @@ export type InventarioCellPayload = {
 
 export interface InventarioMatrixProps {
   tableTitle: string;
+  coes?: Coe[];
+  coesStatus?: 'idle' | 'loading' | 'succeeded' | 'failed';
+  selectedCoeId?: number;
+  onCoeChange?: (coeId: number) => void;
+  showCoeSelector?: boolean;
+  provincias?: LocationOption[];
+  provinciasStatus?: 'idle' | 'loading' | 'succeeded' | 'failed';
+  selectedProvinciaId?: number;
+  onProvinciaChange?: (provinciaId: number) => void;
+  cantones?: LocationOption[];
+  cantonesStatus?: 'idle' | 'loading' | 'succeeded' | 'failed';
+  selectedCantonId?: number;
+  onCantonChange?: (cantonId: number) => void;
+  showLocationSelectors?: boolean;
   mesas: Mesa[];
   mesasStatus: 'idle' | 'loading' | 'succeeded' | 'failed';
   selectedMesaId?: number;
@@ -59,6 +84,20 @@ export interface InventarioMatrixProps {
 
 export const InventarioMatrix: React.FC<InventarioMatrixProps> = ({
   tableTitle,
+  coes = [],
+  coesStatus = 'idle',
+  selectedCoeId,
+  onCoeChange,
+  showCoeSelector = false,
+  provincias = [],
+  provinciasStatus = 'idle',
+  selectedProvinciaId,
+  onProvinciaChange,
+  cantones = [],
+  cantonesStatus = 'idle',
+  selectedCantonId,
+  onCantonChange,
+  showLocationSelectors = false,
   mesas,
   mesasStatus,
   selectedMesaId,
@@ -132,31 +171,71 @@ export const InventarioMatrix: React.FC<InventarioMatrixProps> = ({
       </div>
 
       <Row gutter={[12, 12]} style={{ marginBottom: 8 }}>
-        
-        <Col xs={24} md={10} lg={6}>
-          <div data-tour="inventario-grupo-recurso">
-            <Space direction="vertical" size={4} style={{ width: '100%' }}>
-              <Text strong>Grupo Recurso</Text>
-              <Select
-                placeholder="Seleccione grupo de recurso"
-                options={recursoGrupos.map((g) => ({ label: g.nombre, value: g.id, searchText: g.searchText }))}
-                value={selectedGrupoId}
-                onChange={(value) => onGrupoChange(value)}
-                disabled={recursoGruposStatus === 'loading'}
-                loading={recursoGruposStatus === 'loading'}
-                style={{ width: '100%' }}
-                showSearch
-                optionLabelProp="label"
-                filterOption={(input, option) => {
-                  const searchable = `${option?.label ?? ''} ${option?.searchText ?? ''}`.toLowerCase();
-                  return searchable.includes(input.toLowerCase());
-                }}
-              />
-            </Space>
-          </div>
-        </Col>
+        {showCoeSelector && (
+          <Col xs={24} md={8} lg={4}>
+            <div data-tour="inventario-coe">
+              <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                <Text strong>COE</Text>
+                <Select
+                  placeholder="Seleccione COE"
+                  options={coes.map((coe) => ({
+                    label: coe.siglas ? `${coe.siglas} - ${coe.nombre}` : coe.nombre,
+                    value: coe.id,
+                  }))}
+                  value={selectedCoeId}
+                  onChange={(value) => onCoeChange?.(value)}
+                  disabled={coesStatus === 'loading'}
+                  loading={coesStatus === 'loading'}
+                  style={{ width: '100%' }}
+                  showSearch
+                  optionFilterProp="label"
+                />
+              </Space>
+            </div>
+          </Col>
+        )}
+        {showLocationSelectors && (
+          <Col xs={24} md={8} lg={4}>
+            <div data-tour="inventario-provincia">
+              <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                <Text strong>Provincia</Text>
+                <Select
+                  placeholder="Seleccione provincia"
+                  options={provincias.map((provincia) => ({ label: provincia.nombre, value: provincia.id }))}
+                  value={selectedProvinciaId}
+                  onChange={(value) => onProvinciaChange?.(value)}
+                  disabled={provinciasStatus === 'loading'}
+                  loading={provinciasStatus === 'loading'}
+                  style={{ width: '100%' }}
+                  showSearch
+                  optionFilterProp="label"
+                />
+              </Space>
+            </div>
+          </Col>
+        )}
+        {showLocationSelectors && (
+          <Col xs={24} md={8} lg={4}>
+            <div data-tour="inventario-canton">
+              <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                <Text strong>Cantón</Text>
+                <Select
+                  placeholder="Seleccione cantón"
+                  options={cantones.map((canton) => ({ label: canton.nombre, value: canton.id }))}
+                  value={selectedCantonId}
+                  onChange={(value) => onCantonChange?.(value)}
+                  disabled={!selectedProvinciaId || cantonesStatus === 'loading'}
+                  loading={cantonesStatus === 'loading'}
+                  style={{ width: '100%' }}
+                  showSearch
+                  optionFilterProp="label"
+                />
+              </Space>
+            </div>
+          </Col>
+        )}
         {!hideMesaSelector && (
-          <Col xs={24} md={10} lg={6}>
+          <Col xs={24} md={8} lg={4}>
             <div data-tour="inventario-mesa">
               <Space direction="vertical" size={4} style={{ width: '100%' }}>
                 <Text strong>Mesa</Text>
@@ -175,7 +254,29 @@ export const InventarioMatrix: React.FC<InventarioMatrixProps> = ({
             </div>
           </Col>
         )}
-        <Col xs={24} md={8} lg={2} style={{ display: 'flex', alignItems: 'end' }}>
+        <Col xs={24} md={8} lg={4}>
+          <div data-tour="inventario-grupo-recurso">
+            <Space direction="vertical" size={4} style={{ width: '100%' }}>
+              <Text strong>Grupo recurso</Text>
+              <Select
+                placeholder="Seleccione grupo"
+                options={recursoGrupos.map((g) => ({ label: g.nombre, value: g.id, searchText: g.searchText }))}
+                value={selectedGrupoId}
+                onChange={(value) => onGrupoChange(value)}
+                disabled={recursoGruposStatus === 'loading'}
+                loading={recursoGruposStatus === 'loading'}
+                style={{ width: '100%' }}
+                showSearch
+                optionLabelProp="label"
+                filterOption={(input, option) => {
+                  const searchable = `${option?.label ?? ''} ${option?.searchText ?? ''}`.toLowerCase();
+                  return searchable.includes(input.toLowerCase());
+                }}
+              />
+            </Space>
+          </div>
+        </Col>
+        <Col xs={24} md={8} lg={4} style={{ display: 'flex', alignItems: 'end' }}>
           <div data-tour="inventario-cargar-matriz">
             <Button type="default" onClick={onLoadMatrix} disabled={loadDisabled} loading={loading}>
               Cargar Matriz
